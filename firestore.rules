@@ -1,0 +1,33 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Boards collection rules
+    match /boards/{boardId} {
+      // Helper functions
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      
+      function isOwner() {
+        return isSignedIn() && resource.data.userId == request.auth.uid;
+      }
+      
+      function isDemoBoard() {
+        return resource != null && resource.data.userId == null;
+      }
+      
+      // Read rules
+      allow read: if 
+        isDemoBoard() || // Allow reading demo/public boards
+        isOwner();      // Allow reading own boards
+      
+      // Write rules
+      allow create: if isSignedIn() 
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasAll(['name', 'content', 'userId', 'savedAt']);
+      
+      allow update, delete: if isOwner();
+    }
+  }
+}

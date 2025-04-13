@@ -1,0 +1,227 @@
+/* === Base Styles === */
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  line-height: 1.6;
+  color: #333;
+  background-color: #f8f9fa; /* Lighter background */
+  margin: 0;
+}
+
+a {
+  color: #007bff;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* === Landing Page Container === */
+.landing-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  overflow-x: hidden; /* Prevent horizontal scroll */
+}
+
+/* === Hero Section === */
+.hero-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 70vh;
+  padding: 60px 20px;
+  background: linear-gradient(145deg, #e0eafc 0%, #cfdef3 100%); /* Softer gradient */
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Optional: Add subtle pattern or animation */
+/* .hero-section::before { ... } */
+
+.hero-content {
+  max-width: 700px;
+  margin-bottom: 40px; /* Space before visual */
+  z-index: 1; /* Keep content above potential background elements */
+}
+
+.hero-title {
+  font-size: 2.8rem; /* Slightly adjusted size */
+  font-weight: 700;
+  color: #2c3e50; /* Dark blue-grey */
+  margin-bottom: 15px;
+  line-height: 1.2;
+}
+
+.hero-subtitle {
+  font-size: 1.2rem;
+  color: #5a6a7a; /* Softer grey */
+  margin-bottom: 30px;
+  max-width: 550px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero-cta-button {
+  padding: 14px 35px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  background-color: #007bff; /* Primary blue */
+  border: none;
+  border-radius: 50px; /* Pill shape */
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  text-transform: none; /* Remove uppercase */
+  letter-spacing: 0.5px;
+}
+
+.hero-cta-button:hover {
+  background-color: #0056b3; /* Darker blue */
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+}
+
+.hero-cta-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 5px rgba(0, 123, 255, 0.2);
+}
+
+.hero-visual {
+  max-width: 500px; /* Control visual size */
+  width: 80%;
+  margin-top: 20px;
+  z-index: 1;
+}
+
+.hero-visual img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 8px; /* Optional: slight rounding */
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+}
+
+/* === Features Section === */
+.features-section {
+  width: 100%;
+  max-width: 1200px; /* Slightly wider max-width for images */
+  padding: 60px 20px;
+  margin: 0 auto;
+}
+
+.features-heading {
+  text-align: center;
+  font-size: 2.2rem;
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 50px; /* More space before grid */
+}
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* Adjust minmax if needed */
+  gap: 40px; /* Increased gap */
+}
+
+.feature-card {
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 0; /* Remove padding to let image fill */
+  text-align: center;
+  border: 1px solid #e9ecef;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  overflow: hidden; /* Ensure image corners are rounded */
+}
+
+.feature-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
+}
+
+.feature-image {
+  display: block;
+  width: 100%;
+  height: 200px; /* Fixed height for consistency */
+  object-fit: cover; /* Crop image to fit */
+  margin-bottom: 15px; /* Space between image and title */
+  border-bottom: 1px solid #e9ecef; /* Separator line */
+}
+
+.feature-title {
+  font-size: 1.15rem; /* Slightly smaller title */
+  font-weight: 600;
+  color: #343a40;
+  margin: 0 15px 15px 15px; /* Add padding back for title */
+}
+
+/* Remove old icon and description styles */
+/* .feature-icon-emoji, .feature-description { display: none; } */
+
+/* === Responsive Adjustments === */
+@media (max-width: 992px) {
+  .hero-title {
+    font-size: 2.5rem;
+  }
+  .features-grid {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+  .feature-image {
+    height: 180px; /* Adjust height */
+  }
+}
+
+@media (max-width: 768px) {
+  .hero-section {
+    min-height: auto; /* Adjust height on smaller screens */
+    padding: 40px 15px;
+    flex-direction: column; /* Stack content and visual */
+  }
+  .hero-title {
+    font-size: 2.2rem;
+  }
+  .hero-subtitle {
+    font-size: 1.1rem;
+  }
+  .hero-visual {
+    width: 90%;
+    margin-top: 30px;
+  }
+  .features-section {
+    padding: 40px 15px;
+  }
+  .features-heading {
+    font-size: 2rem;
+    margin-bottom: 40px;
+  }
+  .features-grid {
+    grid-template-columns: 1fr; /* Stack cards */
+    gap: 30px;
+  }
+  .feature-image {
+    height: 220px; /* Adjust height for single column */
+  }
+}
+
+@media (max-width: 576px) {
+  .hero-title {
+    font-size: 2rem;
+  }
+  .hero-subtitle {
+    font-size: 1rem;
+  }
+  .hero-cta-button {
+    padding: 12px 30px;
+    font-size: 0.9rem;
+  }
+  .feature-image {
+    height: 180px; /* Further adjust height */
+  }
+  .feature-title {
+    font-size: 1.1rem;
+  }
+} 

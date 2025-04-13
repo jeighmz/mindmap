@@ -1,0 +1,1710 @@
+.whiteboard {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.whiteboard-toolbar {
+  position: fixed;
+  top: 80px;
+  left: 20px;
+  width: 60px;
+  height: fit-content;
+  justify-content: center;
+  align-items: center;
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 2000;
+  transition: transform 0.3s ease;
+}
+
+/* Adjust toolbar position when search panel is open */
+.panel-open .whiteboard-toolbar {
+  left: 20px;
+}
+
+/* For small screens, ensure toolbar remains visible */
+@media (max-width: 768px) {
+  .whiteboard-toolbar {
+    top: auto;
+    bottom: 20px;
+    left: 20px;
+  }
+  
+  .panel-open .whiteboard-toolbar {
+    left: 20px;
+  }
+}
+
+.toolbar-item {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  cursor: move;
+  font-size: 20px;
+  transition: all 0.2s ease;
+  color: #444;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.toolbar-item:hover {
+  background: #f8f9fa;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+.toolbar-item:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.toolbar-item.dragging {
+  opacity: 0.7;
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Add a subtle separator between groups of tools if needed */
+.toolbar-item.separator {
+  margin: 8px 0;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.08);
+  width: 100%;
+}
+
+.whiteboard-canvas {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 100vh;
+  background-color: #f5f5f5;
+  flex: 1;
+  z-index: 1;
+}
+
+.whiteboard-canvas.panning {
+  cursor: grabbing !important;
+}
+
+.whiteboard-canvas.space-pressed:not(.panning) {
+  cursor: grab !important;
+}
+
+.canvas-content {
+  position: absolute;
+  transform-origin: 0 0;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.05s linear;
+  z-index: 1;
+  will-change: transform;
+}
+
+.panel-open .canvas-content {
+  transition: transform 0.2s ease-out;
+}
+
+.canvas-content.panning {
+  transition: none;
+}
+
+.grid-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    linear-gradient(to right, rgba(0, 0, 0, 0.1) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.1) 1px, transparent 1px);
+  background-size: 20px 20px;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.whiteboard-item {
+  position: absolute;
+  user-select: none;
+  -webkit-user-drag: none;
+  touch-action: none;
+  box-sizing: border-box;
+  cursor: default;
+  z-index: 100;
+  will-change: transform;
+  transition: transform 0.1s ease-out;
+}
+
+.whiteboard-item:hover {
+  cursor: default;
+}
+
+.whiteboard-item.dragging {
+  cursor: grabbing !important;
+}
+
+.whiteboard-item.selected {
+  outline: 2px solid #2196F3;
+  outline-offset: 2px;
+}
+
+.whiteboard-item.selected::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+  pointer-events: none;
+}
+
+.whiteboard-item .sticky-note,
+.whiteboard-item .rectangle-shape,
+.whiteboard-item .circle-shape {
+  pointer-events: none;
+}
+
+.whiteboard-item textarea {
+  pointer-events: auto;
+}
+
+.resize-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: #007bff;
+  border: 2px solid white;
+  border-radius: 50%;
+  z-index: 1001;
+  pointer-events: all !important;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+/* Position the handles */
+.resize-handle.nw {
+  top: -5px;
+  left: -5px;
+}
+
+.resize-handle.n {
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.resize-handle.ne {
+  top: -5px;
+  right: -5px;
+}
+
+.resize-handle.e {
+  top: 50%;
+  right: -5px;
+  transform: translateY(-50%);
+}
+
+.resize-handle.se {
+  bottom: -5px;
+  right: -5px;
+}
+
+.resize-handle.s {
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.resize-handle.sw {
+  bottom: -5px;
+  left: -5px;
+}
+
+.resize-handle.w {
+  top: 50%;
+  left: -5px;
+  transform: translateY(-50%);
+}
+
+/* Handle hover effects */
+.resize-handle:hover {
+  background: #0056b3;
+  transform-origin: center;
+  transform: scale(1.2);
+}
+
+/* Maintain transforms for middle handles when hovering */
+.resize-handle.n:hover,
+.resize-handle.s:hover {
+  transform: translateX(-50%) scale(1.2);
+}
+
+.resize-handle.e:hover,
+.resize-handle.w:hover {
+  transform: translateY(-50%) scale(1.2);
+}
+
+/* Special case for circle shapes */
+.circle-shape .resize-handle {
+  transition: transform 0.2s ease;
+}
+
+/* Ensure handles are visible on light backgrounds */
+.resize-handle {
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+/* Add smooth transitions */
+.whiteboard-item:not(.dragging) {
+  transition: 
+    left 0.1s ease,
+    top 0.1s ease,
+    width 0.1s ease,
+    height 0.1s ease;
+}
+
+.sticky-note {
+  width: 200px;
+  height: 200px;
+  background: #fff740;
+  padding: 16px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  overflow: hidden;
+}
+
+.sticky-note textarea {
+  font-family: inherit;
+  font-size: inherit;
+  padding: 0;
+  margin: 0;
+}
+
+.rectangle-shape {
+  width: 100px;
+  height: 60px;
+  background: white;
+  border: 2px solid #333;
+  border-radius: 4px;
+}
+
+.circle-shape {
+  width: 80px;
+  height: 80px;
+  background: white;
+  border: 2px solid #333;
+  border-radius: 50%;
+}
+
+.whiteboard-page {
+  display: flex;
+  height: calc(100vh - 60px);
+  width: 100%;
+  background-color: #f5f5f5;
+}
+
+.whiteboard-sidebar {
+  width: 240px;
+  background-color: #fff;
+  border-right: 1px solid #e0e0e0;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.whiteboard-main {
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+}
+
+.toolbar-title {
+  font-size: 16px;
+  color: #333;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.toolbar-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.whiteboard-toolbar-item {
+  padding: 12px;
+  border-radius: 6px;
+  cursor: move;
+  background-color: #f8f9fa;
+  transition: all 0.2s;
+}
+
+.whiteboard-toolbar-item:hover {
+  background-color: #e9ecef;
+}
+
+.whiteboard-toolbar-item.dragging {
+  opacity: 0.5;
+}
+
+.toolbar-item-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar-item-icon {
+  font-size: 20px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toolbar-item-label {
+  font-size: 14px;
+  color: #333;
+}
+
+.whiteboard-canvas.dragging {
+  cursor: grabbing;
+}
+
+.draggable-element {
+  position: absolute;
+  cursor: move;
+  z-index: 2;
+  user-select: none;
+  transition: transform 0.1s ease;
+}
+
+.draggable-element.selected {
+  outline: 2px solid #007bff;
+  z-index: 3;
+}
+
+.shape {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: white;
+  border: 2px solid #333;
+  transition: all 0.1s ease;
+}
+
+.shape:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.shape.circle {
+  border-radius: 50%;
+}
+
+.shape.rectangle {
+  border-radius: 4px;
+}
+
+.shape.diamond {
+  transform: rotate(45deg);
+}
+
+.shape.text {
+  border: none;
+  min-width: 100px;
+  padding: 8px;
+  background-color: transparent;
+}
+
+.zoom-controls {
+  margin-top: 10px;
+  background: white;
+  padding: 5px;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.zoom-controls button {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: #f0f0f0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.zoom-controls button:hover {
+  background: #e0e0e0;
+}
+
+.compass {
+  position: fixed;
+  bottom: 20px;
+  left: 260px; /* Adjusted to account for sidebar */
+  width: 80px;
+  height: 80px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  z-index: 1000;
+}
+
+.compass-north,
+.compass-east,
+.compass-south,
+.compass-west {
+  position: absolute;
+  font-size: 14px;
+  font-weight: bold;
+  color: #333;
+}
+
+.compass-north {
+  top: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.compass-east {
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.compass-south {
+  bottom: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.compass-west {
+  left: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.compass-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 20px;
+  color: #007bff;
+}
+
+.whiteboard-item.selected {
+  outline: 2px solid #007bff;
+  outline-offset: 2px;
+}
+
+.whiteboard-item.selected.dragging {
+  outline: 2px dashed #2196F3;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.multi-select-indicator {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #007bff;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+/* Add these new styles */
+
+.drag-mode-indicator {
+  position: absolute;
+  top: -25px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #007bff;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.whiteboard-item.dragging {
+  cursor: grabbing !important;
+  z-index: 1000;
+  outline: 2px solid #007bff;
+}
+
+.whiteboard-item.dragging * {
+  pointer-events: none;
+}
+
+.whiteboard-item.resizing {
+  cursor: auto !important;
+}
+
+.whiteboard-item.resizing * {
+  pointer-events: none;
+}
+
+.resize-handle {
+  pointer-events: auto !important;
+  z-index: 1001;
+}
+
+.resize-handle:active {
+  background: #0056b3;
+  transform: scale(1.2);
+}
+
+.whiteboard-item.resizing .resize-handle {
+  transform: scale(1.2);
+  background: #0056b3;
+}
+
+.whiteboard-item.resizing {
+  z-index: 1000;
+}
+
+.whiteboard-item * {
+  box-sizing: border-box;
+}
+
+.connection-point {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 1002;
+}
+
+.whiteboard-item:hover .connection-point,
+.connection-point:hover,
+.connection-point.connecting {
+  opacity: 1;
+}
+
+.connection-point:hover {
+  transform: scale(1.2) !important;
+  background: #45a049 !important;
+}
+
+.connection-point.connecting {
+  background: #2196F3 !important;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(33, 150, 243, 0.4);
+  }
+  70% {
+    transform: scale(1.2);
+    box-shadow: 0 0 0 10px rgba(33, 150, 243, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(33, 150, 243, 0);
+  }
+}
+
+.saved-whiteboards-container {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  z-index: 2001;
+  transition: right 0.3s ease;
+}
+
+/* Adjust position when search panel is open */
+.panel-open .saved-whiteboards-container {
+  right: 420px; /* 400px panel width + 20px margin */
+}
+
+/* For very small screens, ensure controls remain visible */
+@media (max-width: 900px) {
+  .panel-open .saved-whiteboards-container {
+    right: 20px;
+    top: 80px;
+  }
+}
+
+.menu-toggle {
+  background: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.menu-toggle:hover {
+  background: #f8f9fa;
+}
+
+.saved-whiteboards-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  background: white;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  width: 300px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.save-new-board {
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  gap: 8px;
+}
+
+.save-new-board input {
+  flex: 1;
+  padding: 6px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.saved-boards-list {
+  padding: 8px;
+}
+
+.saved-board-item {
+  padding: 8px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.saved-board-item:hover {
+  background: #f8f9fa;
+}
+
+.saved-board-item span {
+  flex: 1;
+}
+
+.saved-date {
+  color: #666;
+  font-size: 12px;
+}
+
+.board-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.board-actions button {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.board-actions button:hover {
+  background: #e9ecef;
+}
+
+.delete-btn {
+  color: #dc3545;
+}
+
+.delete-btn:hover {
+  background: #ffebee !important;
+}
+
+.connector path {
+  transition: all 0.2s ease;
+  stroke-width: 2;
+}
+
+.connector path:hover {
+  stroke-width: 3;
+  stroke: #1976D2;
+}
+
+.connector path.creating {
+  stroke-dasharray: 5,5;
+  animation: dash 1s linear infinite;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+
+.connector-tooltip {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 1001;
+}
+
+.connector-button {
+  opacity: 0;
+  transition: all 0.2s ease;
+  z-index: 1002;
+}
+
+.whiteboard-item.selected .connector-button {
+  opacity: 1;
+}
+
+.whiteboard-item.connecting {
+  outline: 2px dashed #4CAF50;
+}
+
+.whiteboard-item.valid-target:hover {
+  outline: 2px solid #4CAF50;
+  cursor: pointer !important;
+}
+
+/* Show grab cursor only when SHIFT is pressed */
+.whiteboard-item.shift-pressed {
+  cursor: grab;
+}
+
+/* Update connector button styles */
+.connector-button:hover {
+  transform: translateY(-50%) scale(1.2) !important;
+  background: #45a049 !important;
+}
+
+/* Add connecting state styles */
+.whiteboard-item.connecting {
+  outline: 2px dashed #4CAF50;
+}
+
+.whiteboard-item.valid-target {
+  outline: 2px solid #4CAF50;
+  cursor: pointer !important;
+}
+
+.whiteboard-item.invalid-target {
+  outline: 2px solid #f44336;
+  cursor: not-allowed !important;
+}
+
+/* Remove old connector styles and add these new ones */
+.connector-control {
+  position: absolute;
+  top: 50%;
+  right: -28px;
+  width: 24px;
+  height: 24px;
+  background: #4CAF50;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  opacity: 0;
+  transition: all 0.2s ease;
+  transform-origin: center;
+}
+
+.whiteboard-item:hover .connector-control {
+  opacity: 1;
+}
+
+.connector-control:hover {
+  background: #45a049;
+}
+
+.whiteboard-item.connecting {
+  outline: 2px dashed #4CAF50;
+}
+
+.whiteboard-item.valid-target {
+  outline: 2px solid #4CAF50;
+  cursor: pointer !important;
+}
+
+.whiteboard-item.valid-target:hover {
+  outline: 2px solid #45a049;
+}
+
+.connector path {
+  transition: all 0.2s ease;
+}
+
+.connector path.creating {
+  stroke-dasharray: 5,5;
+  animation: dash 1s linear infinite;
+}
+
+.connector path:hover {
+  stroke-width: 3;
+  stroke: #1976D2;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+
+/* Add a tooltip for the connector button */
+.connector-control::after {
+  display: none;
+}
+
+.selection-box {
+  position: absolute;
+  border: 2px solid #007bff;
+  background: rgba(0, 123, 255, 0.1);
+  pointer-events: none;
+  z-index: 1500;
+}
+
+.whiteboard-item.selected {
+  outline: 2px solid #007bff;
+}
+
+.whiteboard-item.multi-selected {
+  outline: 2px solid #007bff;
+  background: rgba(0, 123, 255, 0.05);
+}
+
+/* Add this new overlay container */
+.whiteboard-controls-overlay {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  padding: 8px 12px;
+  background-color: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: opacity 0.3s ease;
+  opacity: 0.7;
+}
+
+.whiteboard-controls-overlay:hover {
+  opacity: 1;
+}
+
+.controls-help {
+  font-size: 13px;
+  color: #333;
+}
+
+.control-tip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.keyboard-key {
+  display: inline-block;
+  padding: 2px 6px;
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-family: monospace;
+  font-weight: bold;
+  font-size: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.mouse-action {
+  font-weight: 500;
+  color: #555;
+}
+
+.touch-tip {
+  margin-left: 8px;
+  font-size: 12px;
+  color: #666;
+  display: none;
+}
+
+/* Only display touch tip on touch devices */
+@media (hover: none) and (pointer: coarse) {
+  .touch-tip {
+    display: inline;
+  }
+  
+  .keyboard-key, .mouse-action {
+    display: none;
+  }
+}
+
+/* Adjust position for when panels are open */
+.panel-open .whiteboard-controls-overlay,
+.mind-map-panel-open .whiteboard-controls-overlay {
+  left: calc(50% - 100px);
+}
+
+@media (max-width: 768px) {
+  .whiteboard-controls-overlay {
+    padding: 6px 10px;
+    bottom: 60px;
+  }
+  
+  .controls-help {
+    font-size: 12px;
+  }
+}
+
+/* Update existing styles */
+.canvas-content {
+  z-index: 1;
+}
+
+.selection-box {
+  z-index: 1500;
+}
+
+.whiteboard-item {
+  z-index: 100;
+}
+
+.whiteboard-item.selected {
+  z-index: 101;
+}
+
+.connector {
+  z-index: 50;
+}
+
+/* Make sure the saved boards menu stays on top */
+.saved-whiteboards-container {
+  z-index: 2001;
+}
+
+.whiteboard-menu-overlay {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  z-index: 2000;
+  pointer-events: none;
+  transition: right 0.3s ease;
+}
+
+.whiteboard-menu-overlay > * {
+  pointer-events: auto;
+}
+
+.whiteboard-zoom-overlay {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 2000;
+  pointer-events: none;
+}
+
+.whiteboard-zoom-overlay > * {
+  pointer-events: auto;
+}
+
+/* Adjust positions when search panel is open */
+.panel-open .whiteboard-zoom-overlay {
+  right: 420px; /* 400px panel width + 20px margin */
+}
+
+/* For very small screens, ensure controls remain visible */
+@media (max-width: 900px) {
+  .panel-open .whiteboard-zoom-overlay {
+    right: 20px;
+    bottom: 80px;
+  }
+}
+
+.zoom-controls {
+  background: white;
+  padding: 8px;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.zoom-controls button {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.zoom-controls button:hover {
+  background: #e9ecef;
+}
+
+.zoom-controls span {
+  min-width: 60px;
+  text-align: center;
+}
+
+.whiteboard-controls-left {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 2000;
+}
+
+.select-all-button {
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: all 0.2s ease;
+}
+
+.select-all-button:hover {
+  background: #f8f9fa;
+}
+
+.whiteboard-item.selected {
+  outline: 2px solid #007bff;
+}
+
+/* Add these styles */
+.whiteboard-item.group-select-mode {
+  cursor: context-menu !important;
+}
+
+.whiteboard-item.group-select-mode.selected {
+  outline: 2px solid #6610f2;
+  background-color: rgba(102, 16, 242, 0.05);
+}
+
+.whiteboard-item.group-select-mode:hover {
+  outline: 2px solid #6610f2;
+  background-color: rgba(102, 16, 242, 0.1);
+}
+
+/* Make whiteboard responsive when panel is open */
+.whiteboard-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  transition: width 0.3s ease, margin-right 0.3s ease;
+  will-change: width, margin-right;
+}
+
+.panel-open .whiteboard-container {
+  width: calc(100% - 400px);
+  margin-right: 400px;
+}
+
+/* For small screens, make the panel overlay content instead of pushing it */
+@media (max-width: 768px) {
+  .panel-open .whiteboard-container {
+    width: 100%;
+    margin-right: 0;
+  }
+  
+  .search-panel {
+    box-shadow: -5px 0 15px rgba(0, 0, 0, 0.2);
+  }
+}
+
+/* Context menu styles */
+.context-menu {
+  background-color: white;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  width: 220px;
+  animation: fade-in 0.15s ease;
+}
+
+.context-menu-option {
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.context-menu-option:hover {
+  background-color: #f0f8ff;
+}
+
+.context-menu-option:active {
+  background-color: #e6f0ff;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Move mode animation */
+.whiteboard-item.move-mode {
+  animation: move-pulse 1.5s ease infinite;
+  cursor: move !important;
+  outline: 2px solid #6610f2 !important;
+  z-index: 1005 !important;
+}
+
+/* Move tooltip */
+.move-tooltip {
+  background-color: #6610f2;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+  z-index: 2010;
+  animation: fade-in 0.3s ease;
+  pointer-events: none;
+}
+
+@keyframes move-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(102, 16, 242, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(102, 16, 242, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(102, 16, 242, 0);
+  }
+}
+
+/* Right-click hint notification */
+.right-click-hint {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(102, 16, 242, 0.9);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  z-index: 2000;
+  pointer-events: none;
+  animation: fade-in 0.3s ease, float 2s ease infinite;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateX(-50%) translateY(0);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-5px);
+  }
+}
+
+.toolbar-button {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background-color: #4a6fa5;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.toolbar-button:hover {
+  background-color: #3a5a8c;
+}
+
+/* Panel styles */
+.search-panel,
+.mind-map-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 400px;
+  height: 100vh;
+  background: white;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+  z-index: 2000;
+  overflow-y: auto;
+  transition: transform 0.3s ease;
+}
+
+/* Make whiteboard responsive when any panel is open */
+.whiteboard-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  transition: width 0.3s ease, margin-right 0.3s ease;
+  will-change: width, margin-right;
+}
+
+.panel-open .whiteboard-container,
+.mind-map-panel-open .whiteboard-container {
+  width: calc(100% - 400px);
+  margin-right: 400px;
+}
+
+/* Adjust overlays when panels are open */
+.panel-open .whiteboard-zoom-overlay,
+.mind-map-panel-open .whiteboard-zoom-overlay {
+  right: 420px; /* 400px panel width + 20px margin */
+}
+
+.panel-open .whiteboard-menu-overlay,
+.mind-map-panel-open .whiteboard-menu-overlay {
+  left: 20px;
+  bottom: 20px;
+}
+
+/* Mind map panel specific styles */
+.mind-map-panel {
+  padding: 20px;
+}
+
+.mind-map-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.mind-map-panel-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.mind-map-panel-header .close-button {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #666;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.mind-map-panel-header .close-button:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.mind-map-input-container {
+  margin-bottom: 20px;
+}
+
+.mind-map-input-container label {
+  display: block;
+  margin-bottom: 8px;
+  color: #555;
+  font-size: 14px;
+}
+
+.generate-mind-map-button {
+  width: 100%;
+  padding: 12px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.generate-mind-map-button:hover:not(:disabled) {
+  background: #0056b3;
+  transform: translateY(-1px);
+}
+
+.generate-mind-map-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+/* For small screens, make panels overlay content instead of pushing it */
+@media (max-width: 768px) {
+  .panel-open .whiteboard-container,
+  .mind-map-panel-open .whiteboard-container {
+    width: 100%;
+    margin-right: 0;
+  }
+  
+  .search-panel,
+  .mind-map-panel {
+    box-shadow: -5px 0 15px rgba(0, 0, 0, 0.2);
+  }
+
+  .panel-open .whiteboard-zoom-overlay,
+  .mind-map-panel-open .whiteboard-zoom-overlay {
+    right: 20px;
+    bottom: 80px;
+  }
+}
+
+/* Mind map modal styles */
+.mind-map-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 3000;
+  animation: fadeIn 0.2s ease;
+}
+
+.mind-map-modal {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  position: relative;
+  animation: slideIn 0.3s ease;
+}
+
+.mind-map-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.mind-map-modal-header h3 {
+  margin: 0;
+  font-size: 20px;
+  color: #333;
+  font-weight: 600;
+}
+
+.mind-map-modal-header .close-button {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #666;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.mind-map-modal-header .close-button:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.mind-map-modal-content {
+  margin-bottom: 24px;
+}
+
+.mind-map-input-container {
+  margin-bottom: 24px;
+}
+
+.mind-map-input-container label {
+  display: block;
+  margin-bottom: 8px;
+  color: #333;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.mind-map-input-container textarea {
+  width: 95%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  resize: vertical;
+  min-height: 120px;
+  transition: all 0.2s ease;
+  background: #f8f9fa;
+}
+
+.mind-map-input-container textarea:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+  background: white;
+}
+
+.generate-mind-map-button {
+  width: 100%;
+  padding: 12px 16px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.generate-mind-map-button:hover:not(:disabled) {
+  background: #0056b3;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.generate-mind-map-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* For small screens */
+@media (max-width: 768px) {
+  .mind-map-modal {
+    width: 95%;
+    padding: 20px;
+    margin: 10px;
+  }
+}
+
+/* Loading spinner */
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 0.8s linear infinite;
+  margin-left: 8px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  background: #007bff;
+  border-radius: 50%;
+  animation: typing 1s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.message-content p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.message-content pre {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.message-content code {
+  font-family: monospace;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.agent-chat-button {
+  position: relative;
+  width: 50px;
+  height: 50px;
+  border-radius: 25px;
+  background: #007bff;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  z-index: 1000;
+}
+
+.agent-chat-button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.expand-control {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background-color: #9c27b0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 1003;
+  border: 2px solid #fff;
+}
+
+.whiteboard-item:hover .expand-control,
+.whiteboard-item.selected .expand-control {
+  display: flex;
+}
+
+.expand-control:hover {
+  transform: scale(1.1);
+  background-color: #7b1fa2;
+}
+
+.expand-control svg {
+  width: 16px;
+  height: 16px;
+  stroke: white;
+  stroke-width: 2;
+}
+
+.whiteboard-item.expanding {
+  opacity: 0.8;
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+.whiteboard-item .expand-control.expanding {
+  background-color: #7b1fa2;
+  animation: spin 1.5s infinite linear;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.expand-control .spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid transparent;
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spinner-spin 0.8s linear infinite;
+}
+
+@keyframes spinner-spin {
+  to {
+    transform: rotate(360deg);
+  }
+} 

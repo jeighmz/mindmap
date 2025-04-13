@@ -1,70 +1,66 @@
-# Getting Started with Create React App
+# Mindmap Application
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+[![Netlify Status](https://api.netlify.com/api/v1/badges/your-netlify-app-id/deploy-status)](https://app.netlify.com/sites/your-netlify-app-name/deploys)
 
-## Available Scripts
+A collaborative mind mapping application built with React, Firebase, and more.
 
-In the project directory, you can run:
+## Features
 
-### `npm start`
+- Create and edit mind maps with a visual whiteboard
+- Save personal boards to your account
+- Demo boards available without login
+- Collaborate and share mind maps
+- Real-time updates
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## Local Development
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+1. Clone the repository
+2. Install dependencies
+   ```
+   npm install
+   ```
+3. Create a `.env` file in the root directory with your configuration (see `.env.example`)
+4. Start the development server
+   ```
+   npm start
+   ```
 
-### `npm test`
+## Deployment to Netlify
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### Option 1: Connect to GitHub
 
-### `npm run build`
+1. Push your code to a GitHub repository
+2. Log in to your Netlify account
+3. Click "New site from Git"
+4. Select your repository
+5. Configure build settings:
+   - Build command: `npm run build`
+   - Publish directory: `build`
+6. Add environment variables in the Netlify UI:
+   - Go to Site Settings > Build & Deploy > Environment
+   - Add all the environment variables from your `.env` file
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Option 2: Manual Deploy
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+1. Build your project locally
+   ```
+   npm run build
+   ```
+2. Drag and drop the `build` folder to Netlify's manual deploy area
+3. Configure environment variables in the Netlify UI
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## Firebase Configuration
 
-### `npm run eject`
+This app requires Firebase for authentication and data storage. Make sure to:
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+1. Create a Firebase project at [firebase.google.com](https://firebase.google.com)
+2. Enable Authentication (Email/Password and Google)
+3. Set up Firestore Database
+4. Add your web app to the Firebase project to get configuration values
+5. Update Firestore security rules to match the rules in `firestore.rules`
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## Security Notes
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+- The `.env` file contains sensitive API keys and should not be committed to version control
+- Firebase security rules are configured to protect user data
+- Environment variables must be set in your Netlify deployment settings

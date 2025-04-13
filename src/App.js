@@ -1,24 +1,32 @@
-import logo from './logo.svg';
-import './App.css';
+import React from "react";
+import "./styles/App.css";
+import { AppProvider } from "./context/AppContext";
+import Layout from "./layouts/Layout";
+import { AuthProvider } from './context/AuthContext';
+import UserMenu from './components/UserMenu';
+
+function MainContent() {
+  return (
+    <div className="app">
+      <div className="floating-user-menu">
+        <UserMenu />
+      </div>
+      <main>
+        <div className="mindmap-container">
+          <Layout />
+        </div>
+      </main>
+    </div>
+  );
+}
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <AuthProvider>
+      <AppProvider>
+        <MainContent />
+      </AppProvider>
+    </AuthProvider>
   );
 }
 
