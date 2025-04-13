@@ -5,9 +5,8 @@ import Connector from './Connector';
 import SavedWhiteboardsMenu from './SavedWhiteboardsMenu';
 import SearchPanel from './SearchPanel';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../firebase-config';
+import { db, auth } from '../../firebase-config';
 import { useAuth } from '../../context/AuthContext';
-import { auth } from '../../firebase-config';
 
 const WhiteboardCanvas = forwardRef((props, ref) => {
   const {
@@ -46,7 +45,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [isExpandingConcept, setIsExpandingConcept] = useState(false);
   const [savedWhiteboards, setSavedWhiteboards] = useState([]);
   const [currentBoardId, setCurrentBoardId] = useState(null);
-  const { auth } = useAuth();
+  const { user } = useAuth();
 
   // Sync with external state if provided
   useEffect(() => {
@@ -869,13 +868,12 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     setExpandingItemId(itemId);
     
     try {
-      const currentUserId = auth.currentUser?.uid;
-      if (!currentUserId) {
+      if (!user) {
         throw new Error('Please sign in to use AI features');
       }
 
       // Get the user's API key from Firestore
-      const settingsRef = doc(db, 'userSettings', currentUserId);
+      const settingsRef = doc(db, 'userSettings', user.uid);
       const settingsSnap = await getDoc(settingsRef);
       const userSettings = settingsSnap.exists() ? settingsSnap.data() : {};
       
@@ -992,7 +990,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       setIsExpandingConcept(false);
       setExpandingItemId(null);
     }
-  }, [items, connections, setItems, setConnections, setExpandingItemId]);
+  }, [items, connections, setItems, setConnections, setExpandingItemId, user]);
   
   // Set up global function for expanding concepts
   useEffect(() => {
