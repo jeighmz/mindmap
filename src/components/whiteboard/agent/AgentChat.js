@@ -1128,9 +1128,6 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
   // Function to identify tools based on user intent
   const identifyTools = async (userInput) => {
     try {
-      const apiKey = await getUserApiKey();
-      const model = process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
-
       // Create a list of tools with their descriptions and examples
       const toolsList = Object.entries(toolRegistry).map(([id, tool]) => ({
         id,
@@ -1158,39 +1155,39 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
       - User: "Change the priority to high" -> ["modify"]
       - User: "Hello" -> []`;
 
-      // Call Groq API
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userInput }
-          ],
-          temperature: 0.1,
-          max_tokens: 500
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`API call failed: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const result = data.choices[0].message.content;
+      // Extract tools from user input using simple keyword matching
+      const tools = [];
+      const input = userInput.toLowerCase();
       
-      // Parse the JSON response
-      try {
-        const tools = JSON.parse(result);
-        return tools;
-      } catch (error) {
-        console.error('Error parsing tool identification result:', error);
-        return [];
+      // Check for confirmation words
+      if (input.match(/\b(yes|confirm|do it|proceed|okay|sure)\b/)) {
+        return ["confirm"];
       }
+      
+      // Check for modification words
+      if (input.match(/\b(modify|change|update|edit|revise)\b/)) {
+        return ["modify"];
+      }
+      
+      // Check for tool-specific keywords
+      if (input.match(/\b(analyze|analysis|structure|relationship)\b/)) {
+        tools.push("analyze");
+      }
+      if (input.match(/\b(notion|task|todo|action item)\b/)) {
+        tools.push("notion");
+      }
+      if (input.match(/\b(compare|difference|similar|similarity)\b/)) {
+        tools.push("compare");
+      }
+      if (input.match(/\b(reference|board|saved|previous)\b/)) {
+        tools.push("reference");
+      }
+      if (input.match(/\b(merge|combine|join|integrate)\b/)) {
+        tools.push("merge");
+      }
+      
+      return [...new Set(tools)]; // Remove duplicates
+      
     } catch (error) {
       console.error('Error identifying tools:', error);
       return [];
