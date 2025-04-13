@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../firebase-config';
+import { useAuth } from '../../context/AuthContext';
 import '../../styles/SearchPanel.css';
 
 const SearchPanel = ({ highlightedItems, onClose }) => {
+  const { user } = useAuth();
   const [activeCompletionEngine, setActiveCompletionEngine] = useState('groq');
   const [aiCompletions, setAiCompletions] = useState({
     groq: '',
@@ -32,6 +36,23 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
     console.log('NODE_ENV:', process.env.NODE_ENV);
   }, []);
 
+  // Function to get user's API key from settings
+  const getUserApiKey = async () => {
+    if (!user) {
+      throw new Error('Please sign in to use AI features');
+    }
+
+    const settingsRef = doc(db, 'userSettings', user.uid);
+    const settingsSnap = await getDoc(settingsRef);
+    const userSettings = settingsSnap.exists() ? settingsSnap.data() : {};
+    
+    if (!userSettings.groqApiKey) {
+      throw new Error('Please set your GROQ API key in Settings to use AI features');
+    }
+    
+    return userSettings.groqApiKey;
+  };
+
   // Function to extract relevant text from highlighted items
   const getPromptFromHighlightedItems = () => {
     return highlightedItems.map(item => item.text).join('\n\n');
@@ -41,28 +62,16 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
   const callGroqAPI = async (prompt) => {
     setIsCompletionLoading(prev => ({ ...prev, groq: true }));
     try {
-      // Get environment variables directly from window.env if available, fallback to process.env
-      const apiKey = window?.env?.REACT_APP_GROQ_API_KEY || process.env.REACT_APP_GROQ_API_KEY;
-      const model = window?.env?.REACT_APP_GROQ_MODEL || process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
+      const apiKey = await getUserApiKey();
+      const model = process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
 
-      console.log('API Call - GROQ Key exists:', !!apiKey);
-      console.log('API Call - GROQ Model:', model);
+      console.log('Making API call to Groq with model:', model);
 
-      // Hardcoded key for testing - remove this in production
-      // This is just for development testing to ensure the API works
-      const testKey = apiKey || "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";
-
-      if (!testKey) {
-        console.error('Missing API key for Groq');
-        return 'Error: API key not configured. Please check your environment setup.';
-      }
-
-      // Make actual API call to Groq using the latest API reference
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${testKey}`
+          'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
           model: model,
@@ -108,7 +117,7 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
       return data.choices[0].message.content;
     } catch (error) {
       console.error('Groq API call failed:', error);
-      return `Error: Could not generate completion with Groq. ${error.message}`;
+      return `Error: ${error.message}`;
     } finally {
       setIsCompletionLoading(prev => ({ ...prev, groq: false }));
     }
@@ -118,180 +127,59 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
   const callDeepSeekAPI = async (prompt) => {
     setIsCompletionLoading(prev => ({ ...prev, deepseek: true }));
     try {
-      // Get API key and model information
-      const apiKey = window?.env?.REACT_APP_GROQ_API_KEY || process.env.REACT_APP_GROQ_API_KEY;
-      // Use the model from environment vars or default to deepseek-r1-distill-llama-70b
-      const model = window?.env?.REACT_APP_DEEPSEEK_MODEL || process.env.REACT_APP_DEEPSEEK_MODEL || 'deepseek-r1-distill-llama-70b';
+      const apiKey = await getUserApiKey();
+      const model = process.env.REACT_APP_DEEPSEEK_MODEL || 'deepseek-r1-distill-llama-70b';
 
-      // Check if API key is available
-      if (!apiKey) {
-        console.warn('Missing API key - using simulated response for DeepSeek');
-        // Fall back to simulation
-      } else {
-        console.log('Making DeepSeek API call using Groq endpoint with model:', model);
-        
-        // DeepSeek model is accessed through the same Groq API
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-          },
-          body: JSON.stringify({
-            model: model,
-            messages: [
-              {
-                role: 'system',
-                content: `${systemInstructions} You are DeepSeek-R1-Distill-Llama-70B, a model with strong mathematical and logical reasoning capabilities.`
-              },
-              {
-                role: 'user',
-                content: `Analyze the following whiteboard items and provide insights. Focus on logical relationships, patterns, and mathematical concepts if present:
-
-${prompt}`
-              }
-            ],
-            temperature: 0.6, // As per best practices in docs (0.5-0.7, ideally 0.6)
-            max_tokens: 1024
-          })
-        });
-        
-        if (!response.ok) {
-          let errorMessage = '';
-          try {
-            const errorData = await response.json();
-            console.error('DeepSeek (via Groq) API Error Data:', errorData);
-            errorMessage = errorData.error?.message || errorData.error?.type || response.statusText;
-          } catch (parseError) {
-            console.error('Error parsing API error response:', parseError);
-            errorMessage = `Status ${response.status}: ${response.statusText}`;
-          }
-          throw new Error(`DeepSeek API Error: ${errorMessage}`);
-        }
-        
-        const data = await response.json();
-        console.log("DeepSeek API response:", data);
-        
-        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-          console.error('Unexpected API response format:', data);
-          throw new Error('Unexpected response format from DeepSeek API');
-        }
-        
-        return data.choices[0].message.content;
-      }
-
-      // Simulated response if API call wasn't made or failed
-      // Generate a simulation that reflects DeepSeek-R1-Distill-Llama-70B capabilities
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log('Making DeepSeek API call using Groq endpoint with model:', model);
       
-      // Extract items for analysis
-      const items = prompt.split('\n\n').filter(item => item.trim().length > 0);
-      const itemCount = items.length;
-      
-      if (itemCount === 0) {
-        return "No items selected. Please select some whiteboard items to analyze.";
-      }
-      
-      // Determine if content has mathematical elements
-      const hasMathContent = prompt.toLowerCase().match(/(\bmathematical\b|\bmath\b|\bequation\b|\balgebra\b|\bformula\b|\bcalculate\b|\bnumber\b|\bsum\b|\bequal\b|\bfunction\b)/);
-      
-      // Determine if content has logical reasoning elements
-      const hasLogicalContent = prompt.toLowerCase().match(/(\blogic\b|\breasoning\b|\bargument\b|\bconclusion\b|\bpremise\b|\binference\b|\bdeduction\b|\bvalid\b|\binvalid\b)/);
-      
-      // Determine if content has coding elements
-      const hasCodeContent = prompt.toLowerCase().match(/(\bcode\b|\bfunction\b|\balgorithm\b|\bprogramming\b|\bvariable\b|\bclass\b|\bmethod\b|\bobject\b|\bloop\b)/);
-      
-      // Build a response that showcases DeepSeek's strengths based on content
-      let response = `# DeepSeek R1 Distill Analysis\n\n`;
-      
-      if (hasMathContent) {
-        response += `## Mathematical Analysis\n`;
-        response += `I've analyzed the mathematical concepts in your whiteboard items and identified the following:\n\n`;
-        
-        // Add some simulated mathematical analysis
-        response += `- The relationship between the elements follows a ${Math.random() > 0.5 ? 'linear' : 'non-linear'} pattern\n`;
-        response += `- There's a ${Math.random() > 0.7 ? 'direct' : 'inverse'} correlation between the concepts\n`;
-        
-        // Add a formula if appropriate
-        response += `\nThis can be formalized as:\n\n`;
-        response += `\`\`\`\nf(x) = ${Math.random() > 0.5 ? 'ax² + bx + c' : 'a·log(x) + b'} where parameters depend on specific constraints\n\`\`\`\n\n`;
-      }
-      
-      if (hasLogicalContent || !hasMathContent) {
-        response += `## Logical Framework\n`;
-        response += `The ${itemCount} whiteboard item${itemCount !== 1 ? 's' : ''} can be structured into a logical framework:\n\n`;
-        
-        // Add logical framework
-        for (let i = 0; i < Math.min(itemCount, 3); i++) {
-          const abbreviated = items[i].substring(0, 30) + (items[i].length > 30 ? '...' : '');
-          response += `${i+1}. "${abbreviated}" ${i === 0 ? 'serves as a premise' : `builds upon ${i === 1 ? 'the premise' : 'previous points'}`}\n`;
-        }
-        
-        if (itemCount > 3) {
-          response += `${itemCount - 3} additional items extend this framework further.\n`;
-        }
-        
-        response += `\nThis structure follows ${Math.random() > 0.5 ? 'deductive' : 'inductive'} reasoning principles.\n\n`;
-      }
-      
-      if (hasCodeContent) {
-        response += `## Implementation Strategy\n\n`;
-        response += `Based on the concepts presented, here's a code implementation approach:\n\n`;
-        
-        response += `\`\`\`python
-# Implementation based on logical analysis
-class ConceptGraph:
-    def __init__(self):
-        self.nodes = {}
-        self.edges = []
-        
-    def add_node(self, node_id, attributes=None):
-        """Add a node representing a concept"""
-        self.nodes[node_id] = attributes or {}
-        
-    def add_edge(self, source, target, relation_type):
-        """Connect concepts with labeled relationships"""
-        self.edges.append({
-            'source': source,
-            'target': target, 
-            'type': relation_type,
-            'weight': self._calculate_weight(source, target)
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            {
+              role: 'system',
+              content: `${systemInstructions} You are DeepSeek-R1-Distill-Llama-70B, a model with strong mathematical and logical reasoning capabilities.`
+            },
+            {
+              role: 'user',
+              content: `Analyze the following whiteboard items and provide insights. Focus on logical relationships, patterns, and mathematical concepts if present:\n\n${prompt}`
+            }
+          ],
+          temperature: 0.6,
+          max_tokens: 1024
         })
-    
-    def _calculate_weight(self, source, target):
-        """Calculate relationship strength based on concept similarity"""
-        # Implementation would use vector embeddings or feature similarity
-        return 0.5  # Placeholder
-        
-    def find_paths(self, start, end, max_depth=3):
-        """Find logical paths between concepts"""
-        # BFS or DFS algorithm implementation
-        return []
-\`\`\`\n\n`;
+      });
+      
+      if (!response.ok) {
+        let errorMessage = '';
+        try {
+          const errorData = await response.json();
+          console.error('DeepSeek (via Groq) API Error Data:', errorData);
+          errorMessage = errorData.error?.message || errorData.error?.type || response.statusText;
+        } catch (parseError) {
+          console.error('Error parsing API error response:', parseError);
+          errorMessage = `Status ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(`DeepSeek API Error: ${errorMessage}`);
       }
       
-      response += `## Key Insights\n\n`;
+      const data = await response.json();
+      console.log("DeepSeek API response:", data);
       
-      // Generate insights based on item count
-      if (itemCount === 1) {
-        response += `The single item presents a focused concept that can be expanded into a broader framework.\n`;
-      } else if (itemCount === 2) {
-        response += `The two items show a clear ${Math.random() > 0.5 ? 'cause-effect' : 'complementary'} relationship.\n`;
-      } else {
-        response += `The multiple items form a ${itemCount > 4 ? 'complex network' : 'coherent system'} with interdependent relationships.\n`;
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        console.error('Unexpected API response format:', data);
+        throw new Error('Unexpected response format from DeepSeek API');
       }
       
-      response += `\nTo strengthen this analysis, consider:\n`;
-      response += `- Establishing clear definitions for each key concept\n`;
-      response += `- Identifying the axioms or fundamental assumptions\n`;
-      response += `- Testing the framework with concrete examples\n\n`;
-      
-      response += `*Note: This is a simulated response based on the DeepSeek-R1-Distill-Llama-70B model's capabilities. For a real API call, ensure your Groq API key is configured with access to this model.*`;
-      
-      return response;
+      return data.choices[0].message.content;
     } catch (error) {
       console.error('DeepSeek API call failed:', error);
-      return `Error: Could not generate completion with DeepSeek. ${error.message}`;
+      return `Error: ${error.message}`;
     } finally {
       setIsCompletionLoading(prev => ({ ...prev, deepseek: false }));
     }
