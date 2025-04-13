@@ -1395,25 +1395,9 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
 
           Current mind map structure:
           Central Topic: ${mindMapAnalysis.centralTopic}
-          Number of main branches: ${mindMapAnalysis.branches.length}
-          
-          ${referencedBoards.length > 0 ? `
-          Referenced boards context:
-          ${referencedBoards.map((board, index) => {
-            const analysis = analyzeSavedBoard(board);
-            return `${index + 1}. "${board.name}" - Central Topic: ${analysis.centralTopic}, Branches: ${analysis.branches.length}`;
-          }).join('\n')}
-          ` : ''}
-          
-          When suggesting actions, be specific and practical. Format your responses using markdown for better readability.
-          
-          IMPORTANT: If tools are selected, you MUST use them in your response. For example:
-          - If 'Analyze Structure' is selected, provide a detailed structural analysis
-          - If 'Create Action Plan' is selected, include specific action items
-          - If 'Notion Integration' is selected, suggest how to create tasks in Notion
-          - If 'Reference Boards' is selected, incorporate insights from referenced boards`;
+          Number of main branches: ${mindMapAnalysis.branches.length}`;
 
-          // Call Groq API
+          // Call the Groq API
           const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -1424,14 +1408,11 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
               model: model,
               messages: [
                 { role: 'system', content: systemPrompt },
-                ...messages.map(msg => ({
-                  role: msg.role,
-                  content: msg.content
-                })),
-                { role: 'user', content: inputValue }
+                ...messages.slice(-5), // Include last 5 messages for context
+                userMessage
               ],
               temperature: 0.7,
-              max_tokens: 2000
+              max_tokens: 1000
             })
           });
 
@@ -1440,25 +1421,18 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
           }
 
           const data = await response.json();
-          const assistantMessage = {
-            role: 'assistant',
-            content: data.choices[0].message.content
-          };
+          const aiResponse = data.choices[0].message.content;
 
-          setMessages(prev => [...prev, assistantMessage]);
-          
-          // Process the response for Notion integration if the Notion tool is selected
-          if (selectedTools.includes('notion')) {
-            await processGroqResponseForNotion(assistantMessage.content);
-          }
+          // Add AI response to chat
+          addMessage('assistant', aiResponse);
+
+          // Process response for potential Notion actions
+          await processGroqResponseForNotion(aiResponse);
         }
       }
     } catch (error) {
       console.error('Error processing message:', error);
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: '❌ I apologize, but I encountered an error processing your request. Please try again.'
-      }]);
+      addMessage('assistant', `Error: ${error.message}`);
     } finally {
       setIsProcessing(false);
     }
