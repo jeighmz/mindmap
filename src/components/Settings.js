@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { useAuth } from '../context/AuthContext';
@@ -11,13 +11,7 @@ export default function Settings({ isOpen, onClose }) {
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  useEffect(() => {
-    if (user && isOpen) {
-      loadSettings();
-    }
-  }, [user, isOpen]);
-
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       const settingsRef = doc(db, 'userSettings', user.uid);
       const settingsSnap = await getDoc(settingsRef);
@@ -30,7 +24,13 @@ export default function Settings({ isOpen, onClose }) {
       console.error('Error loading settings:', error);
       setMessage({ type: 'error', text: 'Failed to load settings' });
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user && isOpen) {
+      loadSettings();
+    }
+  }, [user, isOpen, loadSettings]);
 
   const handleSave = async (e) => {
     e.preventDefault();
