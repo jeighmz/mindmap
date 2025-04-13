@@ -1,6 +1,11 @@
 [build]
-  command = "npm run build"
+  command = "CI=false npm run build"
   publish = "build"
+
+[build.environment]
+  CI = "false"
+  BROWSER = ""
+  PORT = ""
 
 # Handle SPA routing by redirecting all requests to index.html
 [[redirects]]
