@@ -43,11 +43,17 @@ const WhiteboardToolbar = ({ onOpenMindMapPanel, items, connections }) => {
       ))}
       <div className="toolbar-item separator"></div>
       <button 
-        className="toolbar-item"
+        className="toolbar-item mind-map-button"
         onClick={onOpenMindMapPanel}
+        title="Generate Mind Map"
+        style={{
+          cursor: 'pointer',
+          transition: 'transform 0.2s ease, background-color 0.2s ease'
+        }}
       >
         🧠
       </button>
+      {/* Agent chat button temporarily disabled
       <button 
         className="toolbar-item"
         onClick={() => setIsAgentChatOpen(true)}
@@ -61,6 +67,7 @@ const WhiteboardToolbar = ({ onOpenMindMapPanel, items, connections }) => {
         mindMapItems={items}
         connections={connections}
       />
+      */}
     </div>
     
   );

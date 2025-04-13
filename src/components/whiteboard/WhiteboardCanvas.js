@@ -559,6 +559,10 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
   const handleCloseMindMapPanel = () => {
     setIsMindMapPanelOpen(false);
+    setMindMapPrompt(''); // Reset the prompt when closing
+    if (onMindMapPanelClose) {
+      onMindMapPanelClose();
+    }
   };
 
   // Function to get user's API key from settings
@@ -572,7 +576,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     const userSettings = settingsSnap.exists() ? settingsSnap.data() : {};
     
     if (!userSettings.groqApiKey) {
-      throw new Error('Please set your GROQ API key in Settings to use AI features');
+      throw new Error('Please add your GROQ API key in Settings to use AI features. Without a valid API key, the Mind Map generation and Expand Concept features will not work.');
     }
     
     return userSettings.groqApiKey;
@@ -580,7 +584,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
   const generateMindMap = async () => {
     if (!mindMapPrompt.trim()) {
-      console.error('Mind map prompt is empty');
+      alert('Please enter a topic or prompt first');
       return;
     }
 
@@ -802,10 +806,9 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       
     } catch (error) {
       console.error('Error generating mind map:', error);
-      alert('Failed to generate mind map. Please try again.');
-    } finally {
-      setIsGeneratingMindMap(false);
-      handleCloseMindMapPanel();
+      alert(error.message || 'Failed to generate mind map. Please try again.');
+      setIsGeneratingMindMap(false); // Make sure to reset the loading state
+      return; // Don't close the panel on error
     }
   };
 
@@ -888,20 +891,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     setExpandingItemId(itemId);
     
     try {
-      if (!user) {
-        throw new Error('Please sign in to use AI features');
-      }
-
-      // Get the user's API key from Firestore
-      const settingsRef = doc(db, 'userSettings', user.uid);
-      const settingsSnap = await getDoc(settingsRef);
-      const userSettings = settingsSnap.exists() ? settingsSnap.data() : {};
-      
-      if (!userSettings.groqApiKey) {
-        throw new Error('Please set your GROQ API key in Settings to use AI features');
-      }
-      
-      const apiKey = userSettings.groqApiKey;
+      const apiKey = await getUserApiKey();
       const model = 'llama-3.3-70b-versatile';
       
       // Create a system prompt for concept expansion
@@ -1072,6 +1062,12 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
               <span className="keyboard-key">Alt</span> + <span className="mouse-action">Drag</span> or 
               <span className="keyboard-key">Space</span> + <span className="mouse-action">Drag</span> to pan
               <span className="touch-tip">• Use two fingers to pan on touch devices</span>
+            </div>
+            <div className="control-tip">
+              <span className="keyboard-key">SHIFT</span> + <span className="mouse-action">Drag</span> an object to move it
+            </div>
+            <div className="control-tip">
+              Group highlight for AI insights
             </div>
           </div>
         </div>
