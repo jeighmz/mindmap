@@ -16,4 +16,4 @@
     X-XSS-Protection = "1; mode=block"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "no-referrer-when-downgrade"
-    Content-Security-Policy = "default-src 'self'; connect-src 'self' https://*.firebaseio.com https://firestore.googleapis.com https://*.googleapis.com; script-src 'self' 'unsafe-inline' https://*.firebaseapp.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.googleapis.com https://*.gstatic.com; font-src 'self' data:; frame-src 'self' https://*.firebaseapp.com; base-uri 'self'; form-action 'self';" 
+    Content-Security-Policy = "default-src 'self'; connect-src 'self' https://*.firebaseio.com https://firestore.googleapis.com https://*.googleapis.com; script-src 'self' 'unsafe-inline' https://*.firebaseapp.com https://*.google.com https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.googleapis.com https://*.gstatic.com https://lh3.googleusercontent.com https://*.google.com; font-src 'self' data:; frame-src 'self' https://*.firebaseapp.com https://accounts.google.com; base-uri 'self'; form-action 'self';" 

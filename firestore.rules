@@ -2,17 +2,17 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
     // Boards collection rules
     match /boards/{boardId} {
-      // Helper functions
-      function isSignedIn() {
-        return request.auth != null;
-      }
-      
-      function isOwner() {
-        return isSignedIn() && resource.data.userId == request.auth.uid;
-      }
-      
       function isDemoBoard() {
         return resource != null && resource.data.userId == null;
       }
@@ -20,19 +20,21 @@ service cloud.firestore {
       // Read rules
       allow read: if 
         isDemoBoard() || // Allow reading demo/public boards
-        isOwner();      // Allow reading own boards
+        isOwner(resource.data.userId);      // Allow reading own boards
       
       // Write rules
       allow create: if isSignedIn() 
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.keys().hasAll(['name', 'content', 'userId', 'savedAt']);
       
-      allow update, delete: if isOwner();
+      allow update, delete: if isOwner(resource.data.userId);
     }
     
     // User settings rules
     match /userSettings/{userId} {
+      // Temporarily more permissive rules for debugging
       allow read: if request.auth != null && request.auth.uid == userId;
+      
       allow write: if request.auth != null && request.auth.uid == userId;
     }
   }

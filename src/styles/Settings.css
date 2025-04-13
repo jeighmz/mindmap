@@ -1,10 +1,11 @@
 .settings-modal {
   padding: 20px;
-  min-width: 400px;
+  max-width: 500px;
+  width: 100%;
 }
 
 .settings-modal h2 {
-  margin: 0 0 20px 0;
+  margin-bottom: 20px;
   color: #333;
 }
 
@@ -15,12 +16,11 @@
 .form-group label {
   display: block;
   margin-bottom: 8px;
-  color: #333;
   font-weight: 500;
 }
 
 .form-group input {
-  width: 100%;
+  width: fit;
   padding: 8px 12px;
   border: 1px solid #ddd;
   border-radius: 4px;
@@ -29,7 +29,7 @@
 
 .form-group small {
   display: block;
-  margin-top: 4px;
+  margin-top: 6px;
   color: #666;
   font-size: 12px;
 }
@@ -37,45 +37,73 @@
 .form-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
-  margin-top: 24px;
+  gap: 10px;
+  margin-top: 20px;
 }
 
 .form-actions button {
   padding: 8px 16px;
+  border: none;
   border-radius: 4px;
-  font-size: 14px;
   cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
 }
 
 .form-actions button[type="button"] {
-  background: none;
-  border: 1px solid #ddd;
+  background-color: #f0f0f0;
+  color: #333;
 }
 
 .form-actions button[type="submit"] {
-  background: #4285f4;
+  background-color: #007bff;
   color: white;
-  border: none;
 }
 
-.form-actions button[type="submit"]:disabled {
-  background: #ccc;
+.form-actions button:hover {
+  opacity: 0.9;
+}
+
+.form-actions button:disabled {
+  background-color: #ccc;
   cursor: not-allowed;
 }
 
 .message {
   padding: 12px;
+  margin-bottom: 20px;
   border-radius: 4px;
-  margin-bottom: 16px;
+  font-size: 14px;
 }
 
 .message.error {
-  background: #ffebee;
-  color: #c62828;
+  background-color: #fee;
+  color: #c00;
+  border: 1px solid #fcc;
 }
 
 .message.success {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background-color: #efe;
+  color: #0a0;
+  border: 1px solid #cfc;
+}
+
+.loading-message {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+  font-size: 14px;
+}
+
+/* Input focus styles */
+.form-group input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+}
+
+/* Disabled button styles */
+.form-actions button[type="submit"]:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
 } 
