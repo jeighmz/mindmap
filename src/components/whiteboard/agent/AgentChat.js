@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import '../../../styles/AgentChat.css';
@@ -6,14 +6,9 @@ import {
   notionTool,
   createNotionDatabase,
   createNotionPage,
-  updateNotionPage,
-  deleteNotionPage,
   fetchNotionDatabaseContent,
-  createNotionWebhook,
-  parseActionItems,
-  writeActionItemsToNotion,
-  writeToNotionDatabase
-} from './tools';
+  writeActionItemsToNotion
+} from './tools/notion';
 
 const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
   const [messages, setMessages] = useState([
@@ -33,14 +28,9 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
   const [savedBoards, setSavedBoards] = useState([]);
   const [referencedBoards, setReferencedBoards] = useState([]);
   const [showBoardSelector, setShowBoardSelector] = useState(false);
-  const [notionWebhookId, setNotionWebhookId] = useState('');
   const [notionUpdates, setNotionUpdates] = useState([]);
+  const [notionWebhookId, setNotionWebhookId] = useState('');
   
-  // Add API base URL configuration
-  const API_BASE_URL = process.env.NODE_ENV === 'production' 
-    ? '' // In production, use relative URLs
-    : 'http://localhost:3001'; // In development, use the proxy server
-
   const toolCategories = {
     integration: {
       name: 'Integration',
@@ -212,21 +202,33 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
     return await createNotionPage(notionApiKey, notionDatabaseId, title, properties, addMessage);
   };
 
-  const handleNotionPageUpdate = async (pageId, properties) => {
-    return await updateNotionPage(notionApiKey, pageId, properties, addMessage);
-  };
-
-  const handleNotionPageDelete = async (pageId) => {
-    return await deleteNotionPage(notionApiKey, pageId, addMessage);
-  };
-
   const handleNotionDatabaseContent = async () => {
     return await fetchNotionDatabaseContent(notionApiKey, notionDatabaseId, addMessage);
   };
 
-  const handleNotionWebhook = async () => {
-    return await createNotionWebhook(notionApiKey, notionDatabaseId, addMessage);
-  };
+  const handleNotionWebhookEvent = useCallback((event) => {
+    setNotionUpdates(prev => [{
+      type: event.type,
+      timestamp: new Date().toISOString(),
+      data: event.data
+    }, ...prev]);
+  }, []);
+
+  // Set up webhook event listener
+  useEffect(() => {
+    let eventSource;
+    
+    if (notionWebhookId) {
+      eventSource = new EventSource(`/api/webhook/events/${notionWebhookId}`);
+      eventSource.onmessage = (e) => handleNotionWebhookEvent(JSON.parse(e.data));
+    }
+    
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
+  }, [notionWebhookId, handleNotionWebhookEvent]);
 
   const processMindMapAnalysis = async () => {
     updateStep('analyzing');
@@ -1268,71 +1270,6 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
       }
     }
   };
-
-  // Function to handle incoming Notion webhook events
-  const handleNotionWebhookEvent = (event) => {
-    try {
-      // Parse the webhook event
-      const webhookEvent = JSON.parse(event.data);
-      
-      // Add the event to the updates list
-      setNotionUpdates(prev => [webhookEvent, ...prev]);
-      
-      // Process the event based on its type
-      switch (webhookEvent.type) {
-        case 'database.content_updated':
-          addMessage('system', '🔄 Notion database content was updated.');
-          // You could fetch the latest database content here
-          break;
-        case 'database.schema_updated':
-          addMessage('system', '🔄 Notion database schema was updated.');
-          break;
-        case 'page.created':
-          addMessage('system', `🔄 New page was created in Notion: ${webhookEvent.data.title || 'Untitled'}`);
-          break;
-        case 'page.updated':
-          addMessage('system', `🔄 Page was updated in Notion: ${webhookEvent.data.title || 'Untitled'}`);
-          break;
-        case 'page.deleted':
-          addMessage('system', `🔄 Page was deleted from Notion.`);
-          break;
-        default:
-          console.log('Unhandled Notion webhook event type:', webhookEvent.type);
-      }
-    } catch (error) {
-      console.error('Error handling Notion webhook event:', error);
-    }
-  };
-
-  // Set up Notion webhook when component mounts
-  useEffect(() => {
-    // Check if we have a webhook ID stored
-    const storedWebhookId = localStorage.getItem('notionWebhookId');
-    if (storedWebhookId) {
-      setNotionWebhookId(storedWebhookId);
-    }
-    
-    // Set up EventSource for webhook events if we have a webhook ID
-    let eventSource;
-    if (storedWebhookId) {
-      const origin = window.location.origin;
-      eventSource = new EventSource(`${origin}/api/notion-events?webhookId=${storedWebhookId}`);
-      
-      eventSource.onmessage = handleNotionWebhookEvent;
-      
-      eventSource.onerror = (error) => {
-        console.error('EventSource error:', error);
-        eventSource.close();
-      };
-    }
-    
-    // Clean up EventSource when component unmounts
-    return () => {
-      if (eventSource) {
-        eventSource.close();
-      }
-    };
-  }, []);
 
   // Add a new function to handle Notion commands
   const handleNotionCommand = async (command) => {

@@ -115,7 +115,7 @@ export const saveBoard = async (boardData, userId) => {
 export const deleteBoard = async (boardId) => {
   try {
     // First, verify the user owns this board
-    const currentUser = checkAuth();
+    checkAuth();
     const boardRef = doc(db, BOARDS_COLLECTION, boardId);
     
     // You might want to add a check here to verify ownership

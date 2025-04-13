@@ -79,6 +79,9 @@ const WhiteboardItem = ({
         newX = item.position.x + (resizeStart.width - newWidth);
         newY = item.position.y + (resizeStart.height - newHeight);
         break;
+      default:
+        // Keep existing dimensions and position if direction is not recognized
+        break;
     }
 
     // Snap to grid

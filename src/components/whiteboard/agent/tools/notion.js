@@ -484,10 +484,6 @@ const createNotionWebhook = async (
   try {
     addMessage("system", "🔄 Setting up Notion webhook subscription...");
 
-    // Get the current origin for the webhook URL
-    const origin = window.location.origin;
-    const webhookUrl = `${origin}/api/webhook`;
-
     // Note: Webhooks are not directly supported in the Notion API client
     // This would typically be handled by a server-side implementation
     addMessage(

@@ -275,7 +275,7 @@ class ConceptGraph:
       // Generate insights based on item count
       if (itemCount === 1) {
         response += `The single item presents a focused concept that can be expanded into a broader framework.\n`;
-      } else if (itemCount == 2) {
+      } else if (itemCount === 2) {
         response += `The two items show a clear ${Math.random() > 0.5 ? 'cause-effect' : 'complementary'} relationship.\n`;
       } else {
         response += `The multiple items form a ${itemCount > 4 ? 'complex network' : 'coherent system'} with interdependent relationships.\n`;
@@ -307,52 +307,6 @@ class ConceptGraph:
     // Generate DeepSeek completion (simulated if no API key)
     const deepseekCompletion = await callDeepSeekAPI(prompt);
     setAiCompletions(prev => ({ ...prev, deepseek: deepseekCompletion }));
-  };
-
-  // Groq tab content
-  const renderGroqTab = () => {
-    return (
-      <div className="completion-container">
-        <button
-          className="analyze-button"
-          onClick={() => setActiveCompletionEngine('groq')}
-          disabled={highlightedItems.length === 0 || isCompletionLoading.groq}
-        >
-          {isCompletionLoading.groq ? 'Analyzing...' : 'Analyze with Groq'}
-        </button>
-        {aiCompletions.groq && (
-          <div className="completion-text">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {aiCompletions.groq}
-            </ReactMarkdown>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // DeepSeek tab content
-  const renderDeepSeekTab = () => {
-    return (
-      <div className="completion-container">
-        <p className="api-info">DeepSeek-R1-Distill model is accessed through the Groq API. Uses the same API key as the Groq tab.</p>
-        
-        <button
-          className="analyze-button"
-          onClick={() => setActiveCompletionEngine('deepseek')}
-          disabled={highlightedItems.length === 0 || isCompletionLoading.deepseek}
-        >
-          {isCompletionLoading.deepseek ? 'Analyzing...' : 'Analyze with DeepSeek'}
-        </button>
-        {aiCompletions.deepseek && (
-          <div className="completion-text">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {aiCompletions.deepseek}
-            </ReactMarkdown>
-          </div>
-        )}
-      </div>
-    );
   };
 
   return (

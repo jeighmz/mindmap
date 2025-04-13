@@ -4,9 +4,6 @@ import AgentChat from './agent/AgentChat';
 
 
 const ToolbarItem = ({ type, icon }) => {
-  const [isAgentChatOpen, setIsAgentChatOpen] = useState(false);
-
-
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'WHITEBOARD_ITEM',
     item: { type },

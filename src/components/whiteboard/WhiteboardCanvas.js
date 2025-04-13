@@ -13,19 +13,13 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   } = props;
 
   const [items, setItems] = useState([]);
-  const [isDragging, setIsDragging] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [connections, setConnections] = useState([]);
-  const [connectingMode, setConnectingMode] = useState(false);
-  const [connectionStart, setConnectionStart] = useState(null);
-  const [savedWhiteboards, setSavedWhiteboards] = useState([]);
-  const [currentBoardId, setCurrentBoardId] = useState(null);
   const [connectingFrom, setConnectingFrom] = useState(null);
-  const [connectingPoint, setConnectingPoint] = useState(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [selectionBox, setSelectionBox] = useState(null);
@@ -43,9 +37,10 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   });
   const [isAltPressed, setIsAltPressed] = useState(false);
   const [touchStartPoint, setTouchStartPoint] = useState(null);
-  const [isExpandingConcept, setIsExpandingConcept] = useState(false);
-  const [expandPrompt, setExpandPrompt] = useState('');
   const [expandingItemId, setExpandingItemId] = useState(null);
+  const [isExpandingConcept, setIsExpandingConcept] = useState(false);
+  const [savedWhiteboards, setSavedWhiteboards] = useState([]);
+  const [currentBoardId, setCurrentBoardId] = useState(null);
 
   // Sync with external state if provided
   useEffect(() => {
@@ -56,9 +51,6 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
   // Expose methods to parent through ref
   useImperativeHandle(ref, () => ({
-    handleOpenMindMapPanel: () => {
-      setIsMindMapPanelOpen(true);
-    },
     handleCloseMindMapPanel: () => {
       setIsMindMapPanelOpen(false);
       if (onMindMapPanelClose) {
@@ -559,10 +551,6 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     };
   }, [updateMultipleItemPositions]);
 
-  const handleOpenMindMapPanel = () => {
-    setIsMindMapPanelOpen(true);
-  };
-
   const handleCloseMindMapPanel = () => {
     setIsMindMapPanelOpen(false);
   };
@@ -866,13 +854,13 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     setTouchStartPoint(null);
   }, [isPanning, panStart]);
 
-  // Modify expandSelectedConcept function to set the expanding item ID
-  const expandSelectedConcept = async (itemId, itemText) => {
+  // Modify expandSelectedConcept function to use useCallback
+  const expandSelectedConcept = useCallback(async (itemId, itemText) => {
     const selectedItem = items.find(item => item.id === itemId);
     if (!selectedItem) return;
     
     setIsExpandingConcept(true);
-    setExpandingItemId(itemId); // Set expanding item ID
+    setExpandingItemId(itemId);
     
     try {
       // Get environment variables directly from window.env if available, fallback to process.env
@@ -983,9 +971,9 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       alert('Failed to expand concept. Please try again.');
     } finally {
       setIsExpandingConcept(false);
-      setExpandingItemId(null); // Clear expanding item ID
+      setExpandingItemId(null);
     }
-  };
+  }, [items, connections, setItems, setConnections, setExpandingItemId]);
   
   // Set up global function for expanding concepts
   useEffect(() => {
@@ -994,7 +982,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     return () => {
       window.expandSelectedConcept = undefined;
     };
-  }, [items, connections]);
+  }, [expandSelectedConcept]);
 
   return (
     <div className={`whiteboard-container ${isSearchPanelOpen ? 'panel-open' : ''}`} style={{ position: 'relative', width: '100%', height: '100%' }}>
