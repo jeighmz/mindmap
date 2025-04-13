@@ -4,6 +4,9 @@ import WhiteboardItem from './WhiteboardItem';
 import Connector from './Connector';
 import SavedWhiteboardsMenu from './SavedWhiteboardsMenu';
 import SearchPanel from './SearchPanel';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../firebase-config';
+import { useAuth } from '../../context/AuthContext';
 
 const WhiteboardCanvas = forwardRef((props, ref) => {
   const {
@@ -42,6 +45,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [isExpandingConcept, setIsExpandingConcept] = useState(false);
   const [savedWhiteboards, setSavedWhiteboards] = useState([]);
   const [currentBoardId, setCurrentBoardId] = useState(null);
+  const { auth } = useAuth();
 
   // Sync with external state if provided
   useEffect(() => {
@@ -864,9 +868,17 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     setExpandingItemId(itemId);
     
     try {
-      // Get environment variables directly from window.env if available, fallback to process.env
-      const apiKey = window?.env?.REACT_APP_GROQ_API_KEY || process.env.REACT_APP_GROQ_API_KEY;
-      const model = window?.env?.REACT_APP_GROQ_MODEL || process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
+      // Get the user's API key from Firestore
+      const settingsRef = doc(db, 'userSettings', auth.currentUser?.uid);
+      const settingsSnap = await getDoc(settingsRef);
+      const userSettings = settingsSnap.exists() ? settingsSnap.data() : {};
+      
+      if (!userSettings.groqApiKey) {
+        throw new Error('Please set your GROQ API key in Settings to use AI features');
+      }
+      
+      const apiKey = userSettings.groqApiKey;
+      const model = 'llama-3.3-70b-versatile';
       
       // Create a system prompt for concept expansion
       const systemPrompt = `You are an AI assistant that helps expand concepts in mind maps.
@@ -969,7 +981,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       
     } catch (error) {
       console.error('Error expanding concept:', error);
-      alert('Failed to expand concept. Please try again.');
+      alert(error.message || 'Failed to expand concept. Please try again.');
     } finally {
       setIsExpandingConcept(false);
       setExpandingItemId(null);

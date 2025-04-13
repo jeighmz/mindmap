@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Login from './Login';
+import Settings from './Settings';
 import '../styles/UserMenu.css';
 
 export default function UserMenu() {
   const { user, logout } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const handleLogout = async () => {
     try {
@@ -59,6 +61,16 @@ export default function UserMenu() {
                 <div className="menu-divider" />
                 <button 
                   className="menu-item"
+                  onClick={() => {
+                    setIsSettingsOpen(true);
+                    setIsMenuOpen(false);
+                  }}
+                >
+                  <span className="menu-icon">⚙️</span>
+                  Settings
+                </button>
+                <button 
+                  className="menu-item"
                   onClick={handleLogout}
                 >
                   <span className="menu-icon">🚪</span>
@@ -80,6 +92,10 @@ export default function UserMenu() {
       <Login 
         isOpen={isLoginOpen} 
         onClose={() => setIsLoginOpen(false)} 
+      />
+      <Settings
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
       />
     </div>
   );
