@@ -561,15 +561,34 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     setIsMindMapPanelOpen(false);
   };
 
+  // Function to get user's API key from settings
+  const getUserApiKey = async () => {
+    if (!user) {
+      throw new Error('Please sign in to use AI features');
+    }
+
+    const settingsRef = doc(db, 'userSettings', user.uid);
+    const settingsSnap = await getDoc(settingsRef);
+    const userSettings = settingsSnap.exists() ? settingsSnap.data() : {};
+    
+    if (!userSettings.groqApiKey) {
+      throw new Error('Please set your GROQ API key in Settings to use AI features');
+    }
+    
+    return userSettings.groqApiKey;
+  };
+
   const generateMindMap = async () => {
-    if (!mindMapPrompt.trim()) return;
-    
+    if (!mindMapPrompt.trim()) {
+      console.error('Mind map prompt is empty');
+      return;
+    }
+
     setIsGeneratingMindMap(true);
-    
+
     try {
-      // Get environment variables directly from window.env if available, fallback to process.env
-      const apiKey = window?.env?.REACT_APP_GROQ_API_KEY || process.env.REACT_APP_GROQ_API_KEY;
-      const model = window?.env?.REACT_APP_GROQ_MODEL || process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
+      const apiKey = await getUserApiKey();
+      const model = process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
       
       // Create a system prompt for mind map generation
       const systemPrompt = `You are an AI assistant that creates mind maps. 

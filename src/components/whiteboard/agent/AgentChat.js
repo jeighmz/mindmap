@@ -2,6 +2,9 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import '../../../styles/AgentChat.css';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../../firebase-config';
+import { useAuth } from '../../../context/AuthContext';
 import {
   notionTool,
   createNotionDatabase,
@@ -11,6 +14,7 @@ import {
 } from './tools/notion';
 
 const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
+  const { user } = useAuth();
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -266,9 +270,8 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
     const mindMapAnalysis = analyzeMindMap();
     
     try {
-      // Get environment variables
-      const apiKey = window?.env?.REACT_APP_GROQ_API_KEY || process.env.REACT_APP_GROQ_API_KEY;
-      const model = window?.env?.REACT_APP_GROQ_MODEL || process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
+      const apiKey = await getUserApiKey();
+      const model = process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
 
       // Create system prompt for action planning
       const systemPrompt = `You are an AI agent that helps users create action plans from mind maps.
@@ -755,9 +758,8 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
         const mindMapAnalysis = analyzeMindMap();
         
         try {
-          // Get environment variables
-          const apiKey = window?.env?.REACT_APP_GROQ_API_KEY || process.env.REACT_APP_GROQ_API_KEY;
-          const model = window?.env?.REACT_APP_GROQ_MODEL || process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
+          const apiKey = await getUserApiKey();
+          const model = process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
 
           // Create system prompt for action planning
           const systemPrompt = `You are an AI agent that helps users create action plans from mind maps.
@@ -1106,11 +1108,28 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
     }
   };
 
+  // Function to get user's API key from settings
+  const getUserApiKey = async () => {
+    if (!user) {
+      throw new Error('Please sign in to use AI features');
+    }
+
+    const settingsRef = doc(db, 'userSettings', user.uid);
+    const settingsSnap = await getDoc(settingsRef);
+    const userSettings = settingsSnap.exists() ? settingsSnap.data() : {};
+    
+    if (!userSettings.groqApiKey) {
+      throw new Error('Please set your GROQ API key in Settings to use AI features');
+    }
+    
+    return userSettings.groqApiKey;
+  };
+
   // Function to identify tools based on user intent
   const identifyTools = async (userInput) => {
     try {
-      const apiKey = window?.env?.REACT_APP_GROQ_API_KEY || process.env.REACT_APP_GROQ_API_KEY;
-      const model = window?.env?.REACT_APP_GROQ_MODEL || process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
+      const apiKey = await getUserApiKey();
+      const model = process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
 
       // Create a list of tools with their descriptions and examples
       const toolsList = Object.entries(toolRegistry).map(([id, tool]) => ({
@@ -1180,44 +1199,53 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
 
   // Function to execute tools in an agentic, conversational manner
   const executeToolAgentChat = async (userInput) => {
-    // Identify tools based on user intent
-    const identifiedTools = await identifyTools(userInput);
-    
-    // If no tools identified, proceed with regular chat
-    if (identifiedTools.length === 0) {
-      return false;
-    }
-    
-    // Execute each identified tool
-    for (const toolId of identifiedTools) {
-      if (toolRegistry[toolId]) {
-        addMessage('system', `🔄 Using tool: ${toolRegistry[toolId].name}`);
-        
-        try {
-          const result = await toolRegistry[toolId].execute({
-            userInput,
-            selectedTools,
-            referencedBoards,
-            currentStep
-          });
+    try {
+      const apiKey = await getUserApiKey();
+      const model = process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
+      
+      // Identify tools based on user intent
+      const identifiedTools = await identifyTools(userInput);
+      
+      // If no tools identified, proceed with regular chat
+      if (identifiedTools.length === 0) {
+        return false;
+      }
+      
+      // Execute each identified tool
+      for (const toolId of identifiedTools) {
+        if (toolRegistry[toolId]) {
+          addMessage('system', `🔄 Using tool: ${toolRegistry[toolId].name}`);
           
-          // If the tool returns a message, add it to the chat
-          if (result.message) {
-            addMessage('assistant', result.message);
+          try {
+            const result = await toolRegistry[toolId].execute({
+              userInput,
+              selectedTools,
+              referencedBoards,
+              currentStep
+            });
+            
+            // If the tool returns a message, add it to the chat
+            if (result.message) {
+              addMessage('assistant', result.message);
+            }
+            
+            // If this is a reference tool, we need to wait for user selection
+            if (toolId === 'reference') {
+              return true;
+            }
+          } catch (error) {
+            console.error(`Error executing tool ${toolId}:`, error);
+            addMessage('assistant', `❌ Error using ${toolRegistry[toolId].name}: ${error.message}`);
           }
-          
-          // If this is a reference tool, we need to wait for user selection
-          if (toolId === 'reference') {
-            return true;
-          }
-        } catch (error) {
-          console.error(`Error executing tool ${toolId}:`, error);
-          addMessage('assistant', `❌ Error using ${toolRegistry[toolId].name}: ${error.message}`);
         }
       }
+      
+      return true;
+    } catch (error) {
+      console.error('Error executing tool agent chat:', error);
+      addMessage('assistant', `Error: ${error.message}`);
+      return null;
     }
-    
-    return true;
   };
 
   // Function to process Groq response and extract action items for Notion
@@ -1346,8 +1374,8 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
         // If no tools were executed, proceed with regular chat
         if (!toolExecuted) {
           // Regular chat processing
-          const apiKey = window?.env?.REACT_APP_GROQ_API_KEY || process.env.REACT_APP_GROQ_API_KEY;
-          const model = window?.env?.REACT_APP_GROQ_MODEL || process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
+          const apiKey = await getUserApiKey();
+          const model = process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
 
           // Analyze mind map
           const mindMapAnalysis = analyzeMindMap();
