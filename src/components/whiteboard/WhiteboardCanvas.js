@@ -38,6 +38,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [isAltPressed, setIsAltPressed] = useState(false);
   const [touchStartPoint, setTouchStartPoint] = useState(null);
   const [expandingItemId, setExpandingItemId] = useState(null);
+  // eslint-disable-next-line no-unused-vars
   const [isExpandingConcept, setIsExpandingConcept] = useState(false);
   const [savedWhiteboards, setSavedWhiteboards] = useState([]);
   const [currentBoardId, setCurrentBoardId] = useState(null);

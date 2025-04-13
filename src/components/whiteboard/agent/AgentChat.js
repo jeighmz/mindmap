@@ -29,6 +29,7 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
   const [referencedBoards, setReferencedBoards] = useState([]);
   const [showBoardSelector, setShowBoardSelector] = useState(false);
   const [notionUpdates, setNotionUpdates] = useState([]);
+  // eslint-disable-next-line no-unused-vars
   const [notionWebhookId, setNotionWebhookId] = useState('');
   
   const toolCategories = {
