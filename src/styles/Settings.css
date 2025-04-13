@@ -1,35 +1,86 @@
+/* Modal container styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-container {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  z-index: 1001;
+  width: 400px; /* Reduced width for better fit */
+}
+
+.modal-content {
+  position: relative;
+}
+
+.modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  color: #666;
+  z-index: 1002;
+}
+
+/* Settings modal styles */
 .settings-modal {
   padding: 20px;
-  max-width: 500px;
-  width: 100%;
 }
 
 .settings-modal h2 {
-  margin-bottom: 20px;
+  margin: 0 0 20px 0;
   color: #333;
+  font-size: 20px;
+  font-weight: 600;
+  padding-right: 24px; /* Make space for close button */
 }
 
 .form-group {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .form-group label {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   font-weight: 500;
+  color: #333;
+  font-size: 14px;
 }
 
 .form-group input {
-  width: fit;
-  padding: 8px 12px;
+  width: 100%;
+  padding: 8px 10px;
   border: 1px solid #ddd;
   border-radius: 4px;
   font-size: 14px;
+  background-color: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .form-group small {
   display: block;
-  margin-top: 6px;
+  margin-top: 4px;
   color: #666;
   font-size: 12px;
 }
@@ -37,7 +88,7 @@
 .form-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
   margin-top: 20px;
 }
 
@@ -47,7 +98,8 @@
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
-  transition: background-color 0.2s;
+  font-weight: 500;
+  transition: all 0.2s;
 }
 
 .form-actions button[type="button"] {
@@ -70,27 +122,28 @@
 }
 
 .message {
-  padding: 12px;
-  margin-bottom: 20px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
   border-radius: 4px;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .message.error {
-  background-color: #fee;
-  color: #c00;
-  border: 1px solid #fcc;
+  background-color: #fff2f0;
+  color: #cf1322;
+  border: 1px solid #ffccc7;
 }
 
 .message.success {
-  background-color: #efe;
-  color: #0a0;
-  border: 1px solid #cfc;
+  background-color: #f6ffed;
+  color: #389e0d;
+  border: 1px solid #b7eb8f;
 }
 
 .loading-message {
   text-align: center;
-  padding: 20px;
+  padding: 16px;
   color: #666;
   font-size: 14px;
 }
@@ -99,11 +152,12 @@
 .form-group input:focus {
   outline: none;
   border-color: #007bff;
-  box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.15);
 }
 
 /* Disabled button styles */
 .form-actions button[type="submit"]:disabled {
   background-color: #ccc;
   cursor: not-allowed;
+  opacity: 0.7;
 } 
