@@ -212,7 +212,7 @@ const Community = () => {
               <img 
                 src={post.userAvatar} 
                 alt={post.userName}
-                className="user-avatar"
+                className="user-avatar community"
               />
               <div className="post-meta">
                 <h3>{post.title}</h3>
