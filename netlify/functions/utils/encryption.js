@@ -3,35 +3,59 @@ const admin = require('firebase-admin');
 
 let db;
 
-try {
-  if (!admin.apps.length) {
-    // Log environment variables (excluding sensitive data)
-    console.log('Firebase Admin initialization - Project ID:', process.env.FIREBASE_PROJECT_ID);
-    console.log('Firebase Admin initialization - Client Email exists:', !!process.env.FIREBASE_CLIENT_EMAIL);
-    console.log('Firebase Admin initialization - Private Key exists:', !!process.env.FIREBASE_PRIVATE_KEY);
-
-    if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY) {
-      throw new Error('Missing required Firebase Admin environment variables');
-    }
-
-    const privateKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n');
-    
-    admin.initializeApp({
-      credential: admin.credential.cert({
+const initializeFirebase = () => {
+  try {
+    if (!admin.apps.length) {
+      // Debug logging for environment variables
+      const envVars = {
         projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: privateKey
-      })
-    });
+        clientEmailExists: !!process.env.FIREBASE_CLIENT_EMAIL,
+        privateKeyExists: !!process.env.FIREBASE_PRIVATE_KEY,
+      };
+      console.log('Environment variables check:', envVars);
+
+      if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY) {
+        throw new Error('Missing required Firebase Admin environment variables');
+      }
+
+      // Log the first few characters of the private key to verify format
+      const privateKeyPreview = process.env.FIREBASE_PRIVATE_KEY.substring(0, 50) + '...';
+      console.log('Private key preview:', privateKeyPreview);
+
+      const privateKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n');
+      
+      const config = {
+        credential: admin.credential.cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          privateKey: privateKey
+        })
+      };
+
+      console.log('Initializing Firebase with config:', {
+        projectId: config.credential.projectId,
+        clientEmailExists: !!config.credential.clientEmail,
+        privateKeyExists: !!config.credential.privateKey
+      });
+
+      admin.initializeApp(config);
+      console.log('Firebase Admin initialized successfully');
+    }
     
-    console.log('Firebase Admin initialized successfully');
+    db = admin.firestore();
+    return true;
+  } catch (error) {
+    console.error('Firebase initialization error:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
+    throw new Error(`Firebase initialization failed: ${error.message}`);
   }
-  
-  db = admin.firestore();
-} catch (error) {
-  console.error('Firebase Admin initialization error:', error);
-  throw error;
-}
+};
+
+// Initialize Firebase when the module loads
+initializeFirebase();
 
 // Generate a unique encryption key for a user
 const generateUserKey = () => {
@@ -39,7 +63,7 @@ const generateUserKey = () => {
     return crypto.randomBytes(32).toString('hex');
   } catch (error) {
     console.error('Error generating user key:', error);
-    throw new Error('Failed to generate encryption key');
+    throw new Error(`Failed to generate encryption key: ${error.message}`);
   }
 };
 
@@ -50,6 +74,12 @@ const encrypt = (data, userKey) => {
       throw new Error('Missing required encryption parameters');
     }
 
+    console.log('Encryption parameters:', {
+      hasData: !!data,
+      userKeyLength: userKey.length,
+      dataType: typeof data
+    });
+
     const iv = crypto.randomBytes(16);
     const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(userKey, 'hex'), iv);
     
@@ -58,9 +88,16 @@ const encrypt = (data, userKey) => {
     
     const authTag = cipher.getAuthTag();
     
-    return iv.toString('hex') + ':' + encrypted + ':' + authTag.toString('hex');
+    const result = iv.toString('hex') + ':' + encrypted + ':' + authTag.toString('hex');
+    console.log('Encryption successful, result length:', result.length);
+    
+    return result;
   } catch (error) {
-    console.error('Encryption error:', error);
+    console.error('Encryption error details:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
     throw new Error(`Encryption failed: ${error.message}`);
   }
 };
@@ -89,7 +126,11 @@ const decrypt = (encryptedData, userKey) => {
     
     return decrypted;
   } catch (error) {
-    console.error('Decryption error:', error);
+    console.error('Decryption error details:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
     throw new Error(`Decryption failed: ${error.message}`);
   }
 };
