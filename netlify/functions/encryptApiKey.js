@@ -1,26 +1,26 @@
-const { encrypt, generateUserKey } = require('./utils/encryption');
-const { initializeApp } = require('firebase/app');
-const { getFirestore, doc, getDoc, setDoc } = require('firebase/firestore');
-
-const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
-  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.REACT_APP_FIREBASE_APP_ID,
-  measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+const { encrypt, generateUserKey, db } = require('./utils/encryption');
 
 exports.handler = async (event, context) => {
+  // Set CORS headers
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS'
+  };
+
+  // Handle preflight requests
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 204,
+      headers
+    };
+  }
+
   // Only allow POST requests
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
+      headers,
       body: JSON.stringify({ error: 'Method not allowed' })
     };
   }
@@ -31,20 +31,21 @@ exports.handler = async (event, context) => {
     if (!userId || !apiKey) {
       return {
         statusCode: 400,
+        headers,
         body: JSON.stringify({ error: 'Missing required fields' })
       };
     }
 
     // Get or create user's encryption key
-    const userKeysRef = doc(db, 'userEncryptionKeys', userId);
-    const userKeysDoc = await getDoc(userKeysRef);
+    const userKeysRef = db.collection('userEncryptionKeys').doc(userId);
+    const userKeysDoc = await userKeysRef.get();
     
     let userKey;
-    if (userKeysDoc.exists()) {
+    if (userKeysDoc.exists) {
       userKey = userKeysDoc.data().key;
     } else {
       userKey = generateUserKey();
-      await setDoc(userKeysRef, { key: userKey });
+      await userKeysRef.set({ key: userKey });
     }
 
     // Encrypt the API key
@@ -52,13 +53,18 @@ exports.handler = async (event, context) => {
 
     return {
       statusCode: 200,
+      headers,
       body: JSON.stringify({ encrypted: encryptedData })
     };
   } catch (error) {
     console.error('Encryption error:', error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Internal server error' })
+      headers,
+      body: JSON.stringify({ 
+        error: 'Internal server error',
+        details: error.message 
+      })
     };
   }
 }; 
