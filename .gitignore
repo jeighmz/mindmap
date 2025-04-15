@@ -5,8 +5,14 @@
 /.pnp
 .pnp.js
 
+# BUT include Netlify Functions dependencies
+!/netlify/functions/node_modules
+
 # testing
 /coverage
+
+# firebase
+firebase-service-account.json
 
 # production
 /build
