@@ -26,9 +26,13 @@ exports.handler = async (event, context) => {
   }
 
   try {
+    console.log('Received encryption request');
+    
     const { userId, apiKey } = JSON.parse(event.body);
+    console.log('Request parsed successfully - User ID exists:', !!userId);
 
     if (!userId || !apiKey) {
+      console.log('Missing required fields:', { hasUserId: !!userId, hasApiKey: !!apiKey });
       return {
         statusCode: 400,
         headers,
@@ -36,20 +40,26 @@ exports.handler = async (event, context) => {
       };
     }
 
+    console.log('Attempting to get/create user encryption key');
+    
     // Get or create user's encryption key
     const userKeysRef = db.collection('userEncryptionKeys').doc(userId);
     const userKeysDoc = await userKeysRef.get();
     
     let userKey;
     if (userKeysDoc.exists) {
+      console.log('Found existing user key');
       userKey = userKeysDoc.data().key;
     } else {
+      console.log('Generating new user key');
       userKey = generateUserKey();
       await userKeysRef.set({ key: userKey });
+      console.log('New user key saved successfully');
     }
 
-    // Encrypt the API key
+    console.log('Encrypting API key');
     const encryptedData = encrypt(apiKey, userKey);
+    console.log('API key encrypted successfully');
 
     return {
       statusCode: 200,
@@ -58,12 +68,14 @@ exports.handler = async (event, context) => {
     };
   } catch (error) {
     console.error('Encryption error:', error);
+    console.error('Error stack:', error.stack);
     return {
       statusCode: 500,
       headers,
       body: JSON.stringify({ 
         error: 'Internal server error',
-        details: error.message 
+        message: error.message,
+        stack: error.stack
       })
     };
   }

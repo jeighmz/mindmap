@@ -1,53 +1,97 @@
 const crypto = require('crypto');
 const admin = require('firebase-admin');
 
-// Initialize Firebase Admin
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-    }),
-    databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`
-  });
-}
+let db;
 
-const db = admin.firestore();
+try {
+  if (!admin.apps.length) {
+    // Log environment variables (excluding sensitive data)
+    console.log('Firebase Admin initialization - Project ID:', process.env.FIREBASE_PROJECT_ID);
+    console.log('Firebase Admin initialization - Client Email exists:', !!process.env.FIREBASE_CLIENT_EMAIL);
+    console.log('Firebase Admin initialization - Private Key exists:', !!process.env.FIREBASE_PRIVATE_KEY);
+
+    if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY) {
+      throw new Error('Missing required Firebase Admin environment variables');
+    }
+
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n');
+    
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: privateKey
+      })
+    });
+    
+    console.log('Firebase Admin initialized successfully');
+  }
+  
+  db = admin.firestore();
+} catch (error) {
+  console.error('Firebase Admin initialization error:', error);
+  throw error;
+}
 
 // Generate a unique encryption key for a user
 const generateUserKey = () => {
-  return crypto.randomBytes(32).toString('hex');
+  try {
+    return crypto.randomBytes(32).toString('hex');
+  } catch (error) {
+    console.error('Error generating user key:', error);
+    throw new Error('Failed to generate encryption key');
+  }
 };
 
 // Encrypt data with a user-specific key
 const encrypt = (data, userKey) => {
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(userKey, 'hex'), iv);
-  
-  let encrypted = cipher.update(data, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  
-  const authTag = cipher.getAuthTag();
-  
-  // Return IV, encrypted data, and auth tag as a single string
-  return iv.toString('hex') + ':' + encrypted + ':' + authTag.toString('hex');
+  try {
+    if (!data || !userKey) {
+      throw new Error('Missing required encryption parameters');
+    }
+
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(userKey, 'hex'), iv);
+    
+    let encrypted = cipher.update(data, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    
+    const authTag = cipher.getAuthTag();
+    
+    return iv.toString('hex') + ':' + encrypted + ':' + authTag.toString('hex');
+  } catch (error) {
+    console.error('Encryption error:', error);
+    throw new Error(`Encryption failed: ${error.message}`);
+  }
 };
 
 // Decrypt data with a user-specific key
 const decrypt = (encryptedData, userKey) => {
-  const [ivHex, encrypted, authTagHex] = encryptedData.split(':');
-  
-  const iv = Buffer.from(ivHex, 'hex');
-  const authTag = Buffer.from(authTagHex, 'hex');
-  
-  const decipher = crypto.createDecipheriv('aes-256-gcm', Buffer.from(userKey, 'hex'), iv);
-  decipher.setAuthTag(authTag);
-  
-  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  
-  return decrypted;
+  try {
+    if (!encryptedData || !userKey) {
+      throw new Error('Missing required decryption parameters');
+    }
+
+    const [ivHex, encrypted, authTagHex] = encryptedData.split(':');
+    
+    if (!ivHex || !encrypted || !authTagHex) {
+      throw new Error('Invalid encrypted data format');
+    }
+
+    const iv = Buffer.from(ivHex, 'hex');
+    const authTag = Buffer.from(authTagHex, 'hex');
+    
+    const decipher = crypto.createDecipheriv('aes-256-gcm', Buffer.from(userKey, 'hex'), iv);
+    decipher.setAuthTag(authTag);
+    
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    
+    return decrypted;
+  } catch (error) {
+    console.error('Decryption error:', error);
+    throw new Error(`Decryption failed: ${error.message}`);
+  }
 };
 
 module.exports = {
