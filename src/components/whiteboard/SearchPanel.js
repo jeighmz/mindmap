@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase-config';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../contexts/AuthContext';
 import '../../styles/SearchPanel.css';
 
 const SearchPanel = ({ highlightedItems, onClose }) => {

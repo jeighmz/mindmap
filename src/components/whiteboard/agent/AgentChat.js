@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import '../../../styles/AgentChat.css';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../firebase-config';
-import { useAuth } from '../../../context/AuthContext';
+import { useAuth } from '../../../contexts/AuthContext';
 import {
   notionTool,
   createNotionDatabase,

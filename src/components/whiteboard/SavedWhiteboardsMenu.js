@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { getUserBoards, saveBoard, deleteBoard } from '../../services/boardService';
 
 const SavedWhiteboardsMenu = ({ 

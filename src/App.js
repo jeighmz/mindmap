@@ -2,7 +2,7 @@ import React from "react";
 import "./styles/App.css";
 import { AppProvider } from "./context/AppContext";
 import Layout from "./layouts/Layout";
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider } from './contexts/AuthContext';
 import UserMenu from './components/UserMenu';
 
 function MainContent() {

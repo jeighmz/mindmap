@@ -8,7 +8,7 @@ import SearchPanel from './SearchPanel';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase-config';
 /* eslint-disable-next-line no-unused-vars */
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../contexts/AuthContext';
 import UserMenu from '../UserMenu';
 
 const WhiteboardCanvas = forwardRef((props, ref) => {
