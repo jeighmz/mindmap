@@ -11,6 +11,7 @@ import { db } from '../../firebase-config';
 import { useAuth } from '../../contexts/AuthContext';
 import UserMenu from '../UserMenu';
 import PricingTable from '../Pricing';
+import { useNavigate } from 'react-router-dom';
 
 const WhiteboardCanvas = forwardRef((props, ref) => {
   const {
@@ -53,6 +54,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isSavedBoardsMenuOpen, setIsSavedBoardsMenuOpen] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
+  const navigate = useNavigate();
 
   // Sync with external state if provided
   useEffect(() => {
@@ -1275,6 +1277,12 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
             onClick={() => setIsPricingOpen(true)}
           >
             💎 Pricing
+          </button>
+          <button 
+            className="header-button"
+            onClick={() => navigate('/community')}
+          >
+            👥 Community
           </button>
         </div>
         <UserMenu />

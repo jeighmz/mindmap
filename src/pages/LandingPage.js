@@ -1,12 +1,12 @@
 import React from 'react';
-import { useApp } from '../contexts/AppContext';
+import { useNavigate } from 'react-router-dom';
 import '../styles/LandingPage.css';
 
 // Consider importing SVG icons or using a library like react-icons
 // import { FiZap, FiUsers, FiSmartphone, FiCpu } from 'react-icons/fi';
 
 const LandingPage = () => {
-  const { setCurrentPage } = useApp();
+  const navigate = useNavigate();
 
   return (
     <div className="landing-page">
@@ -19,7 +19,7 @@ const LandingPage = () => {
           </p>
           <button
             className="hero-cta-button"
-            onClick={() => setCurrentPage("Whiteboard")}
+            onClick={() => navigate('/whiteboard')}
           >
             Start Mind Mapping Now
           </button>
@@ -40,12 +40,17 @@ const LandingPage = () => {
             <h3 className="feature-title">Visualize Instantly</h3>
           </div>
 
-          {/* Feature 2: Collaborate */}
+          {/* Feature 2: Customize */}
           <div className="feature-card">
             <img src="/feature-customize.png" alt="Customize Feature Screenshot" className="feature-image" />
             <h3 className="feature-title">Customize Endlessly</h3>
           </div>
-         
+
+          {/* Feature 3: Community */}
+          <div className="feature-card" onClick={() => navigate('/community')}>
+            <img src="/feature-community.png" alt="Community Feature Screenshot" className="feature-image" />
+            <h3 className="feature-title">Join the Community</h3>
+          </div>
 
           {/* Feature 4: AI Insights */}
           <div className="feature-card">

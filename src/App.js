@@ -1,32 +1,28 @@
 import React from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import "./styles/App.css";
 import { AppProvider } from "./contexts/AppContext";
-import Layout from "./layouts/Layout";
 import { AuthProvider } from './contexts/AuthContext';
-import UserMenu from './components/UserMenu';
-
-function MainContent() {
-  return (
-    <div className="app">
-      <div className="floating-user-menu">
-        <UserMenu />
-      </div>
-      <main>
-        <div className="mindmap-container">
-          <Layout />
-        </div>
-      </main>
-    </div>
-  );
-}
+import WhiteboardPage from './pages/WhiteboardPage';
+import LandingPage from './pages/LandingPage';
+import Community from './components/Community';
 
 function App() {
   return (
-    <AuthProvider>
-      <AppProvider>
-        <MainContent />
-      </AppProvider>
-    </AuthProvider>
+    <Router>
+      <AuthProvider>
+        <AppProvider>
+          <div className="app">
+            <Routes>
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/whiteboard" element={<WhiteboardPage />} />
+              <Route path="/community" element={<Community />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </div>
+        </AppProvider>
+      </AuthProvider>
+    </Router>
   );
 }
 
