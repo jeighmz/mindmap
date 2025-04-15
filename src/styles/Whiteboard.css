@@ -637,7 +637,7 @@
 
 .saved-whiteboards-menu {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 12px);
   right: 0;
 }
 
@@ -646,7 +646,6 @@
   border: none;
   padding: 8px 16px;
   border-radius: 4px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -661,8 +660,8 @@
 .saved-whiteboards-menu {
   position: absolute;
   top: 100%;
-  right: 0;
   margin-top: 8px;
+  right: 0;
   background: white;
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
@@ -1834,18 +1833,6 @@
   background: #45a049;
 }
 
-.export-menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  background: white;
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-  padding: 8px;
-  min-width: 180px;
-  z-index: 2001;
-}
-
 .export-menu button {
   width: 100%;
   text-align: left;
@@ -1914,6 +1901,7 @@
 .export-menu {
   position: absolute;
   top: calc(100% + 12px);
+  margin-top: 8px;
   left: 0;
   background-color: #ffffff;
   border: 1px solid #dee2e6;
@@ -1975,7 +1963,7 @@
 /* You might need to adjust the dropdown position in SavedWhiteboardsMenu.css */
 /* if it now appears inside the fixed header */
 .saved-whiteboards-menu {
-  top: calc(100% + 5px);
+  top: calc(100% + 12px);
   left: 0;
   z-index: 1600;
 }

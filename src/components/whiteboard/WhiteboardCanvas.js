@@ -10,6 +10,7 @@ import { db } from '../../firebase-config';
 /* eslint-disable-next-line no-unused-vars */
 import { useAuth } from '../../contexts/AuthContext';
 import UserMenu from '../UserMenu';
+import PricingTable from '../Pricing';
 
 const WhiteboardCanvas = forwardRef((props, ref) => {
   const {
@@ -51,6 +52,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const { user } = useAuth();
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isSavedBoardsMenuOpen, setIsSavedBoardsMenuOpen] = useState(false);
+  const [isPricingOpen, setIsPricingOpen] = useState(false);
 
   // Sync with external state if provided
   useEffect(() => {
@@ -1268,6 +1270,12 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
               </div>
             )}
           </div>
+          <button 
+            className="header-button"
+            onClick={() => setIsPricingOpen(true)}
+          >
+            💎 Pricing
+          </button>
         </div>
         <UserMenu />
       </div>
@@ -1479,6 +1487,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           </div>
         </div>
       )}
+
+      <PricingTable 
+        isOpen={isPricingOpen}
+        onClose={() => setIsPricingOpen(false)}
+      />
     </div>
   );
 });

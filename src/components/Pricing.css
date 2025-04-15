@@ -1,0 +1,170 @@
+.pricing-section {
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.pricing-section h2 {
+  text-align: center;
+  font-size: 2rem;
+  margin: 0 0 2rem 0;
+  color: #2d3748;
+}
+
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+  padding: 0.5rem;
+  width: 100%;
+}
+
+.pricing-card {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  position: relative;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.pricing-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+}
+
+.pricing-card.popular {
+  border: 2px solid #4299e1;
+  background: linear-gradient(to bottom, #ffffff, #f7fafc);
+}
+
+.badge {
+  position: absolute;
+  top: -12px;
+  right: 20px;
+  background: #4299e1;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.pricing-card h3 {
+  font-size: 1.5rem;
+  margin: 0;
+  color: #2d3748;
+}
+
+.price {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin: 0.5rem 0;
+  color: #2d3748;
+}
+
+.desc {
+  color: #718096;
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.pricing-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  flex-grow: 1;
+}
+
+.pricing-card li {
+  margin: 0.75rem 0;
+  color: #4a5568;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+button.cta {
+  width: 100%;
+  padding: 0.75rem;
+  margin-top: auto;
+  border-radius: 8px;
+  border: none;
+  background: #4299e1;
+  color: white;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+button.cta:hover {
+  background: #3182ce;
+}
+
+.pricing-card.popular button.cta {
+  background: #2b6cb0;
+}
+
+.pricing-card.popular button.cta:hover {
+  background: #2c5282;
+}
+
+/* Modal-specific styles */
+.modal-container {
+  width: 90%;
+  max-width: 1200px;
+  margin: 2rem auto;
+  padding: 2rem;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+@media (max-width: 768px) {
+  .modal-container {
+    width: 95%;
+    margin: 1rem auto;
+    padding: 1rem;
+  }
+
+  .pricing-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    padding: 0.25rem;
+  }
+
+  .pricing-card {
+    padding: 1.25rem;
+  }
+
+  .pricing-section h2 {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+}
+
+/* Ensure modal overlay takes full screen */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+  overflow-y: auto;
+} 
