@@ -1,194 +1,141 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase-config';
-import { useAuth } from '../context/AuthContext';
-import Modal from './Modal';
-import '../styles/Settings.css';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 
-export default function Settings({ isOpen, onClose }) {
-  const { user } = useAuth();
-  const [groqApiKey, setGroqApiKey] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [message, setMessage] = useState({ type: '', text: '' });
-
-  const loadSettings = useCallback(async () => {
-    if (!user?.uid) {
-      console.log('No user UID available for loading settings');
-      setMessage({ type: 'error', text: 'Please sign in to access settings' });
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      setMessage({ type: '', text: '' });
-      
-      console.log('Attempting to load settings for user:', user.uid);
-      const settingsRef = doc(db, 'userSettings', user.uid);
-      const settingsSnap = await getDoc(settingsRef);
-      
-      if (settingsSnap.exists()) {
-        const data = settingsSnap.data();
-        if (data.groqApiKey) {
-          // Decrypt the API key using the Netlify Function
-          const response = await fetch('/.netlify/functions/decryptApiKey', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: user.uid,
-              encryptedData: data.groqApiKey
-            })
-          });
-
-          if (!response.ok) {
-            throw new Error('Failed to decrypt API key');
-          }
-
-          const { decrypted } = await response.json();
-          setGroqApiKey(decrypted);
-        } else {
-          setGroqApiKey('');
-        }
-      } else {
-        console.log('No existing settings found, creating new document');
-        await setDoc(settingsRef, {
-          groqApiKey: '',
-          updatedAt: new Date().toISOString()
-        });
-        setGroqApiKey('');
-      }
-    } catch (error) {
-      console.error('Error loading settings:', error);
-      setMessage({ type: 'error', text: 'Failed to load settings. Please try again.' });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user]);
+const Settings = () => {
+  const { currentUser } = useAuth();
+  const [apiKey, setApiKey] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   useEffect(() => {
-    if (isOpen) {
-      loadSettings();
-    }
-  }, [isOpen, loadSettings]);
+    // Load existing API key when component mounts
+    const loadApiKey = async () => {
+      if (!currentUser) return;
+      
+      try {
+        setLoading(true);
+        setError('');
+        
+        const response = await fetch('/.netlify/functions/decryptApiKey', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: currentUser.uid
+          })
+        });
 
-  const handleSave = async (e) => {
+        const data = await response.json();
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            // No API key found is not an error, just means none has been set yet
+            setLoading(false);
+            return;
+          }
+          throw new Error(data.error || 'Failed to load API key');
+        }
+
+        setApiKey(data.apiKey);
+      } catch (err) {
+        console.error('Error loading API key:', err);
+        setError('Failed to load existing API key. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadApiKey();
+  }, [currentUser]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!user?.uid) {
-      setMessage({ type: 'error', text: 'Please sign in to save settings' });
+    if (!currentUser) {
+      setError('You must be logged in to save settings');
       return;
     }
-
-    if (!groqApiKey.trim()) {
-      setMessage({ type: 'error', text: 'Please enter a valid API key' });
-      return;
-    }
-
-    setIsSaving(true);
-    setMessage({ type: '', text: '' });
 
     try {
-      // Encrypt the API key using the Netlify Function
+      setLoading(true);
+      setError('');
+      setSuccess('');
+
       const response = await fetch('/.netlify/functions/encryptApiKey', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          userId: user.uid,
-          apiKey: groqApiKey.trim()
+          userId: currentUser.uid,
+          apiKey: apiKey
         })
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error('Failed to encrypt API key');
+        throw new Error(data.error || 'Failed to save API key');
       }
 
-      const { encrypted } = await response.json();
-      
-      const settingsRef = doc(db, 'userSettings', user.uid);
-      const settingsData = {
-        groqApiKey: encrypted,
-        updatedAt: new Date().toISOString()
-      };
-
-      await setDoc(settingsRef, settingsData, { merge: true });
-      setMessage({ type: 'success', text: 'Settings saved successfully' });
-      setTimeout(() => onClose(), 1500);
-    } catch (error) {
-      console.error('Error saving settings:', error);
-      setMessage({ type: 'error', text: 'Failed to save settings. Please try again.' });
+      setSuccess('API key saved successfully!');
+    } catch (err) {
+      console.error('Error saving API key:', err);
+      setError('Failed to save API key. Please try again later.');
     } finally {
-      setIsSaving(false);
+      setLoading(false);
     }
   };
 
-  // Early return if no user
-  if (!user) {
-    return (
-      <Modal isOpen={isOpen} onClose={onClose}>
-        <div className="settings-modal">
-          <h2>Settings</h2>
-          <div className="message error">
-            Please sign in to access settings
-          </div>
-          <div className="form-actions">
-            <button type="button" onClick={onClose}>Close</button>
-          </div>
-        </div>
-      </Modal>
-    );
+  if (!currentUser) {
+    return <div>Please log in to access settings.</div>;
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose}>
-      <div className="settings-modal">
-        <h2>Settings</h2>
-        
-        {message.text && (
-          <div className={`message ${message.type}`}>
-            {message.text}
+    <div className="max-w-md mx-auto mt-8 p-6 bg-white rounded-lg shadow-md">
+      <h2 className="text-2xl font-bold mb-6">Settings</h2>
+      
+      <form onSubmit={handleSubmit}>
+        <div className="mb-4">
+          <label htmlFor="apiKey" className="block text-sm font-medium text-gray-700 mb-2">
+            GROQ API Key
+          </label>
+          <input
+            type="password"
+            id="apiKey"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+            placeholder="Enter your GROQ API key"
+          />
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+            {error}
           </div>
         )}
 
-        {isLoading ? (
-          <div className="loading-message">Loading settings...</div>
-        ) : (
-          <form onSubmit={handleSave}>
-            <div className="form-group">
-              <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
-                <label htmlFor="groqApiKey">GROQ API Key</label>
-                <a 
-                  href="https://console.groq.com/keys" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="groq-dashboard-link"
-                >
-                  Get API Key
-                </a>
-              </div>
-              <input
-                type="password"
-                id="groqApiKey"
-                value={groqApiKey}
-                onChange={(e) => setGroqApiKey(e.target.value)}
-                placeholder="Enter your GROQ API key"
-                required
-              />
-              <small>Your API key is stored securely and used for AI features</small>
-            </div>
-
-            <div className="form-actions">
-              <button type="button" onClick={onClose}>Cancel</button>
-              <button 
-                type="submit" 
-                disabled={isSaving || !groqApiKey.trim()}
-              >
-                {isSaving ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </form>
+        {success && (
+          <div className="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded">
+            {success}
+          </div>
         )}
-      </div>
-    </Modal>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className={`w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${
+            loading ? 'opacity-50 cursor-not-allowed' : ''
+          }`}
+        >
+          {loading ? 'Saving...' : 'Save Settings'}
+        </button>
+      </form>
+    </div>
   );
-} 
+};
+
+export default Settings; 
