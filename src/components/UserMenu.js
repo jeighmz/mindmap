@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import Login from './Login';
 import Settings from './Settings';
 import '../styles/UserMenu.css';
