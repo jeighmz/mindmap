@@ -1,5 +1,5 @@
 import React from "react";
-import { useApp } from "../context/AppContext";
+import { useApp } from "../contexts/AppContext";
 import WhiteboardPage from '../pages/WhiteboardPage';
 import LandingPage from '../pages/LandingPage';
 
