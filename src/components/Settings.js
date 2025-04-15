@@ -191,7 +191,17 @@ export default function Settings({ isOpen, onClose }) {
         ) : (
           <form onSubmit={handleSave}>
             <div className="form-group">
+              <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
               <label htmlFor="groqApiKey">GROQ API Key</label>
+              <a 
+                  href="https://console.groq.com/keys" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="groq-dashboard-link"
+                >
+                  Get API Key
+                </a>
+                </div>
               <input
                 type="password"
                 id="groqApiKey"
@@ -201,7 +211,9 @@ export default function Settings({ isOpen, onClose }) {
                 required
               />
               <small>Your API key is stored securely and used for AI features</small>
+            
             </div>
+
 
             <div className="form-actions">
               <button type="button" onClick={onClose}>Cancel</button>
