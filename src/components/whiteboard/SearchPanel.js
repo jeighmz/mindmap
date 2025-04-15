@@ -49,8 +49,28 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
     if (!userSettings.groqApiKey) {
       throw new Error('Please set your GROQ API key in Settings to use AI features');
     }
-    
-    return userSettings.groqApiKey;
+
+    try {
+      // Decrypt the API key using the Netlify Function
+      const response = await fetch('/.netlify/functions/decryptApiKey', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.uid,
+          encryptedData: userSettings.groqApiKey
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to decrypt API key');
+      }
+
+      const { decrypted } = await response.json();
+      return decrypted;
+    } catch (error) {
+      console.error('Error decrypting API key:', error);
+      throw new Error('Failed to access API key. Please check your settings and try again.');
+    }
   };
 
   // Function to extract relevant text from highlighted items
