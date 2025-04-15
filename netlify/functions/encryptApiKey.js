@@ -18,25 +18,32 @@ const initializeFirebase = () => {
     // Handle private key formatting
     let privateKey = process.env.FIREBASE_PRIVATE_KEY;
     
-    // Remove any quotes from the beginning and end
-    privateKey = privateKey.replace(/^["']|["']$/g, '');
+    // Remove any surrounding quotes and spaces
+    privateKey = privateKey.trim().replace(/^["']|["']$/g, '');
     
-    // Ensure proper line breaks
-    if (!privateKey.includes('\n')) {
-      privateKey = privateKey
-        .replace(/\\n/g, '\n')
-        .replace(/ /g, '\n');
+    // Replace escaped newlines with actual newlines
+    privateKey = privateKey.replace(/\\n/g, '\n');
+    
+    // Ensure the key has the proper PEM format
+    if (!privateKey.startsWith('-----BEGIN PRIVATE KEY-----')) {
+      privateKey = '-----BEGIN PRIVATE KEY-----\n' + privateKey;
+    }
+    if (!privateKey.endsWith('-----END PRIVATE KEY-----')) {
+      privateKey = privateKey + '\n-----END PRIVATE KEY-----';
     }
 
+    // Log the formatted key (safely)
     console.log('Private key format check:');
-    console.log('- Starts with BEGIN:', privateKey.trim().startsWith('-----BEGIN PRIVATE KEY-----'));
-    console.log('- Ends with END:', privateKey.trim().endsWith('-----END PRIVATE KEY-----'));
+    console.log('- Starts with BEGIN:', privateKey.startsWith('-----BEGIN PRIVATE KEY-----'));
+    console.log('- Ends with END:', privateKey.endsWith('-----END PRIVATE KEY-----'));
     console.log('- Contains newlines:', privateKey.includes('\n'));
+    console.log('- First 50 chars:', privateKey.substring(0, 50));
+    console.log('- Last 50 chars:', privateKey.substring(privateKey.length - 50));
 
     const serviceAccount = {
       projectId: process.env.FIREBASE_PROJECT_ID,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: privateKey.trim()
+      privateKey: privateKey
     };
 
     admin.initializeApp({
