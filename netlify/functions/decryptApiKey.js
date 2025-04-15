@@ -1,4 +1,58 @@
-const { decrypt, db } = require('./utils/encryption');
+const admin = require('firebase-admin');
+
+// Initialize Firebase Admin with explicit error handling
+const initializeFirebase = () => {
+  if (admin.apps.length) return admin.firestore();
+
+  try {
+    // Log environment variables (safely)
+    console.log('Checking environment variables...');
+    console.log('Project ID:', process.env.FIREBASE_PROJECT_ID);
+    console.log('Client Email exists:', !!process.env.FIREBASE_CLIENT_EMAIL);
+    console.log('Private Key exists:', !!process.env.FIREBASE_PRIVATE_KEY);
+
+    if (!process.env.FIREBASE_PRIVATE_KEY || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PROJECT_ID) {
+      throw new Error('Missing Firebase credentials');
+    }
+
+    // Handle private key formatting
+    let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+    
+    // Remove any surrounding quotes and spaces
+    privateKey = privateKey.trim().replace(/^["']|["']$/g, '');
+    
+    // Replace escaped newlines with actual newlines
+    privateKey = privateKey.replace(/\\n/g, '\n');
+    
+    // Ensure the key has the proper PEM format
+    if (!privateKey.startsWith('-----BEGIN PRIVATE KEY-----')) {
+      privateKey = '-----BEGIN PRIVATE KEY-----\n' + privateKey;
+    }
+    if (!privateKey.endsWith('-----END PRIVATE KEY-----')) {
+      privateKey = privateKey + '\n-----END PRIVATE KEY-----';
+    }
+
+    const serviceAccount = {
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: privateKey
+    };
+
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+
+    console.log('Firebase initialized successfully');
+    return admin.firestore();
+  } catch (error) {
+    console.error('Firebase initialization error:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
+    throw error;
+  }
+};
 
 exports.handler = async (event, context) => {
   // Set CORS headers
@@ -26,7 +80,14 @@ exports.handler = async (event, context) => {
   }
 
   try {
+    console.log('Function started');
+    
+    // Initialize Firebase and get db instance
+    const db = await initializeFirebase();
+    console.log('Firebase initialized');
+
     const { userId, encryptedData } = JSON.parse(event.body);
+    console.log('Request parsed, userId exists:', !!userId);
 
     if (!userId || !encryptedData) {
       return {
@@ -36,27 +97,25 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // Get user's encryption key
-    const userKeysRef = db.collection('userEncryptionKeys').doc(userId);
-    const userKeysDoc = await userKeysRef.get();
+    // Get the encrypted API key from userSettings
+    const settingsRef = db.collection('userSettings').doc(userId);
+    const settingsDoc = await settingsRef.get();
     
-    if (!userKeysDoc.exists) {
+    if (!settingsDoc.exists) {
       return {
         statusCode: 404,
         headers,
-        body: JSON.stringify({ error: 'User encryption key not found' })
+        body: JSON.stringify({ error: 'User settings not found' })
       };
     }
 
-    const userKey = userKeysDoc.data().key;
-    
-    // Decrypt the API key
-    const decryptedData = decrypt(encryptedData, userKey);
+    // For now, just decode from base64 (matching the current encryption in encryptApiKey.js)
+    const decrypted = Buffer.from(settingsDoc.data().groqApiKey, 'base64').toString();
 
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ decrypted: decryptedData })
+      body: JSON.stringify({ decrypted })
     };
   } catch (error) {
     console.error('Decryption error:', error);

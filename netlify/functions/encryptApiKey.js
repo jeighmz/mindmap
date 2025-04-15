@@ -32,14 +32,6 @@ const initializeFirebase = () => {
       privateKey = privateKey + '\n-----END PRIVATE KEY-----';
     }
 
-    // Log the formatted key (safely)
-    console.log('Private key format check:');
-    console.log('- Starts with BEGIN:', privateKey.startsWith('-----BEGIN PRIVATE KEY-----'));
-    console.log('- Ends with END:', privateKey.endsWith('-----END PRIVATE KEY-----'));
-    console.log('- Contains newlines:', privateKey.includes('\n'));
-    console.log('- First 50 chars:', privateKey.substring(0, 50));
-    console.log('- Last 50 chars:', privateKey.substring(privateKey.length - 50));
-
     const serviceAccount = {
       projectId: process.env.FIREBASE_PROJECT_ID,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
@@ -94,14 +86,14 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // Simple encryption for testing (we'll make it more secure later)
+    // Encrypt using base64 encoding
     const encrypted = Buffer.from(apiKey).toString('base64');
     
     // Store in Firestore
     await db.collection('userSettings').doc(userId).set({
       groqApiKey: encrypted,
       updatedAt: new Date().toISOString()
-    });
+    }, { merge: true });
 
     return {
       statusCode: 200,
