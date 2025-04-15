@@ -8,8 +8,9 @@
 
 .whiteboard-toolbar {
   position: fixed;
-  top: 80px;
+  top: 50%;
   left: 20px;
+  transform: translateY(-50%);
   width: 60px;
   height: fit-content;
   justify-content: center;
@@ -93,6 +94,8 @@
   background-color: #f5f5f5;
   flex: 1;
   z-index: 1;
+  margin-top: 60px;
+  height: calc(100vh - 60px) !important;
 }
 
 .whiteboard-canvas.panning {
@@ -629,24 +632,13 @@
 }
 
 .saved-whiteboards-container {
-  position: fixed;
-  top: 80px;
-  right: 20px;
-  z-index: 2001;
-  transition: right 0.3s ease;
+  position: relative;
 }
 
-/* Adjust position when search panel is open */
-.panel-open .saved-whiteboards-container {
-  right: 420px; /* 400px panel width + 20px margin */
-}
-
-/* For very small screens, ensure controls remain visible */
-@media (max-width: 900px) {
-  .panel-open .saved-whiteboards-container {
-    right: 20px;
-    top: 80px;
-  }
+.saved-whiteboards-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
 }
 
 .menu-toggle {
@@ -1176,6 +1168,7 @@
 .panel-open .whiteboard-container {
   width: calc(100% - 400px);
   margin-right: 400px;
+  margin-top: 60px;
 }
 
 /* For small screens, make the panel overlay content instead of pushing it */
@@ -1310,10 +1303,10 @@
 .search-panel,
 .mind-map-panel {
   position: fixed;
-  top: 0;
+  top: 60px;
   right: 0;
   width: 400px;
-  height: 100vh;
+  height: calc(100vh - 60px);
   background: white;
   box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
   z-index: 2000;
@@ -1335,6 +1328,7 @@
 .mind-map-panel-open .whiteboard-container {
   width: calc(100% - 400px);
   margin-right: 400px;
+  margin-top: 60px;
 }
 
 /* Adjust overlays when panels are open */
@@ -1784,4 +1778,224 @@
 .mind-map-button:active::after {
   transform: translate(-50%, -50%) scale(2);
   opacity: 0;
+}
+
+.organize-control {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background-color: #4CAF50;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 1003;
+  border: 2px solid #fff;
+}
+
+.whiteboard-item:hover .organize-control,
+.whiteboard-item.selected .organize-control {
+  display: flex;
+}
+
+.organize-control:hover {
+  transform: scale(1.1);
+  background-color: #388E3C;
+}
+
+.organize-control svg {
+  width: 16px;
+  height: 16px;
+  stroke: white;
+  stroke-width: 2;
+}
+
+.export-controls {
+  position: relative;
+}
+
+.export-button {
+  background: #4CAF50;
+  color: white;
+  border: none;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.export-button:hover {
+  background: #45a049;
+}
+
+.export-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: white;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  padding: 8px;
+  min-width: 180px;
+  z-index: 2001;
+}
+
+.export-menu button {
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #333;
+  border-radius: 4px;
+}
+
+.export-menu button:hover {
+  background: #f5f5f5;
+}
+
+.whiteboard-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background-color: #ffffff;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  z-index: 1500;
+  box-sizing: border-box;
+}
+
+.header-left-controls {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+/* Common style for header buttons */
+.header-button {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  color: #495057;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.header-button:hover {
+  background-color: #e9ecef;
+  border-color: #ced4da;
+}
+
+.export-controls {
+  position: relative;
+}
+
+.export-menu {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 0;
+  background-color: #ffffff;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  z-index: 1600;
+  padding: 5px 0;
+  min-width: 180px;
+}
+
+.export-menu button {
+  background: none;
+  border: none;
+  display: block;
+  width: 100%;
+  padding: 10px 15px;
+  text-align: left;
+  color: #495057;
+  cursor: pointer;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.export-menu button:hover {
+  background-color: #f1f3f5;
+}
+
+/* Adjust canvas top margin to account for the fixed header */
+.whiteboard-canvas {
+  margin-top: 60px;
+  height: calc(100vh - 60px);
+}
+
+/* Update positioning for Saved Boards menu toggle if needed */
+/* Ensure SavedWhiteboardsMenu.js uses appropriate relative positioning if its */
+/* toggle button should look integrated */
+.saved-whiteboards-container {
+  position: relative;
+  .menu-toggle {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    color: #495057;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .menu-toggle:hover {
+    background-color: #e9ecef;
+    border-color: #ced4da;
+  }
+  z-index: 1600;
+}
+
+/* You might need to adjust the dropdown position in SavedWhiteboardsMenu.css */
+/* if it now appears inside the fixed header */
+.saved-whiteboards-menu {
+  top: calc(100% + 5px);
+  left: 0;
+  z-index: 1600;
+}
+
+/* Responsive adjustments if needed */
+@media (max-width: 768px) {
+  .whiteboard-header {
+    padding: 0 10px;
+    height: 50px;
+  }
+  .whiteboard-canvas {
+    margin-top: 50px;
+    height: calc(100vh - 50px);
+  }
+  .header-button, 
+  .saved-whiteboards-container .menu-toggle {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+  .header-left-controls {
+    gap: 10px;
+  }
 } 

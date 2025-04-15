@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDrop } from 'react-dnd';
+import html2canvas from 'html2canvas';
 import WhiteboardItem from './WhiteboardItem';
 import Connector from './Connector';
 import SavedWhiteboardsMenu from './SavedWhiteboardsMenu';
@@ -8,6 +9,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase-config';
 /* eslint-disable-next-line no-unused-vars */
 import { useAuth } from '../../context/AuthContext';
+import UserMenu from '../UserMenu';
 
 const WhiteboardCanvas = forwardRef((props, ref) => {
   const {
@@ -47,6 +49,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [savedWhiteboards, setSavedWhiteboards] = useState([]);
   const [currentBoardId, setCurrentBoardId] = useState(null);
   const { user } = useAuth();
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isSavedBoardsMenuOpen, setIsSavedBoardsMenuOpen] = useState(false);
 
   // Sync with external state if provided
   useEffect(() => {
@@ -297,6 +301,46 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
   const handleDeleteConnection = (connectionId) => {
     setConnections(connections.filter(conn => conn.id !== connectionId));
+  };
+
+  const organizeNodes = (parentId) => {
+    // Find all direct child nodes connected to the parent
+    const childConnections = connections.filter(conn => conn.from === parentId);
+    const childNodes = childConnections.map(conn => items.find(item => item.id === conn.to)).filter(Boolean);
+    
+    if (childNodes.length === 0) return;
+
+    // Calculate positions in a hierarchical layout
+    const parentNode = items.find(item => item.id === parentId);
+    const horizontalSpacing = 300; // Space between nodes horizontally
+    const verticalSpacing = 60;   // Space between nodes vertically
+    
+    // Create new items array with updated positions
+    const newItems = [...items];
+    
+    // Calculate total height needed for children
+    const totalHeight = (childNodes.length - 1) * verticalSpacing;
+    const startY = parentNode.position.y - totalHeight / 2;
+    
+    childNodes.forEach((child, index) => {
+      // Position each child to the right of the parent with vertical distribution
+      const childX = parentNode.position.x + horizontalSpacing;
+      const childY = startY + (index * verticalSpacing);
+      
+      // Update child position
+      const childIndex = newItems.findIndex(item => item.id === child.id);
+      if (childIndex !== -1) {
+        newItems[childIndex] = {
+          ...newItems[childIndex],
+          position: { x: childX, y: childY }
+        };
+        
+        // Recursively organize child's children
+        organizeNodes(child.id);
+      }
+    });
+    
+    setItems(newItems);
   };
 
   const renderConnections = () => {
@@ -1011,8 +1055,203 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     };
   }, [expandSelectedConcept]);
 
+  // Calculate bounds of all items on the canvas
+  const calculateContentBounds = useCallback(() => {
+    const padding = 50;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    
+    if (items.length === 0) {
+      // Return default bounds if no items exist
+      return { x: 0, y: 0, width: 500, height: 300 };
+    }
+    
+    items.forEach(item => {
+      minX = Math.min(minX, item.position.x);
+      minY = Math.min(minY, item.position.y);
+      maxX = Math.max(maxX, item.position.x + item.width);
+      maxY = Math.max(maxY, item.position.y + item.height);
+    });
+    
+    return {
+      x: minX - padding,
+      y: minY - padding,
+      width: maxX - minX + (padding * 2),
+      height: maxY - minY + (padding * 2)
+    };
+  }, [items]); // Depends only on items
+
+  // --- Export Functions --- 
+
+  const exportToPNG = useCallback(() => {
+    const contentElement = document.querySelector('.canvas-content');
+    if (!contentElement) return;
+
+    // Calculate bounds including padding
+    const bounds = calculateContentBounds();
+    const exportPadding = 20; // Add some padding around the content
+
+    html2canvas(contentElement, {
+      backgroundColor: '#f5f5f5', // Match canvas background or set to null for transparent
+      // Use the calculated bounds to capture only the relevant area
+      x: bounds.x - exportPadding, 
+      y: bounds.y - exportPadding,
+      width: bounds.width + exportPadding * 2,
+      height: bounds.height + exportPadding * 2,
+      // Apply the current scale to the capture
+      scale: scale, 
+      // Ensure foreign objects (like SVGs for connectors) are rendered
+      useCORS: true, 
+      logging: true, // Enable logging for debugging
+      onclone: (clonedDoc) => {
+        // Optional: Make adjustments to the cloned document before rendering
+        // For example, ensure connector SVGs are correctly styled/positioned if needed
+        const clonedContent = clonedDoc.querySelector('.canvas-content');
+        if (clonedContent) {
+          // Reset transform on the cloned content div as html2canvas handles positioning via x, y
+          clonedContent.style.transform = 'none'; 
+          // Ensure grid background is removed if you don't want it in export
+          const grid = clonedContent.querySelector('.grid-background');
+          if (grid) grid.style.display = 'none'; 
+        }
+      }
+    }).then(canvas => {
+      // Create a link to download the generated canvas image
+      const link = document.createElement('a');
+      link.download = 'mindmap.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }).catch(err => {
+      console.error("Error exporting to PNG:", err);
+      alert("Could not export to PNG. See console for details.");
+    });
+
+  }, [calculateContentBounds, scale]);
+
+  const exportToJSON = useCallback(() => {
+    const data = {
+      items,
+      connections,
+      metadata: {
+        exportDate: new Date().toISOString(),
+        version: '1.0'
+      }
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'mindmap.json';
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [items, connections]);
+
+  const exportToMarkdown = useCallback(() => {
+    let markdown = '# Mind Map\n\n';
+    
+    // Helper function to get item by id
+    const getItem = (id) => items.find(item => item.id === id);
+    
+    // Create a map of parent-child relationships
+    const relationshipMap = new Map();
+    connections.forEach(conn => {
+      if (!relationshipMap.has(conn.from)) {
+        relationshipMap.set(conn.from, []);
+      }
+      relationshipMap.get(conn.from).push(conn.to);
+    });
+    
+    // Helper function to build markdown tree
+    const buildTree = (itemId, level = 0) => {
+      const item = getItem(itemId);
+      if (!item) return '';
+      
+      let result = `${'  '.repeat(level)}- ${item.text}\n`;
+      const children = relationshipMap.get(itemId) || [];
+      children.forEach(childId => {
+        result += buildTree(childId, level + 1);
+      });
+      return result;
+    };
+    
+    // Find root nodes (nodes with no incoming connections)
+    const allTargets = new Set(connections.map(conn => conn.to));
+    const rootNodes = items.filter(item => !allTargets.has(item.id));
+    
+    // Build markdown from root nodes
+    rootNodes.forEach(root => {
+      markdown += buildTree(root.id);
+    });
+    
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'mindmap.md';
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [items, connections]);
+
+  // Function to toggle Saved Boards menu (closes others)
+  const toggleSavedBoardsMenu = useCallback(() => {
+    setIsSavedBoardsMenuOpen(prev => !prev);
+    setIsExportMenuOpen(false); 
+    // Close UserMenu if its state was lifted up
+  }, []);
+
+  // Function to toggle Export menu (closes others)
+  const toggleExportMenu = useCallback(() => {
+    setIsExportMenuOpen(prev => !prev);
+    setIsSavedBoardsMenuOpen(false);
+    // Close UserMenu if its state was lifted up
+  }, []);
+
   return (
     <div className={`whiteboard-container ${isSearchPanelOpen ? 'panel-open' : ''}`} style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <div className="whiteboard-header">
+        <div className="header-left-controls">
+          <SavedWhiteboardsMenu
+            isOpen={isSavedBoardsMenuOpen}
+            onToggle={toggleSavedBoardsMenu}
+            savedWhiteboards={savedWhiteboards}
+            onSave={handleSaveWhiteboard}
+            onLoad={handleLoadWhiteboard}
+            onDelete={handleDeleteSavedWhiteboard}
+            currentWhiteboard={{
+              items,
+              connections,
+              scale,
+              panOffset
+            }}
+          />
+          <div className="export-controls">
+            <button 
+              className="export-button header-button" 
+              onClick={toggleExportMenu}
+            >
+              📥 Export
+            </button>
+            {isExportMenuOpen && (
+              <div className="export-menu">
+                <button onClick={() => { exportToPNG(); toggleExportMenu(); }}>
+                  🖼️ Export as PNG
+                </button>
+                <button onClick={() => { exportToJSON(); toggleExportMenu(); }}>
+                  📄 Export as JSON
+                </button>
+                <button onClick={() => { exportToMarkdown(); toggleExportMenu(); }}>
+                  📝 Export as Markdown
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        <UserMenu />
+      </div>
+
       <div
         ref={drop}
         className={`whiteboard-canvas ${isPanning ? 'panning' : ''}`}
@@ -1033,21 +1272,6 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           height: '100%'
         }}
       >
-        <div className="whiteboard-menu-overlay">
-          <SavedWhiteboardsMenu
-            savedWhiteboards={savedWhiteboards}
-            onSave={handleSaveWhiteboard}
-            onLoad={handleLoadWhiteboard}
-            onDelete={handleDeleteSavedWhiteboard}
-            currentWhiteboard={{
-              items,
-              connections,
-              scale,
-              panOffset
-            }}
-          />
-        </div>
-
         <div className="whiteboard-zoom-overlay">
           <div className="zoom-controls">
             <button onClick={() => setScale(s => Math.min(s * 1.1, 4))}>+</button>
@@ -1142,6 +1366,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
               onDelete={handleDeleteItem}
               scale={scale}
               onContextMenu={(e) => handleContextMenu(e, item.id)}
+              onOrganize={organizeNodes}
             />
           ))}
         </div>

@@ -1,20 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getUserBoards, saveBoard, deleteBoard } from '../../services/boardService';
 
 const SavedWhiteboardsMenu = ({ 
   savedWhiteboards, // This will now be used only for demo boards
   onLoad,
-  currentWhiteboard 
+  currentWhiteboard, 
+  isOpen, // Receive open state from parent
+  onToggle // Receive toggle function from parent
 }) => {
   const { user } = useAuth();
-  const [showMenu, setShowMenu] = useState(false);
   const [newBoardName, setNewBoardName] = useState('');
   const [activeTab, setActiveTab] = useState('demo');
   const [userBoards, setUserBoards] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hasLoadedBoards, setHasLoadedBoards] = useState(false);
+
+  // Fetch boards when the menu is opened and tab is personal (if not already loaded)
+  useEffect(() => {
+    if (isOpen && activeTab === 'personal' && user && !hasLoadedBoards) {
+      fetchUserBoards();
+    }
+  }, [isOpen, activeTab, user, hasLoadedBoards]); // Dependencies for fetching
 
   const fetchUserBoards = async () => {
     if (!user) {
@@ -41,15 +49,7 @@ const SavedWhiteboardsMenu = ({
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     setError(null);
-    if (tab === 'personal') {
-      if (!user) {
-        setError('Please sign in to view your boards');
-        return;
-      }
-      if (!hasLoadedBoards) {
-        fetchUserBoards();
-      }
-    }
+    // Fetching is now handled by useEffect
   };
 
   const handleSave = async (e) => {
@@ -85,6 +85,7 @@ const SavedWhiteboardsMenu = ({
       console.log('Board saved to Firestore with response:', savedBoard);
       setUserBoards(prev => [savedBoard, ...prev]);
       setNewBoardName('');
+      onToggle(); // Close menu after save
     } catch (error) {
       console.error('Error saving board:', error);
       setError(error.message || 'Failed to save board');
@@ -121,13 +122,13 @@ const SavedWhiteboardsMenu = ({
   return (
     <div className="saved-whiteboards-container">
       <button 
-        className="menu-toggle"
-        onClick={() => setShowMenu(!showMenu)}
+        className="menu-toggle header-button"
+        onClick={onToggle}
       >
         📋 Saved Boards
       </button>
 
-      {showMenu && (
+      {isOpen && (
         <div className="saved-whiteboards-menu">
           <div className="board-tabs">
             <button 
@@ -192,6 +193,7 @@ const SavedWhiteboardsMenu = ({
                             console.log(`Loading board ${board.id}:`, board);
                             console.log('Board content structure:', board.content);
                             onLoad(board.id, board.content);
+                            onToggle(); // Close menu after loading
                           }}
                           disabled={isLoading}
                         >

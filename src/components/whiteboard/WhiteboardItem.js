@@ -14,7 +14,8 @@ const WhiteboardItem = ({
   onConnectionStart,
   onDelete,
   scale,
-  onContextMenu
+  onContextMenu,
+  onOrganize
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
@@ -432,6 +433,49 @@ const WhiteboardItem = ({
     );
   };
 
+  const OrganizeButton = ({ onOrganize, scale }) => {
+    return (
+      <div
+        className="organize-control"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOrganize(item.id);
+        }}
+        style={{
+          position: 'absolute',
+          top: '50%',
+          right: '-28px',
+          transform: `scale(${1/scale})`,
+          width: '24px',
+          height: '24px',
+          background: '#4CAF50',
+          borderRadius: '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          border: '2px solid white',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+          zIndex: 1003,
+          marginTop: '60px'
+        }}
+      >
+        <svg 
+          width="16" 
+          height="16" 
+          viewBox="0 0 24 24" 
+          fill="none" 
+          stroke="white" 
+          strokeWidth="2"
+        >
+          <circle cx="12" cy="12" r="3" />
+          <path d="M12 3a9 9 0 0 1 0 18" />
+          <path d="M12 3a9 9 0 0 0 0 18" />
+        </svg>
+      </div>
+    );
+  };
+
   return (
     <div
       ref={itemRef}
@@ -481,6 +525,10 @@ const WhiteboardItem = ({
             }}
             scale={scale}
             isExpanding={isExpanding}
+          />
+          <OrganizeButton 
+            onOrganize={onOrganize}
+            scale={scale}
           />
         </>
       )}

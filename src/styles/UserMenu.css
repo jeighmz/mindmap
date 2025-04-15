@@ -3,26 +3,31 @@
   z-index: 1000;
 }
 
-.user-menu-button {
+.user-menu-button,
+.sign-in-button {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  color: #495057;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  height: 40px;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
-  background: white;
-  border: 1px solid #e1e4e8;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
 }
 
-.user-menu-button:hover {
-  background: #f6f8fa;
-  border-color: #d1d5da;
+.user-menu-button:hover,
+.sign-in-button:hover {
+  background-color: #e9ecef;
+  border-color: #ced4da;
 }
 
 .user-avatar {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   object-fit: cover;
 }
@@ -36,7 +41,7 @@
 
 .user-name {
   font-size: 14px;
-  color: #24292e;
+  color: #495057;
   max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -45,7 +50,7 @@
 
 .dropdown-arrow {
   font-size: 10px;
-  color: #586069;
+  color: #6c757d;
   margin-left: 4px;
 }
 
@@ -60,19 +65,20 @@
 
 .user-dropdown {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + 12px);
   right: 0;
   width: 240px;
-  background: white;
-  border: 1px solid #e1e4e8;
+  background-color: #ffffff;
+  border: 1px solid #dee2e6;
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(149, 157, 165, 0.2);
-  z-index: 101;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  z-index: 1600;
   overflow: hidden;
+  padding: 5px 0;
 }
 
 .user-info {
-  padding: 16px;
+  padding: 10px 15px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -86,13 +92,13 @@
 .user-display-name {
   font-weight: 600;
   font-size: 14px;
-  color: #24292e;
+  color: #212529;
   margin-bottom: 2px;
 }
 
 .user-email {
   font-size: 12px;
-  color: #586069;
+  color: #6c757d;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -100,45 +106,34 @@
 
 .menu-divider {
   height: 1px;
-  background: #e1e4e8;
-  margin: 8px 0;
+  background: #e9ecef;
+  margin: 5px 0;
 }
 
 .menu-item {
+  background: none;
+  border: none;
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 8px 16px;
-  border: none;
-  background: none;
-  font-size: 14px;
-  color: #24292e;
-  cursor: pointer;
+  padding: 10px 15px;
   text-align: left;
+  color: #495057;
+  cursor: pointer;
+  font-size: 14px;
+  white-space: nowrap;
 }
 
 .menu-item:hover {
-  background: #f6f8fa;
+  background-color: #f1f3f5;
 }
 
 .menu-icon {
   font-size: 16px;
+  color: #6c757d;
 }
 
 .sign-in-button {
-  padding: 6px 16px;
-  background: #2ea44f;
-  color: white;
-  border: 1px solid rgba(27, 31, 35, 0.15);
-  border-radius: 6px;
-  font-size: 14px;
   font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.sign-in-button:hover {
-  background: #2c974b;
-  border-color: rgba(27, 31, 35, 0.15);
 } 
