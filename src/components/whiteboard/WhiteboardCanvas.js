@@ -5,13 +5,16 @@ import WhiteboardItem from './WhiteboardItem';
 import Connector from './Connector';
 import SavedWhiteboardsMenu from './SavedWhiteboardsMenu';
 import SearchPanel from './SearchPanel';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../firebase-config';
+// import PublishModal from './PublishModal';  // Temporarily removed
+import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { ref as storageRef, uploadString, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../../firebase-config';
 /* eslint-disable-next-line no-unused-vars */
 import { useAuth } from '../../contexts/AuthContext';
 import UserMenu from '../UserMenu';
 import PricingTable from '../Pricing';
 import { useNavigate } from 'react-router-dom';
+import { useTierPermissions } from '../../hooks/useTierPermissions';
 
 const WhiteboardCanvas = forwardRef((props, ref) => {
   const {
@@ -55,6 +58,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [isSavedBoardsMenuOpen, setIsSavedBoardsMenuOpen] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const navigate = useNavigate();
+  const { userTier } = useAuth();
+  const { canExport, getCurrentTier } = useTierPermissions();
 
   // Sync with external state if provided
   useEffect(() => {
@@ -613,472 +618,6 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }
   };
 
-  // Function to get user's API key from settings
-  const getUserApiKey = async () => {
-    if (!user) {
-      throw new Error('Please sign in to use AI features');
-    }
-
-    const settingsRef = doc(db, 'userSettings', user.uid);
-    const settingsSnap = await getDoc(settingsRef);
-    const userSettings = settingsSnap.exists() ? settingsSnap.data() : {};
-    
-    if (!userSettings.groqApiKey) {
-      throw new Error('Please add your GROQ API key in Settings to use AI features. Without a valid API key, the Mind Map generation and Expand Concept features will not work.');
-    }
-
-    try {
-      // Decrypt the API key using the Netlify Function
-      const response = await fetch('/.netlify/functions/decryptApiKey', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.uid,
-          encryptedData: userSettings.groqApiKey
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to decrypt API key');
-      }
-
-      const { decrypted } = await response.json();
-      return decrypted;
-    } catch (error) {
-      console.error('Error decrypting API key:', error);
-      throw new Error('Failed to access API key. Please check your settings and try again.');
-    }
-  };
-
-  const generateMindMap = async () => {
-    if (!mindMapPrompt.trim()) {
-      alert('Please enter a topic or prompt first');
-      return;
-    }
-
-    setIsGeneratingMindMap(true);
-
-    try {
-      const apiKey = await getUserApiKey();
-      const model = process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
-      
-      // Create a system prompt for mind map generation
-      const systemPrompt = `You are an AI assistant that creates mind maps. 
-      Given a topic or prompt, generate a hierarchical mind map structure with:
-      1. A central topic
-      2. 3-5 main branches (first level)
-      3. 2-3 sub-branches for each main branch (second level)
-      4. 1-2 sub-sub-branches for each sub-branch (third level)
-      
-      Format your response as a JSON object with the following structure:
-      {
-        "centralTopic": "The main topic",
-        "branches": [
-          {
-            "id": "branch1",
-            "text": "First main branch",
-            "subBranches": [
-              {
-                "id": "subBranch1",
-                "text": "First sub-branch",
-                "subSubBranches": [
-                  {
-                    "id": "subSubBranch1",
-                    "text": "First sub-sub-branch"
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-      
-      Make sure each item has a unique ID and meaningful text that relates to the central topic.`;
-      
-      // Call the Groq API to generate the mind map structure
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Generate a mind map for: ${mindMapPrompt}` }
-          ],
-          temperature: 0.7,
-          max_tokens: 2000
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`API call failed: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      const mindMapContent = data.choices[0].message.content;
-      
-      // Parse the JSON response
-      let mindMapData;
-      try {
-        // Extract JSON from the response (in case there's additional text)
-        const jsonMatch = mindMapContent.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          mindMapData = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error('No valid JSON found in response');
-        }
-      } catch (error) {
-        console.error('Error parsing mind map data:', error);
-        throw new Error('Failed to parse mind map data');
-      }
-      
-      // Clear existing items and connections
-      setItems([]);
-      setConnections([]);
-      
-      // Create the central topic item
-      const centralItemId = `central-${Date.now()}`;
-      const centralItem = {
-        id: centralItemId,
-        text: mindMapData.centralTopic,
-        position: { x: window.innerWidth / 2 - 100, y: window.innerHeight / 2 - 50 },
-        width: 200,
-        height: 100,
-        type: 'circle'  // Central topic is a circle
-      };
-      
-      // Add the central item
-      setItems(prevItems => [...prevItems, centralItem]);
-      
-      // Calculate positions for branches
-      const branchCount = mindMapData.branches.length;
-      const angleStep = (2 * Math.PI) / branchCount;
-      const radius = 250; // Distance from central item
-      
-      // Create branch items and connections
-      const newItems = [centralItem];
-      const newConnections = [];
-      
-      mindMapData.branches.forEach((branch, branchIndex) => {
-        // Calculate position for this branch
-        const angle = branchIndex * angleStep;
-        const branchX = centralItem.position.x + radius * Math.cos(angle);
-        const branchY = centralItem.position.y + radius * Math.sin(angle);
-        
-        // Create branch item
-        const branchItemId = `branch-${Date.now()}-${branchIndex}`;
-        const branchItem = {
-          id: branchItemId,
-          text: branch.text,
-          position: { x: branchX, y: branchY },
-          width: 180,
-          height: 80,
-          type: 'rectangle'  // Main branches are rectangles
-        };
-        
-        // Add connection from central to branch
-        const branchConnectionId = `conn-${centralItemId}-${branchItemId}`;
-        const branchConnection = {
-          id: branchConnectionId,
-          from: centralItemId,
-          to: branchItemId,
-          label: ''
-        };
-        
-        newItems.push(branchItem);
-        newConnections.push(branchConnection);
-        
-        // Create sub-branches
-        const subBranchCount = branch.subBranches.length;
-        const subBranchAngleStep = angleStep / (subBranchCount + 1);
-        const subBranchRadius = 200;
-        
-        branch.subBranches.forEach((subBranch, subBranchIndex) => {
-          // Calculate position for this sub-branch
-          const subBranchAngle = angle - (angleStep / 2) + (subBranchIndex + 1) * subBranchAngleStep;
-          const subBranchX = branchX + subBranchRadius * Math.cos(subBranchAngle);
-          const subBranchY = branchY + subBranchRadius * Math.sin(subBranchAngle);
-          
-          // Create sub-branch item
-          const subBranchItemId = `subBranch-${Date.now()}-${branchIndex}-${subBranchIndex}`;
-          const subBranchItem = {
-            id: subBranchItemId,
-            text: subBranch.text,
-            position: { x: subBranchX, y: subBranchY },
-            width: 160,
-            height: 70,
-            type: 'rectangle',  // Changed from 'sticky' to 'rectangle'
-            style: { textAlign: 'center' }  // Center text
-          };
-          
-          // Add connection from branch to sub-branch
-          const subBranchConnectionId = `conn-${branchItemId}-${subBranchItemId}`;
-          const subBranchConnection = {
-            id: subBranchConnectionId,
-            from: branchItemId,
-            to: subBranchItemId,
-            label: ''
-          };
-          
-          newItems.push(subBranchItem);
-          newConnections.push(subBranchConnection);
-          
-          // Create sub-sub-branches if they exist
-          if (subBranch.subSubBranches && subBranch.subSubBranches.length > 0) {
-            const subSubBranchCount = subBranch.subSubBranches.length;
-            const subSubBranchAngleStep = subBranchAngleStep / (subSubBranchCount + 1);
-            const subSubBranchRadius = 150; // Distance from sub-branch
-            
-            subBranch.subSubBranches.forEach((subSubBranch, subSubBranchIndex) => {
-              // Calculate position for this sub-sub-branch
-              const subSubBranchAngle = subBranchAngle - (subBranchAngleStep / 2) + (subSubBranchIndex + 1) * subSubBranchAngleStep;
-              const subSubBranchX = subBranchX + subSubBranchRadius * Math.cos(subSubBranchAngle);
-              const subSubBranchY = subBranchY + subSubBranchRadius * Math.sin(subSubBranchAngle);
-              
-              // Create sub-sub-branch item
-              const subSubBranchItemId = `subSubBranch-${Date.now()}-${branchIndex}-${subBranchIndex}-${subSubBranchIndex}`;
-              const subSubBranchItem = {
-                id: subSubBranchItemId,
-                text: subSubBranch.text,
-                position: { x: subSubBranchX, y: subSubBranchY },
-                width: 140,
-                height: 60,
-                type: 'circle'  // Sub-sub-branches are circles
-              };
-              
-              // Add connection from sub-branch to sub-sub-branch
-              const subSubBranchConnectionId = `conn-${subBranchItemId}-${subSubBranchItemId}`;
-              const subSubBranchConnection = {
-                id: subSubBranchConnectionId,
-                from: subBranchItemId,
-                to: subSubBranchItemId,
-                label: ''
-              };
-              
-              newItems.push(subSubBranchItem);
-              newConnections.push(subSubBranchConnection);
-            });
-          }
-        });
-      });
-      
-      // Update state with all new items and connections
-      setItems(newItems);
-      setConnections(newConnections);
-      
-      // Close the mind map panel
-      setIsMindMapPanelOpen(false);
-      
-    } catch (error) {
-      console.error('Error generating mind map:', error);
-      alert(error.message || 'Failed to generate mind map. Please try again.');
-      setIsGeneratingMindMap(false); // Make sure to reset the loading state
-      return; // Don't close the panel on error
-    }
-  };
-
-  // Notify parent component when items or connections change
-  useEffect(() => {
-    if (onUpdate) {
-      onUpdate(items, connections);
-    }
-  }, [items, connections, onUpdate]);
-
-  // Touch handlers for mobile/tablet panning
-  const handleTouchStart = useCallback((e) => {
-    if (e.touches.length === 2) { // Two finger touch for panning
-      e.preventDefault();
-      setIsPanning(true);
-      const touch1 = e.touches[0];
-      setPanStart({
-        x: touch1.clientX - panOffset.x,
-        y: touch1.clientY - panOffset.y
-      });
-    } else if (e.touches.length === 1) {
-      // Store the start point for potential pan
-      const touch = e.touches[0];
-      setTouchStartPoint({
-        x: touch.clientX,
-        y: touch.clientY,
-        time: Date.now()
-      });
-    }
-  }, [panOffset]);
-
-  const handleTouchMove = useCallback((e) => {
-    if (isPanning && e.touches.length >= 1) {
-      e.preventDefault();
-      const touch = e.touches[0];
-      setPanOffset({
-        x: touch.clientX - panStart.x,
-        y: touch.clientY - panStart.y
-      });
-    } else if (e.touches.length === 1 && touchStartPoint) {
-      // Check if it's a panning gesture (moved more than 10px)
-      const touch = e.touches[0];
-      const deltaX = touch.clientX - touchStartPoint.x;
-      const deltaY = touch.clientY - touchStartPoint.y;
-      
-      // If moved more than 10px in any direction and not potentially a tap
-      if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
-        e.preventDefault();
-        setIsPanning(true);
-        setPanStart({
-          x: touchStartPoint.x - panOffset.x, 
-          y: touchStartPoint.y - panOffset.y
-        });
-        setTouchStartPoint(null);
-      }
-    }
-  }, [isPanning, panStart, touchStartPoint, panOffset]);
-
-  const handleTouchEnd = useCallback((e) => {
-    if (isPanning) {
-      setIsPanning(false);
-      // Set final pan offset based on last touch position
-      if (e.changedTouches.length > 0) {
-        const touch = e.changedTouches[0];
-        setPanOffset({
-          x: touch.clientX - panStart.x,
-          y: touch.clientY - panStart.y
-        });
-      }
-    }
-    setTouchStartPoint(null);
-  }, [isPanning, panStart]);
-
-  // Modify expandSelectedConcept function to use useCallback
-  const expandSelectedConcept = useCallback(async (itemId, itemText) => {
-    const selectedItem = items.find(item => item.id === itemId);
-    if (!selectedItem) return;
-    
-    setIsExpandingConcept(true);
-    setExpandingItemId(itemId);
-    
-    try {
-      const apiKey = await getUserApiKey();
-      const model = 'llama-3.3-70b-versatile';
-      
-      // Create a system prompt for concept expansion
-      const systemPrompt = `You are an AI assistant that helps expand concepts in mind maps.
-      Given a concept or idea, generate 3-5 related sub-concepts that would help develop this idea further.
-      
-      Format your response as a JSON array of objects, each with a unique ID and text description:
-      [
-        { "id": "concept1", "text": "First related concept" },
-        { "id": "concept2", "text": "Second related concept" }
-      ]
-      
-      Make sure each concept is meaningful, concise (3-5 words), and directly related to the main concept.`;
-      
-      // Call the Groq API to generate the related concepts
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Generate related concepts for: ${itemText}` }
-          ],
-          temperature: 0.7,
-          max_tokens: 1000
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`API call failed: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      const conceptsContent = data.choices[0].message.content;
-      
-      // Parse the JSON response
-      let relatedConcepts;
-      try {
-        // Extract JSON from the response (in case there's additional text)
-        const jsonMatch = conceptsContent.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          relatedConcepts = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error('No valid JSON found in response');
-        }
-      } catch (error) {
-        console.error('Error parsing concepts data:', error);
-        throw new Error('Failed to parse concepts data');
-      }
-      
-      if (!Array.isArray(relatedConcepts) || relatedConcepts.length === 0) {
-        throw new Error('Invalid format for related concepts');
-      }
-      
-      // Calculate positions for new concept items around the selected item
-      const conceptCount = relatedConcepts.length;
-      const angleStep = (2 * Math.PI) / conceptCount;
-      const radius = 200; // Distance from selected item
-      
-      const newItems = [...items];
-      const newConnections = [...connections];
-      
-      // Create the new items and connections
-      relatedConcepts.forEach((concept, index) => {
-        // Calculate position for this concept
-        const angle = index * angleStep;
-        const conceptX = selectedItem.position.x + radius * Math.cos(angle);
-        const conceptY = selectedItem.position.y + radius * Math.sin(angle);
-        
-        // Create concept item
-        const conceptItemId = `concept-${Date.now()}-${index}`;
-        const conceptItem = {
-          id: conceptItemId,
-          text: concept.text,
-          position: { x: conceptX, y: conceptY },
-          width: 150,
-          height: 70,
-          type: 'circle'
-        };
-        
-        // Add connection from selected item to new concept
-        const connectionId = `conn-${selectedItem.id}-${conceptItemId}`;
-        const connection = {
-          id: connectionId,
-          from: selectedItem.id,
-          to: conceptItemId,
-          label: ''
-        };
-        
-        newItems.push(conceptItem);
-        newConnections.push(connection);
-      });
-      
-      // Update state with new items and connections
-      setItems(newItems);
-      setConnections(newConnections);
-      
-    } catch (error) {
-      console.error('Error expanding concept:', error);
-      alert(error.message || 'Failed to expand concept. Please try again.');
-    } finally {
-      setIsExpandingConcept(false);
-      setExpandingItemId(null);
-    }
-  }, [items, connections, setItems, setConnections, setExpandingItemId, user]);
-  
-  // Set up global function for expanding concepts
-  useEffect(() => {
-    window.expandSelectedConcept = expandSelectedConcept;
-    
-    return () => {
-      window.expandSelectedConcept = undefined;
-    };
-  }, [expandSelectedConcept]);
-
   // Calculate bounds of all items on the canvas
   const calculateContentBounds = useCallback(() => {
     const padding = 50;
@@ -1233,6 +772,230 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     // Close UserMenu if its state was lifted up
   }, []);
 
+  // Function to capture canvas as base64 image
+  const captureCanvasAsBase64 = useCallback(async () => {
+    const contentElement = document.querySelector('.canvas-content');
+    if (!contentElement) return null;
+
+    // Calculate bounds including padding
+    const bounds = calculateContentBounds();
+    const exportPadding = 20;
+
+    try {
+      const canvas = await html2canvas(contentElement, {
+        backgroundColor: '#f5f5f5',
+        x: bounds.x - exportPadding,
+        y: bounds.y - exportPadding,
+        width: bounds.width + exportPadding * 2,
+        height: bounds.height + exportPadding * 2,
+        scale: scale,
+        useCORS: true,
+        onclone: (clonedDoc) => {
+          const clonedContent = clonedDoc.querySelector('.canvas-content');
+          if (clonedContent) {
+            clonedContent.style.transform = 'none';
+            const grid = clonedContent.querySelector('.grid-background');
+            if (grid) grid.style.display = 'none';
+          }
+        }
+      });
+
+      return canvas.toDataURL('image/png');
+    } catch (err) {
+      console.error("Error capturing canvas:", err);
+      return null;
+    }
+  }, [calculateContentBounds, scale]);
+
+  const renderExportMenu = () => {
+    const currentTier = getCurrentTier();
+    
+    return (
+      <div className="export-menu">
+        <button 
+          onClick={() => { exportToPNG(); toggleExportMenu(); }}
+          className={canExport('png') ? '' : 'disabled'}
+          disabled={!canExport('png')}
+        >
+          🖼️ Export as PNG
+          {!canExport('png') && <span className="upgrade-note">Available in Free tier</span>}
+        </button>
+
+        <button 
+          onClick={() => { exportToPDF(); toggleExportMenu(); }}
+          className={canExport('pdf') ? '' : 'disabled'}
+          disabled={!canExport('pdf')}
+        >
+          📄 Export as PDF
+          {!canExport('pdf') && <span className="upgrade-note">Available in Starter tier</span>}
+        </button>
+
+        <button 
+          onClick={() => { exportToMarkdown(); toggleExportMenu(); }}
+          className={canExport('markdown') ? '' : 'disabled'}
+          disabled={!canExport('markdown')}
+        >
+          📝 Export as Markdown
+          {!canExport('markdown') && <span className="upgrade-note">Available in Starter tier</span>}
+        </button>
+
+        <button 
+          onClick={() => { exportToJSON(); toggleExportMenu(); }}
+          className={canExport('json') ? '' : 'disabled'}
+          disabled={!canExport('json')}
+        >
+          🔧 Export as JSON
+          {!canExport('json') && <span className="upgrade-note">Available in Pro tier</span>}
+        </button>
+
+        <button 
+          onClick={() => { exportToMM(); toggleExportMenu(); }}
+          className={canExport('mm') ? '' : 'disabled'}
+          disabled={!canExport('mm')}
+        >
+          🗺️ Export as Mind Map (.mm)
+          {!canExport('mm') && <span className="upgrade-note">Available in Pro tier</span>}
+        </button>
+      </div>
+    );
+  };
+
+  // Add new export functions
+  const exportToPDF = useCallback(async () => {
+    if (!canExport('pdf')) {
+      setIsPricingOpen(true);
+      return;
+    }
+
+    try {
+      const base64Image = await captureCanvasAsBase64();
+      if (!base64Image) {
+        throw new Error('Failed to capture canvas');
+      }
+
+      // Create PDF using jsPDF (you'll need to install this package)
+      const { jsPDF } = await import('jspdf');
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'px'
+      });
+
+      // Calculate dimensions
+      const imgData = base64Image;
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = imgData;
+      });
+
+      // Calculate PDF dimensions while maintaining aspect ratio
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgAspectRatio = img.width / img.height;
+      const pdfAspectRatio = pdfWidth / pdfHeight;
+
+      let renderWidth = pdfWidth;
+      let renderHeight = pdfWidth / imgAspectRatio;
+
+      if (renderHeight > pdfHeight) {
+        renderHeight = pdfHeight;
+        renderWidth = pdfHeight * imgAspectRatio;
+      }
+
+      // Add the image to PDF
+      pdf.addImage(
+        imgData,
+        'PNG',
+        (pdfWidth - renderWidth) / 2, // Center horizontally
+        (pdfHeight - renderHeight) / 2, // Center vertically
+        renderWidth,
+        renderHeight
+      );
+
+      // Save the PDF
+      pdf.save('mindmap.pdf');
+    } catch (err) {
+      console.error("Error exporting to PDF:", err);
+      alert("Could not export to PDF. See console for details.");
+    }
+  }, [canExport, captureCanvasAsBase64]);
+
+  const exportToMM = useCallback(() => {
+    if (!canExport('mm')) {
+      setIsPricingOpen(true);
+      return;
+    }
+
+    // Create FreeMind-compatible .mm format
+    const createMMXML = () => {
+      let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+      xml += '<map version="1.0.1">\n';
+
+      // Helper function to escape XML special characters
+      const escapeXML = (str) => {
+        return str
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&apos;');
+      };
+
+      // Find root nodes (nodes with no incoming connections)
+      const allTargets = new Set(connections.map(conn => conn.to));
+      const rootNodes = items.filter(item => !allTargets.has(item.id));
+
+      // Create a map of parent-child relationships
+      const relationshipMap = new Map();
+      connections.forEach(conn => {
+        if (!relationshipMap.has(conn.from)) {
+          relationshipMap.set(conn.from, []);
+        }
+        relationshipMap.get(conn.from).push(conn.to);
+      });
+
+      // Recursive function to build XML tree
+      const buildNodeXML = (itemId, level = 1) => {
+        const item = items.find(i => i.id === itemId);
+        if (!item) return '';
+
+        const indent = '  '.repeat(level);
+        let nodeXML = `${indent}<node ID="${itemId}" TEXT="${escapeXML(item.text)}">\n`;
+        
+        // Add children
+        const children = relationshipMap.get(itemId) || [];
+        children.forEach(childId => {
+          nodeXML += buildNodeXML(childId, level + 1);
+        });
+
+        nodeXML += `${indent}</node>\n`;
+        return nodeXML;
+      };
+
+      // Build XML for each root node
+      rootNodes.forEach(root => {
+        xml += buildNodeXML(root.id);
+      });
+
+      xml += '</map>';
+      return xml;
+    };
+
+    // Generate and download the .mm file
+    const mmContent = createMMXML();
+    const blob = new Blob([mmContent], { type: 'application/x-freemind' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'mindmap.mm';
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [items, connections, canExport]);
+
   return (
     <div className={`whiteboard-container ${isSearchPanelOpen ? 'panel-open' : ''}`} style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div className="whiteboard-header">
@@ -1258,19 +1021,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
             >
               📥 Export
             </button>
-            {isExportMenuOpen && (
-              <div className="export-menu">
-                <button onClick={() => { exportToPNG(); toggleExportMenu(); }}>
-                  🖼️ Export as PNG
-                </button>
-                <button onClick={() => { exportToJSON(); toggleExportMenu(); }}>
-                  📄 Export as JSON
-                </button>
-                <button onClick={() => { exportToMarkdown(); toggleExportMenu(); }}>
-                  📝 Export as Markdown
-                </button>
-              </div>
-            )}
+            {isExportMenuOpen && renderExportMenu()}
           </div>
           <button 
             className="header-button"
@@ -1278,12 +1029,21 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           >
             💎 Pricing
           </button>
+          {/* Temporarily removed community and publish buttons
           <button 
             className="header-button"
             onClick={() => navigate('/community')}
           >
             👥 Community
           </button>
+          <button 
+            className="header-button"
+            onClick={handlePublishClick}
+            disabled={isPublishing}
+          >
+            {isPublishing ? '📤 Publishing...' : '📤 Publish'}
+          </button>
+          */}
         </div>
         <UserMenu />
       </div>
@@ -1297,9 +1057,6 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
         onClick={handleCanvasClick}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
         style={{
           cursor: isPanning ? 'grabbing' : (isSpacePressed || isAltPressed ? 'grab' : 'default'),
           position: 'relative',
@@ -1479,7 +1236,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
               </div>
               <button 
                 className="generate-mind-map-button"
-                onClick={generateMindMap}
+                onClick={() => setIsMindMapPanelOpen(false)}
                 disabled={isGeneratingMindMap || !mindMapPrompt.trim()}
               >
                 {isGeneratingMindMap ? (
@@ -1500,6 +1257,15 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         isOpen={isPricingOpen}
         onClose={() => setIsPricingOpen(false)}
       />
+
+      {/* Temporarily removed publish modal
+      <PublishModal
+        isOpen={isPublishModalOpen}
+        onClose={() => setIsPublishModalOpen(false)}
+        onPublish={handlePublish}
+        isPublishing={isPublishing}
+      />
+      */}
     </div>
   );
 });

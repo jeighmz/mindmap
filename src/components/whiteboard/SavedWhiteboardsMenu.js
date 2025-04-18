@@ -125,7 +125,7 @@ const SavedWhiteboardsMenu = ({
         className="menu-toggle header-button"
         onClick={onToggle}
       >
-        📋 Saved Boards
+        📋 Saved 
       </button>
 
       {isOpen && (

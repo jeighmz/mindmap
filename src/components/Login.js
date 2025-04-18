@@ -4,7 +4,7 @@ import Modal from './Modal';
 import '../styles/LoginForm.css';
 
 export default function Login({ isOpen, onClose }) {
-  const { signInWithGoogle, signInWithEmail, createUserWithEmail } = useAuth();
+  const { login, signup, signInWithGoogle } = useAuth();
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -50,9 +50,9 @@ export default function Login({ isOpen, onClose }) {
     
     try {
       if (isRegistering) {
-        await createUserWithEmail(email, password);
+        await signup(email, password);
       } else {
-        await signInWithEmail(email, password);
+        await login(email, password);
       }
       onClose();
     } catch (err) {
@@ -138,20 +138,16 @@ export default function Login({ isOpen, onClose }) {
           Continue with Google
         </button>
 
-        <p className="auth-switch">
-          {isRegistering ? 'Already have an account?' : "Don't have an account?"}{' '}
+        <div className="auth-switch">
           <button 
-            className="switch-button"
-            onClick={() => {
-              setIsRegistering(!isRegistering);
-              setError('');
-              setEmailError('');
-              setPasswordError('');
-            }}
+            onClick={() => setIsRegistering(!isRegistering)}
+            className="switch-auth-mode"
           >
-            {isRegistering ? 'Sign In' : 'Create Account'}
+            {isRegistering 
+              ? 'Already have an account? Sign in' 
+              : 'Need an account? Create one'}
           </button>
-        </p>
+        </div>
       </div>
     </Modal>
   );
