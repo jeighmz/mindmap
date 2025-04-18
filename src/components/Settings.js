@@ -2,11 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { useAuth } from '../contexts/AuthContext';
+import { USER_TIERS, TIER_FEATURES } from '../config/userTiers';
 import Modal from './Modal';
 import '../styles/Settings.css';
 
-export default function Settings({ isOpen, onClose }) {
-  const { user } = useAuth();
+export default function Settings({ isOpen, onClose, onUpgradeClick }) {
+  const { user, userTier } = useAuth();
   const [groqApiKey, setGroqApiKey] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -122,6 +123,34 @@ export default function Settings({ isOpen, onClose }) {
     }
   };
 
+  const getTierIcon = (tier) => {
+    switch (tier) {
+      case 'FREE':
+        return '🆓';
+      case 'PRO':
+        return '💎';
+      case 'ENTERPRISE':
+        return '🏢';
+      default:
+        return '📋';
+    }
+  };
+
+  const formatFeatureName = (feature) => {
+    // Convert camelCase to Title Case with spaces
+    return feature
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, (str) => str.toUpperCase())
+      .trim();
+  };
+
+  const handleUpgradeClick = () => {
+    onClose();
+    if (typeof onUpgradeClick === 'function') {
+      onUpgradeClick();
+    }
+  };
+
   // Early return if no user
   if (!user) {
     return (
@@ -154,6 +183,32 @@ export default function Settings({ isOpen, onClose }) {
           <div className="loading-message">Loading settings...</div>
         ) : (
           <form onSubmit={handleSave}>
+            <div className="subscription-info">
+              <div className="tier-display">
+                <span className="current-tier">
+                  {getTierIcon(userTier)} {userTier} Plan
+                </span>
+                <button type="button" className="upgrade-button" onClick={handleUpgradeClick}>
+                  Upgrade Plan
+                </button>
+              </div>
+              <div className="tier-features">
+                <h4>Your Features & Limits</h4>
+                <ul>
+                  <li>✓ Up to {TIER_FEATURES[userTier].maxMindMaps} mind maps</li>
+                  <li>✓ Maximum {TIER_FEATURES[userTier].maxNodesPerMap} nodes per map</li>
+                  <li>✓ {TIER_FEATURES[userTier].maxCollaborators} collaborator{TIER_FEATURES[userTier].maxCollaborators !== 1 ? 's' : ''}</li>
+                  <li>✓ Export formats: {TIER_FEATURES[userTier].allowedExportFormats.join(', ')}</li>
+                  {Object.entries(TIER_FEATURES[userTier].features)
+                    .filter(([_, enabled]) => enabled)
+                    .map(([feature]) => (
+                      <li key={feature}>✓ {formatFeatureName(feature)}</li>
+                    ))
+                  }
+                </ul>
+              </div>
+            </div>
+
             <div className="form-group">
               <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
                 <label htmlFor="groqApiKey">GROQ API Key</label>

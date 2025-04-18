@@ -160,4 +160,109 @@
   background-color: #ccc;
   cursor: not-allowed;
   opacity: 0.7;
+}
+
+.subscription-info {
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.subscription-info h3 {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.subscription-info .tier-icon {
+  font-size: 24px;
+  margin-right: 8px;
+}
+
+.subscription-info .features-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0;
+}
+
+.features-list li {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  color: #4a5568;
+}
+
+.features-list li::before {
+  content: "✓";
+  color: #48bb78;
+  margin-right: 8px;
+  font-weight: bold;
+}
+
+.features-list li.unavailable {
+  color: #a0aec0;
+}
+
+.features-list li.unavailable::before {
+  content: "×";
+  color: #e53e3e;
+}
+
+.upgrade-button {
+  background-color: #4299e1;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.upgrade-button:hover {
+  background-color: #3182ce;
+}
+
+.upgrade-button:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.5);
+}
+
+.settings-section {
+  margin-bottom: 24px;
+}
+
+.settings-section h2 {
+  margin-bottom: 16px;
+  color: #2d3748;
+}
+
+.limit-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #718096;
+  font-size: 0.9em;
+}
+
+.limit-info .current {
+  font-weight: 600;
+  color: #4a5568;
+}
+
+.export-formats {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.export-format-tag {
+  background-color: #edf2f7;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: #4a5568;
 } 

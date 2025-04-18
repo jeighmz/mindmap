@@ -13,11 +13,8 @@ service cloud.firestore {
 
     // Users collection rules
     match /users/{userId} {
-      allow read: if isOwner(userId);
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isOwner(userId) && 
-                      request.resource.data.diff(resource.data).affectedKeys()
-                        .hasOnly(['lastLogin', 'email', 'tier']);
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow read, update: if request.auth != null && request.auth.uid == userId;
     }
 
     // Boards collection rules
