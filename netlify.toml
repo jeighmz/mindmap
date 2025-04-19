@@ -1,13 +1,11 @@
 [build]
-  command = "npm install --legacy-peer-deps && CI=false npm run build"
+  command = "npm run build"
   publish = "build"
   functions = "netlify/functions"
 
-[build.environment]
-  CI = "false"
-  BROWSER = ""
-  PORT = ""
-  NPM_FLAGS = "--legacy-peer-deps"
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["firebase-admin"]
 
 # Handle SPA routing by redirecting all requests to index.html
 [[redirects]]
