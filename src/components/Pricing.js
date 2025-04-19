@@ -70,41 +70,24 @@ export default function PricingTable({ isOpen, onClose }) {
   const { user, userTier } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [processingTier, setProcessingTier] = useState(null);
 
   const handlePlanSelect = async (plan) => {
-    // Reset error state
-    setError(null);
-    setProcessingTier(plan.tier);
+    // If selecting free plan, no Stripe checkout needed
+    if (plan.tier === USER_TIERS.FREE) {
+      onClose();
+      return;
+    }
+
+    // Require authentication before checkout
+    if (!user) {
+      // You might want to redirect to login or show login modal
+      setError('Please log in to upgrade your plan');
+      return;
+    }
 
     try {
-      // If selecting free plan, no Stripe checkout needed
-      if (plan.tier === USER_TIERS.FREE) {
-        onClose();
-        return;
-      }
-
-      // Require authentication before checkout
-      if (!user) {
-        setError({
-          message: 'Please log in to upgrade your plan',
-          action: 'login',
-          tier: plan.tier
-        });
-        return;
-      }
-
-      // Prevent selecting current tier
-      if (plan.tier === userTier) {
-        setError({
-          message: 'You are already subscribed to this plan',
-          action: 'manage',
-          tier: plan.tier
-        });
-        return;
-      }
-
       setIsLoading(true);
+      setError(null);
 
       // Start Stripe checkout process
       await StripeService.createCheckoutSession(
@@ -116,45 +99,9 @@ export default function PricingTable({ isOpen, onClose }) {
       // Note: No need to close modal here as we're redirecting to Stripe
     } catch (err) {
       console.error('Error starting checkout:', err);
-      setError({
-        message: err.message || 'Failed to start checkout process. Please try again.',
-        action: 'retry',
-        tier: plan.tier
-      });
+      setError('Failed to start checkout process. Please try again.');
     } finally {
       setIsLoading(false);
-      setProcessingTier(null);
-    }
-  };
-
-  const handleErrorAction = async (error) => {
-    switch (error.action) {
-      case 'login':
-        // Implement login redirect or modal
-        // You might want to save the selected plan to redirect back after login
-        window.location.href = '/login?redirect=pricing&plan=' + error.tier;
-        break;
-      case 'manage':
-        try {
-          setIsLoading(true);
-          const portalUrl = await StripeService.createPortalSession(user.uid);
-          window.location.href = portalUrl;
-        } catch (err) {
-          setError({
-            message: 'Failed to access billing portal. Please try again.',
-            action: 'retry',
-            tier: error.tier
-          });
-        } finally {
-          setIsLoading(false);
-        }
-        break;
-      case 'retry':
-        setError(null);
-        handlePlanSelect({ tier: error.tier });
-        break;
-      default:
-        setError(null);
     }
   };
 
@@ -164,27 +111,12 @@ export default function PricingTable({ isOpen, onClose }) {
         <h2>Choose Your Plan</h2>
         {error && (
           <div className="error-message">
-            <p>{error.message}</p>
-            {error.action && (
-              <button 
-                onClick={() => handleErrorAction(error)}
-                className="error-action-button"
-                disabled={isLoading}
-              >
-                {isLoading ? 'Processing...' : 
-                  error.action === 'login' ? 'Log In' :
-                  error.action === 'manage' ? 'Manage Subscription' :
-                  'Try Again'}
-              </button>
-            )}
+            {error}
           </div>
         )}
         <div className="pricing-grid">
           {plans.map((plan) => (
-            <div 
-              key={plan.name} 
-              className={`pricing-card ${plan.popular ? 'popular' : ''} ${plan.tier === userTier ? 'current' : ''}`}
-            >
+            <div key={plan.name} className={`pricing-card ${plan.popular ? 'popular' : ''} ${plan.tier === userTier ? 'current' : ''}`}>
               {plan.popular && <div className="badge">Most Popular</div>}
               {plan.tier === userTier && <div className="badge current">Current Plan</div>}
               <h3>{plan.name}</h3>
@@ -196,15 +128,11 @@ export default function PricingTable({ isOpen, onClose }) {
                 ))}
               </ul>
               <button 
-                className={`cta ${isLoading && processingTier === plan.tier ? 'loading' : ''}`}
+                className="cta"
                 onClick={() => handlePlanSelect(plan)}
                 disabled={isLoading || plan.tier === userTier}
               >
-                {isLoading && processingTier === plan.tier ? 
-                  'Processing...' : 
-                  plan.tier === userTier ? 
-                    'Current Plan' : 
-                    plan.cta}
+                {isLoading ? 'Loading...' : plan.tier === userTier ? 'Current Plan' : plan.cta}
               </button>
             </div>
           ))}

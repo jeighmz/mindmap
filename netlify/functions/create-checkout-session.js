@@ -4,77 +4,16 @@ const { getFirestore } = require('firebase-admin/firestore');
 
 // Initialize Firebase Admin if not already initialized
 if (!getApps().length) {
-  try {
-    // Debug logging
-    console.log('Firebase initialization starting...');
-    console.log('Environment check:', {
-      hasProjectId: !!process.env.FIREBASE_PROJECT_ID,
-      hasClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
-      hasPrivateKey: !!process.env.FIREBASE_PRIVATE_KEY,
-    });
-
-    // Handle private key formatting
-    let privateKey = process.env.FIREBASE_PRIVATE_KEY;
-    
-    if (privateKey) {
-      console.log('Private key format before processing:', {
-        length: privateKey.length,
-        startsWithQuotes: privateKey.startsWith('"') || privateKey.startsWith("'"),
-        endsWithQuotes: privateKey.endsWith('"') || privateKey.endsWith("'"),
-        containsBeginMarker: privateKey.includes('-----BEGIN PRIVATE KEY-----'),
-        containsEndMarker: privateKey.includes('-----END PRIVATE KEY-----'),
-      });
-
-      // Remove any surrounding quotes and spaces
-      privateKey = privateKey.trim().replace(/^["']|["']$/g, '');
-      
-      // Replace escaped newlines with actual newlines
-      privateKey = privateKey.replace(/\\n/g, '\n');
-      
-      // Ensure the key has the proper PEM format
-      if (!privateKey.startsWith('-----BEGIN PRIVATE KEY-----')) {
-        privateKey = '-----BEGIN PRIVATE KEY-----\n' + privateKey;
-      }
-      if (!privateKey.endsWith('-----END PRIVATE KEY-----')) {
-        privateKey = privateKey + '\n-----END PRIVATE KEY-----';
-      }
-
-      console.log('Private key format after processing:', {
-        length: privateKey.length,
-        startsWithBeginMarker: privateKey.startsWith('-----BEGIN PRIVATE KEY-----'),
-        endsWithEndMarker: privateKey.endsWith('-----END PRIVATE KEY-----'),
-        newlineCount: (privateKey.match(/\n/g) || []).length,
-      });
-
-      const serviceAccount = {
+  if (process.env.FIREBASE_PRIVATE_KEY) {
+    initializeApp({
+      credential: cert({
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: privateKey
-      };
-
-      console.log('Initializing Firebase with service account:', {
-        projectId: serviceAccount.projectId,
-        clientEmail: serviceAccount.clientEmail,
-        privateKeyLength: serviceAccount.privateKey.length,
-      });
-
-      initializeApp({
-        credential: cert(serviceAccount)
-      });
-    } else {
-      console.log('No private key found, using default initialization');
-      // For production environment where credentials are handled by Netlify
-      initializeApp();
-    }
-
-    console.log('Firebase initialization successful');
-  } catch (error) {
-    console.error('Firebase initialization error:', {
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      }),
     });
-    throw error;
+  } else {
+    initializeApp();
   }
 }
 
