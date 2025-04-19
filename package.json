@@ -4,7 +4,7 @@
   "private": true,
   "dependencies": {
     "@middy/core": "^6.1.6",
-    "@stripe/stripe-js": "^7.1.0",
+    "@stripe/stripe-js": "^2.4.0",
     "@testing-library/dom": "^9.3.4",
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",
@@ -29,7 +29,7 @@
     "react-scripts": "5.0.1",
     "remark-gfm": "^3.0.1",
     "serverless-http": "^3.2.0",
-    "stripe": "^18.0.0",
+    "stripe": "^14.14.0",
     "typescript": "4.9.5",
     "web-vitals": "^2.1.4"
   },
