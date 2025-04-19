@@ -12,11 +12,25 @@ const getStripe = () => {
   return stripePromise;
 };
 
+// Get the base URL for API calls
+const getApiUrl = () => {
+  if (process.env.NODE_ENV === 'development') {
+    return 'http://localhost:8888/.netlify/functions';
+  }
+  return '/.netlify/functions';
+};
+
 // Map our tiers to Stripe product IDs
 const STRIPE_PRODUCT_IDS = {
   [USER_TIERS.STARTER]: 'prod_S9iMpACtlPv8kv',
   [USER_TIERS.PRO]: 'prod_S9iNjKTuDUKWLZ',
   [USER_TIERS.CREATOR_AI]: 'prod_S9iOBu7jGBIJyp',
+};
+
+// Stripe uses 'month' and 'year' for intervals
+const INTERVAL_MAPPING = {
+  monthly: 'month',
+  annual: 'year'
 };
 
 class StripeService {
@@ -35,12 +49,18 @@ class StripeService {
         throw new Error('Invalid tier selected');
       }
 
+      // Convert interval to Stripe's format
+      const stripeInterval = INTERVAL_MAPPING[interval];
+      if (!stripeInterval) {
+        throw new Error('Invalid interval. Must be "monthly" or "annual"');
+      }
+
       // Get user data from Firestore
       const userDoc = await getDoc(doc(db, 'users', userId));
       const userData = userDoc.data();
 
       // Create checkout session through Firebase Function
-      const response = await fetch('/.netlify/functions/create-checkout-session', {
+      const response = await fetch(`${getApiUrl()}/create-checkout-session`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -48,12 +68,17 @@ class StripeService {
         body: JSON.stringify({
           userId,
           productId,
-          interval,
+          interval: stripeInterval,
           customerEmail: userData.email,
           currentTier: userData.tier,
           newTier: tier,
         }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, body: ${errorData}`);
+      }
 
       const { sessionId } = await response.json();
       
@@ -77,13 +102,18 @@ class StripeService {
    */
   static async createPortalSession(userId) {
     try {
-      const response = await fetch('/.netlify/functions/create-portal-session', {
+      const response = await fetch(`${getApiUrl()}/create-portal-session`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ userId }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, body: ${errorData}`);
+      }
 
       const { url } = await response.json();
       return url;
@@ -120,7 +150,7 @@ class StripeService {
    */
   static async cancelSubscription(userId) {
     try {
-      const response = await fetch('/.netlify/functions/cancel-subscription', {
+      const response = await fetch(`${getApiUrl()}/cancel-subscription`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -129,7 +159,8 @@ class StripeService {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to cancel subscription');
+        const errorData = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, body: ${errorData}`);
       }
 
       // Update user's tier in Firestore

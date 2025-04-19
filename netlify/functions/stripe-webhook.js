@@ -1,10 +1,25 @@
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const { initializeApp, getApps } = require('firebase-admin/app');
+const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 
 // Initialize Firebase Admin if not already initialized
 if (!getApps().length) {
-  initializeApp();
+  // Check if running locally or in production
+  if (process.env.FIREBASE_PRIVATE_KEY) {
+    // Local development - use environment variables
+    initializeApp({
+      credential: cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        // The private key comes as a string with "\n" characters
+        // We need to replace them with actual newlines
+        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      }),
+    });
+  } else {
+    // Production - Netlify will handle the credentials
+    initializeApp();
+  }
 }
 
 const db = getFirestore();

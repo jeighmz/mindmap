@@ -1,24 +1,60 @@
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const { initializeApp, getApps } = require('firebase-admin/app');
+const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 
 // Initialize Firebase Admin if not already initialized
 if (!getApps().length) {
-  initializeApp();
+  if (process.env.FIREBASE_PRIVATE_KEY) {
+    initializeApp({
+      credential: cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      }),
+    });
+  } else {
+    initializeApp();
+  }
 }
 
 const db = getFirestore();
 
+// CORS headers for development
+const headers = {
+  'Access-Control-Allow-Origin': 'http://localhost:3000',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
 exports.handler = async (event, context) => {
+  // Handle preflight request
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 204,
+      headers,
+      body: ''
+    };
+  }
+
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
-      body: JSON.stringify({ error: 'Method not allowed' }),
+      headers,
+      body: JSON.stringify({ error: 'Method not allowed' })
     };
   }
 
   try {
     const { userId, productId, interval, customerEmail, currentTier, newTier } = JSON.parse(event.body);
+
+    // Validate interval
+    if (!['month', 'year'].includes(interval)) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: 'Invalid interval. Must be "month" or "year"' })
+      };
+    }
 
     // Get or create customer
     let customer;
@@ -41,34 +77,46 @@ exports.handler = async (event, context) => {
       });
     }
 
-    // Get the prices for the product
-    const prices = await stripe.prices.list({
+    // Get all prices for the product
+    const { data: prices } = await stripe.prices.list({
       product: productId,
       active: true,
+      type: 'recurring',
     });
 
+    if (prices.length === 0) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: `No prices found for product ${productId}. Please set up prices in Stripe dashboard.` })
+      };
+    }
+
     // Find the correct price based on the interval
-    const price = prices.data.find(p => 
+    const price = prices.find(p => 
       p.recurring.interval === interval && 
       p.recurring.interval_count === 1
     );
 
     if (!price) {
-      throw new Error(`No ${interval} price found for product ${productId}`);
+      const availableIntervals = [...new Set(prices.map(p => p.recurring.interval))];
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          error: `No ${interval} price found for product ${productId}. Available intervals are: ${availableIntervals.join(', ')}`
+        })
+      };
     }
 
-    // Create checkout session with enhanced features
+    console.log(`Found price ${price.id} for product ${productId} (${interval})`);
+
+    // Create checkout session
     const session = await stripe.checkout.sessions.create({
       customer: customer.id,
       payment_method_types: ['card'],
       billing_address_collection: 'required',
-      customer_email: !customer ? customerEmail : undefined, // Only set if new customer
-      tax_id_collection: {
-        enabled: true,
-      },
-      automatic_tax: {
-        enabled: true,
-      },
+      customer_email: !customer ? customerEmail : undefined,
       line_items: [
         {
           price: price.id,
@@ -94,23 +142,19 @@ exports.handler = async (event, context) => {
         currentTier,
         newTier,
       },
-      consent_collection: {
-        terms_of_service: 'required',
-      },
-      phone_number_collection: {
-        enabled: true,
-      },
     });
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ sessionId: session.id }),
+      headers,
+      body: JSON.stringify({ sessionId: session.id })
     };
   } catch (error) {
     console.error('Error creating checkout session:', error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: error.message }),
+      headers,
+      body: JSON.stringify({ error: error.message })
     };
   }
 }; 
