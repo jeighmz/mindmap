@@ -19,26 +19,7 @@ const STRIPE_PRODUCT_IDS = {
   [USER_TIERS.CREATOR_AI]: 'prod_S9iOBu7jGBIJyp',
 };
 
-// Helper function to handle API responses
-const handleResponse = async (response) => {
-  const contentType = response.headers.get('content-type');
-  if (!response.ok) {
-    const error = contentType?.includes('application/json') 
-      ? await response.json() 
-      : await response.text();
-    throw new Error(typeof error === 'string' ? error : error.message || 'API Error');
-  }
-  return response.json();
-};
-
 class StripeService {
-  static getFunctionUrl(functionName) {
-    // Use relative path in development, full URL in production
-    return process.env.NODE_ENV === 'development'
-      ? `/.netlify/functions/${functionName}`
-      : `${window.location.origin}/.netlify/functions/${functionName}`;
-  }
-
   /**
    * Create a checkout session for subscription
    * @param {string} userId - Firebase user ID
@@ -59,7 +40,7 @@ class StripeService {
       const userData = userDoc.data();
 
       // Create checkout session through Firebase Function
-      const response = await fetch(this.getFunctionUrl('create-checkout-session'), {
+      const response = await fetch('/.netlify/functions/create-checkout-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -74,7 +55,7 @@ class StripeService {
         }),
       });
 
-      const { sessionId } = await handleResponse(response);
+      const { sessionId } = await response.json();
       
       // Redirect to Stripe Checkout using singleton instance
       const stripe = await getStripe();
@@ -96,7 +77,7 @@ class StripeService {
    */
   static async createPortalSession(userId) {
     try {
-      const response = await fetch(this.getFunctionUrl('create-portal-session'), {
+      const response = await fetch('/.netlify/functions/create-portal-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -104,7 +85,7 @@ class StripeService {
         body: JSON.stringify({ userId }),
       });
 
-      const { url } = await handleResponse(response);
+      const { url } = await response.json();
       return url;
     } catch (error) {
       console.error('Error creating portal session:', error);
@@ -139,7 +120,7 @@ class StripeService {
    */
   static async cancelSubscription(userId) {
     try {
-      const response = await fetch(this.getFunctionUrl('cancel-subscription'), {
+      const response = await fetch('/.netlify/functions/cancel-subscription', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -147,7 +128,9 @@ class StripeService {
         body: JSON.stringify({ userId }),
       });
 
-      await handleResponse(response);
+      if (!response.ok) {
+        throw new Error('Failed to cancel subscription');
+      }
 
       // Update user's tier in Firestore
       await updateDoc(doc(db, 'users', userId), {
