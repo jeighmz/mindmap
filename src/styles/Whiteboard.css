@@ -36,11 +36,18 @@
   .whiteboard-toolbar {
     top: auto;
     bottom: 20px;
-    left: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    flex-direction: row;
+    width: auto;
+    height: 60px;
+    padding: 8px 12px;
+    gap: 8px;
   }
   
   .panel-open .whiteboard-toolbar {
-    left: 20px;
+    left: 50%;
+    transform: translateX(-50%);
   }
 }
 
@@ -1013,8 +1020,36 @@
 
 @media (max-width: 768px) {
   .whiteboard-controls-overlay {
-    padding: 6px 10px;
-    bottom: 60px;
+    display: none;
+  }
+  
+  .whiteboard-toolbar {
+    top: auto;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    flex-direction: row;
+    width: auto;
+    height: 60px;
+    padding: 8px 12px;
+    gap: 8px;
+  }
+  
+  .toolbar-item {
+    width: 44px;
+    min-width: 44px;
+    flex: 0 0 44px;
+  }
+
+  .toolbar-item.mind-map-button {
+    width: 44px;
+    min-width: 44px;
+    flex: 0 0 44px;
+  }
+  
+  .panel-open .whiteboard-toolbar {
+    left: 50%;
+    transform: translateX(-50%);
   }
   
   .controls-help {

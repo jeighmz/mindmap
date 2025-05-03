@@ -62,6 +62,10 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const { canExport, getCurrentTier } = useTierPermissions();
   // Add clipboard state
   const [clipboardData, setClipboardData] = useState(null);
+  const [windowDimensions, setWindowDimensions] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight
+  });
 
   // Sync with external state if provided
   useEffect(() => {
@@ -1192,6 +1196,114 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     };
   }, [handleCopy, handlePaste]);
 
+  const handleGenerateMindMap = async () => {
+    setIsGeneratingMindMap(true);
+    try {
+      // Create a central node
+      const centralNode = {
+        id: Date.now(),
+        type: 'sticky',
+        text: mindMapPrompt,
+        position: { 
+          x: windowDimensions.width/2 - 100, 
+          y: windowDimensions.height/2 - 100 
+        },
+        width: 200,
+        height: 200
+      };
+      
+      // Add the central node
+      setItems(prevItems => [...prevItems, centralNode]);
+      
+      // Call Groq API to generate branches
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.REACT_APP_GROQ_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: 'llama2-70b-4096',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a mind map generator. Generate 5-7 main branches for a mind map on the given topic. Each branch should be a key concept or aspect of the topic. Return ONLY the branch names, one per line, with no numbers, bullets, or other formatting.'
+            },
+            {
+              role: 'user',
+              content: `Generate main branches for a mind map about: ${mindMapPrompt}`
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 1000
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate mind map branches');
+      }
+
+      const data = await response.json();
+      const branches = data.choices[0].message.content
+        .split('\n')
+        .filter(line => line.trim())
+        .slice(0, 7); // Take max 7 branches
+
+      // Calculate positions for branches in a circular layout
+      const radius = Math.min(windowDimensions.width, windowDimensions.height) * 0.2; // 20% of the smaller dimension
+      const angleStep = (2 * Math.PI) / branches.length;
+
+      // Add branches and connections
+      const newItems = [];
+      const newConnections = [];
+
+      branches.forEach((branch, index) => {
+        const angle = index * angleStep;
+        const branchNode = {
+          id: Date.now() + index + 1,
+          type: 'sticky',
+          text: branch,
+          position: {
+            x: centralNode.position.x + radius * Math.cos(angle),
+            y: centralNode.position.y + radius * Math.sin(angle)
+          },
+          width: 150,
+          height: 100
+        };
+
+        newItems.push(branchNode);
+        newConnections.push({
+          id: `connection-${Date.now()}-${index}`,
+          from: centralNode.id,
+          to: branchNode.id
+        });
+      });
+
+      setItems(prevItems => [...prevItems, ...newItems]);
+      setConnections(prevConnections => [...prevConnections, ...newConnections]);
+      
+      setIsMindMapPanelOpen(false);
+    } catch (error) {
+      console.error('Error generating mind map:', error);
+      alert('Failed to generate mind map. Please try again.');
+    } finally {
+      setIsGeneratingMindMap(false);
+      setMindMapPrompt('');
+    }
+  };
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowDimensions({
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   return (
     <div className={`whiteboard-container ${isSearchPanelOpen ? 'panel-open' : ''}`} style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div className="whiteboard-header">
@@ -1458,7 +1570,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
               </div>
               <button 
                 className="generate-mind-map-button"
-                onClick={() => setIsMindMapPanelOpen(false)}
+                onClick={handleGenerateMindMap}
                 disabled={isGeneratingMindMap || !mindMapPrompt.trim()}
               >
                 {isGeneratingMindMap ? (
