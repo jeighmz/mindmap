@@ -52,6 +52,94 @@ const SavedWhiteboardsMenu = ({
     // Fetching is now handled by useEffect
   };
 
+  const cleanChartConfig = (item) => {
+    // Base chart properties that all charts should have
+    const baseConfig = {
+      id: String(item.id || Date.now()),
+      type: 'chart',
+      chartType: item.chartType || 'xy',
+      position: {
+        x: Number(item.position?.x || 0),
+        y: Number(item.position?.y || 0)
+      },
+      width: Number(item.width || 400),
+      height: Number(item.height || 300),
+      text: String(item.text || ''),
+      xAxisTitle: String(item.xAxisTitle || ''),
+      yAxisTitle: String(item.yAxisTitle || ''),
+      xAxisUnit: Number(item.xAxisUnit || 1),
+      yAxisUnit: Number(item.yAxisUnit || 1),
+      xAxisStart: Number(item.xAxisStart || 0),
+      yAxisStart: Number(item.yAxisStart || 0),
+      xAxisEnd: Number(item.xAxisEnd || 10),
+      yAxisEnd: Number(item.yAxisEnd || 10),
+      xAxisMode: String(item.xAxisMode || 'number'),
+      yAxisMode: String(item.yAxisMode || 'number'),
+      showXAxisLabels: Boolean(item.showXAxisLabels !== false),
+      showYAxisLabels: Boolean(item.showYAxisLabels !== false),
+      xAxisCustomValues: Array.isArray(item.xAxisCustomValues) ? item.xAxisCustomValues.map(String) : [],
+      yAxisCustomValues: Array.isArray(item.yAxisCustomValues) ? item.yAxisCustomValues.map(String) : []
+    };
+
+    // Add sine wave specific properties if it's a sine chart
+    if (item.chartType === 'sine') {
+      return {
+        ...baseConfig,
+        frequency: Number(item.frequency || 1),
+        amplitude: Number(item.amplitude || 1),
+        periods: Number(item.periods || 1),
+        waveType: String(item.waveType || 'sine'),
+        phaseShift: Number(item.phaseShift || 0),
+        harmonics: Number(item.harmonics || 1),
+        enableModulation: Boolean(item.enableModulation),
+        modulationDepth: Number(item.modulationDepth || 0.5)
+      };
+    }
+
+    return baseConfig;
+  };
+
+  const cleanItem = (item) => {
+    if (item.type === 'chart') {
+      return cleanChartConfig(item);
+    }
+
+    if (item.type === 'image') {
+      return {
+        id: String(item.id || Date.now()),
+        type: 'image',
+        position: {
+          x: Number(item.position?.x || 0),
+          y: Number(item.position?.y || 0)
+        },
+        width: Number(item.width || 400),
+        height: Number(item.height || 300),
+        imageUrl: String(item.imageUrl || '')
+      };
+    }
+
+    // Clean non-chart items
+    return {
+      id: String(item.id || Date.now()),
+      type: String(item.type || 'sticky'),
+      position: {
+        x: Number(item.position?.x || 0),
+        y: Number(item.position?.y || 0)
+      },
+      width: Number(item.width || 200),
+      height: Number(item.height || 200),
+      text: String(item.text || '')
+    };
+  };
+
+  const cleanConnection = (conn) => {
+    return {
+      id: String(conn.id || `connection-${Date.now()}`),
+      from: String(conn.from),
+      to: String(conn.to)
+    };
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     if (!user) {
@@ -66,23 +154,41 @@ const SavedWhiteboardsMenu = ({
     setIsLoading(true);
     setError(null);
     try {
-      console.log('Current whiteboard data being saved:', currentWhiteboard);
-      
-      // Ensure the content has the proper structure
+      // Clean and validate all items
+      const processedItems = (currentWhiteboard?.items || [])
+        .map(cleanItem)
+        .filter(Boolean); // Remove any null/undefined items
+
+      // Clean and validate all connections
+      const processedConnections = (currentWhiteboard?.connections || [])
+        .map(cleanConnection)
+        .filter(conn => 
+          processedItems.some(item => item.id === conn.from) && 
+          processedItems.some(item => item.id === conn.to)
+        );
+
+      // Create the board data with cleaned values
       const boardData = {
-        name: newBoardName.trim(),
+        name: String(newBoardName.trim()),
+        savedAt: new Date().toISOString(),
+        userId: String(user.uid),
         content: {
-          items: currentWhiteboard?.items || [],
-          connections: currentWhiteboard?.connections || [],
-          scale: currentWhiteboard?.scale || 1,
-          panOffset: currentWhiteboard?.panOffset || { x: 0, y: 0 }
+          items: processedItems,
+          connections: processedConnections,
+          scale: Number(currentWhiteboard?.scale || 1),
+          panOffset: {
+            x: Number(currentWhiteboard?.panOffset?.x || 0),
+            y: Number(currentWhiteboard?.panOffset?.y || 0)
+          }
         }
       };
-      
-      console.log('Structured board data for Firestore:', boardData);
+
+      // Log the cleaned data for debugging
+      console.log('Cleaned board data for Firestore:', JSON.stringify(boardData, null, 2));
 
       const savedBoard = await saveBoard(boardData, user.uid);
-      console.log('Board saved to Firestore with response:', savedBoard);
+      console.log('Board saved successfully:', savedBoard);
+      
       setUserBoards(prev => [savedBoard, ...prev]);
       setNewBoardName('');
       onToggle(); // Close menu after save

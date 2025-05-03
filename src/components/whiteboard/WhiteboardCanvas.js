@@ -60,6 +60,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const navigate = useNavigate();
   const { userTier } = useAuth();
   const { canExport, getCurrentTier } = useTierPermissions();
+  // Add clipboard state
+  const [clipboardData, setClipboardData] = useState(null);
 
   // Sync with external state if provided
   useEffect(() => {
@@ -228,16 +230,58 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       const canvasRect = document.querySelector('.whiteboard-canvas').getBoundingClientRect();
       
       if (!item.id) {
+        let width, height;
+
+        // Set default sizes based on item type
+        switch (item.type) {
+          case 'chart':
+            // Calculate dimensions as percentages of canvas size
+            width = canvasRect.width * 0.3;  // 30% of canvas width
+            height = canvasRect.height * 0.4; // 40% of canvas height
+            break;
+          case 'sticky':
+            width = 200;
+            height = 200;
+            break;
+          default:
+            width = 100;
+            height = 60;
+        }
+
         const newItem = {
           id: Date.now(),
           type: item.type,
+          chartType: item.chartType,
           position: {
-            x: (offset.x - canvasRect.left - 50) / scale,
-            y: (offset.y - canvasRect.top - 50) / scale
+            x: (offset.x - canvasRect.left - width/2) / scale,
+            y: (offset.y - canvasRect.top - height/2) / scale
           },
           text: item.type === 'sticky' ? 'New note' : '',
-          width: item.type === 'sticky' ? 200 : 100,
-          height: item.type === 'sticky' ? 200 : 60
+          width,
+          height,
+          // Add default chart configuration for better initial appearance
+          ...(item.type === 'chart' && {
+            xAxisTitle: 'X Axis',
+            yAxisTitle: 'Y Axis',
+            showXAxisLabels: true,
+            showYAxisLabels: true,
+            xAxisUnit: 1,
+            yAxisUnit: 1,
+            xAxisStart: 0,
+            xAxisEnd: 10,
+            yAxisStart: 0,
+            yAxisEnd: 10,
+            ...(item.chartType === 'sine' && {
+              periods: 2,
+              frequency: 1,
+              amplitude: 1,
+              waveType: 'sine',
+              xAxisTitle: 'Angle (π)',
+              yAxisTitle: 'Amplitude',
+              yAxisStart: -3,
+              yAxisEnd: 3
+            })
+          })
         };
         setItems(prevItems => [...prevItems, newItem]);
       }
@@ -450,6 +494,21 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [connectingFrom]);
+
+  // Add image item event listener
+  useEffect(() => {
+    const handleAddImageItem = (e) => {
+      const newItem = {
+        ...e.detail,
+        id: Date.now()
+      };
+      setItems(prevItems => [...prevItems, newItem]);
+      setSelectedItems(new Set([newItem.id]));
+    };
+
+    window.addEventListener('addImageItem', handleAddImageItem);
+    return () => window.removeEventListener('addImageItem', handleAddImageItem);
+  }, []);
 
   const handleCanvasClick = (e) => {
     if (e.target === e.currentTarget) {
@@ -996,6 +1055,143 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     URL.revokeObjectURL(url);
   }, [items, connections, canExport]);
 
+  // Add copy/paste handlers
+  const handleCopy = useCallback((e) => {
+    // Only handle if there are selected items and we're not in a text input
+    if (selectedItems.size > 0 && 
+        !(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+      e.preventDefault();
+      
+      // Get all selected items
+      const itemsToCopy = items
+        .filter(item => selectedItems.has(item.id))
+        .map(item => ({
+          ...item,
+          id: undefined, // Remove ID so new ones will be generated on paste
+          position: {
+            x: item.position.x,
+            y: item.position.y
+          }
+        }));
+
+      // Get connections between selected items
+      const connectionsToCopy = connections.filter(conn => 
+        selectedItems.has(conn.from) && selectedItems.has(conn.to)
+      ).map(conn => ({
+        ...conn,
+        id: undefined // Remove ID so new ones will be generated on paste
+      }));
+
+      // Store in clipboard state
+      setClipboardData({
+        items: itemsToCopy,
+        connections: connectionsToCopy,
+        originalPositions: itemsToCopy.map(item => ({ ...item.position }))
+      });
+    }
+  }, [selectedItems, items, connections]);
+
+  const handlePaste = useCallback((e) => {
+    // Only handle if we have clipboard data and we're not in a text input
+    if (clipboardData && 
+        !(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+      e.preventDefault();
+
+      // Calculate offset from original positions
+      const PASTE_OFFSET = 20; // Pixels to offset each paste
+      
+      // Create new items with offset positions
+      const newItems = clipboardData.items.map((item, index) => {
+        const newId = Date.now() + index;
+        return {
+          ...item,
+          id: newId,
+          position: {
+            x: item.position.x + PASTE_OFFSET,
+            y: item.position.y + PASTE_OFFSET
+          }
+        };
+      });
+
+      // Create new connections with updated IDs
+      const newConnections = clipboardData.connections.map(conn => {
+        const fromIndex = clipboardData.items.findIndex(item => item.id === conn.from);
+        const toIndex = clipboardData.items.findIndex(item => item.id === conn.to);
+        
+        return {
+          ...conn,
+          id: `connection-${Date.now()}-${fromIndex}-${toIndex}`,
+          from: newItems[fromIndex].id,
+          to: newItems[toIndex].id
+        };
+      });
+
+      // Update clipboard data with new offset for next paste
+      setClipboardData(prev => ({
+        ...prev,
+        items: prev.items.map(item => ({
+          ...item,
+          position: {
+            x: item.position.x + PASTE_OFFSET,
+            y: item.position.y + PASTE_OFFSET
+          }
+        }))
+      }));
+
+      // Add new items and connections to the canvas
+      setItems(prevItems => [...prevItems, ...newItems]);
+      setConnections(prevConnections => [...prevConnections, ...newConnections]);
+      
+      // Select newly pasted items
+      setSelectedItems(new Set(newItems.map(item => item.id)));
+    }
+  }, [clipboardData]);
+
+  // Add keyboard shortcut listeners
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Check if we're in an input field
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      // Copy: Cmd+C (Mac) or Ctrl+C (Windows)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
+        handleCopy(e);
+      }
+      // Paste: Cmd+V (Mac) or Ctrl+V (Windows)
+      else if ((e.metaKey || e.ctrlKey) && e.key === 'v') {
+        handlePaste(e);
+      }
+      // Space for panning
+      else if (e.code === 'Space' && !e.repeat) {
+        setIsSpacePressed(true);
+        e.preventDefault();
+      }
+      // Alt for alternative actions
+      else if (e.code === 'AltLeft' || e.code === 'AltRight') {
+        setIsAltPressed(true);
+        e.preventDefault();
+      }
+    };
+
+    const handleKeyUp = (e) => {
+      if (e.code === 'Space') {
+        setIsSpacePressed(false);
+      } else if (e.code === 'AltLeft' || e.code === 'AltRight') {
+        setIsAltPressed(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [handleCopy, handlePaste]);
+
   return (
     <div className={`whiteboard-container ${isSearchPanelOpen ? 'panel-open' : ''}`} style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div className="whiteboard-header">
@@ -1142,26 +1338,52 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
               mousePosition={mousePosition}
             />
           )}
-          {items.map(item => (
-            <WhiteboardItem
-              key={item.id}
-              item={item}
-              updatePosition={updateItemPosition}
-              updateSize={updateItemSize}
-              updateText={updateItemText}
-              isSelected={selectedItems.has(item.id)}
-              isConnecting={connectingFrom === item.id}
-              isValidTarget={connectingFrom && connectingFrom !== item.id}
-              isGroupSelectMode={selectedItems.size > 1}
-              isExpanding={expandingItemId === item.id}
-              onSelect={(itemId, e) => handleItemClick(itemId, e)}
-              onConnectionStart={(itemId) => handleConnectionStart(itemId)}
-              onDelete={handleDeleteItem}
-              scale={scale}
-              onContextMenu={(e) => handleContextMenu(e, item.id)}
-              onOrganize={organizeNodes}
-            />
-          ))}
+          {/* Render chart items first (in the back) */}
+          {items
+            .filter(item => item.type === 'chart')
+            .map(item => (
+              <WhiteboardItem
+                key={item.id}
+                item={item}
+                updatePosition={updateItemPosition}
+                updateSize={updateItemSize}
+                updateText={updateItemText}
+                isSelected={selectedItems.has(item.id)}
+                isConnecting={connectingFrom === item.id}
+                isValidTarget={connectingFrom && connectingFrom !== item.id}
+                isGroupSelectMode={selectedItems.size > 1}
+                isExpanding={expandingItemId === item.id}
+                onSelect={(itemId, e) => handleItemClick(itemId, e)}
+                onConnectionStart={(itemId) => handleConnectionStart(itemId)}
+                onDelete={handleDeleteItem}
+                scale={scale}
+                onContextMenu={(e) => handleContextMenu(e, item.id)}
+                onOrganize={organizeNodes}
+              />
+            ))}
+          {/* Render non-chart items after (in front) */}
+          {items
+            .filter(item => item.type !== 'chart')
+            .map(item => (
+              <WhiteboardItem
+                key={item.id}
+                item={item}
+                updatePosition={updateItemPosition}
+                updateSize={updateItemSize}
+                updateText={updateItemText}
+                isSelected={selectedItems.has(item.id)}
+                isConnecting={connectingFrom === item.id}
+                isValidTarget={connectingFrom && connectingFrom !== item.id}
+                isGroupSelectMode={selectedItems.size > 1}
+                isExpanding={expandingItemId === item.id}
+                onSelect={(itemId, e) => handleItemClick(itemId, e)}
+                onConnectionStart={(itemId) => handleConnectionStart(itemId)}
+                onDelete={handleDeleteItem}
+                scale={scale}
+                onContextMenu={(e) => handleContextMenu(e, item.id)}
+                onOrganize={organizeNodes}
+              />
+            ))}
         </div>
 
         {selectionBox && (

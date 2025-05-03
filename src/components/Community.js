@@ -4,7 +4,7 @@ import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage'
 import { db } from '../firebase-config';
 import { useAuth } from '../contexts/AuthContext';
 import html2canvas from 'html2canvas';
-import './Community.css';
+import '../styles/Community.css';
 
 const Community = () => {
   const [posts, setPosts] = useState([]);

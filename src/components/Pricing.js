@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Modal from './Modal';
-import './Pricing.css';
+import '../styles/Pricing.css';
 import { useAuth } from '../contexts/AuthContext';
 import StripeService from '../services/stripeService';
 import { USER_TIERS } from '../config/userTiers';
