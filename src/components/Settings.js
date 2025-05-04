@@ -216,44 +216,6 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
     }
   };
 
-  const handleDecryptApiKey = async () => {
-    try {
-      const response = await fetch(`${getApiBaseUrl()}/decryptApiKey`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          userId: user.uid,
-          encryptedData: encryptedApiKey
-        })
-      });
-      // ... rest of the function
-    } catch (error) {
-      console.error('Error decrypting API key:', error);
-      setError('Failed to decrypt API key');
-    }
-  };
-
-  const handleEncryptApiKey = async () => {
-    try {
-      const response = await fetch(`${getApiBaseUrl()}/encryptApiKey`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          userId: user.uid,
-          apiKey: apiKey
-        })
-      });
-      // ... rest of the function
-    } catch (error) {
-      console.error('Error encrypting API key:', error);
-      setError('Failed to encrypt API key');
-    }
-  };
-
   // Early return if no user
   if (!user) {
     return (
