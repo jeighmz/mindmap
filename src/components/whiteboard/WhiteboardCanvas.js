@@ -472,15 +472,20 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
                 generation: uploadResult.metadata.generation
               });
 
+              // Get the download URL before revoking the blob URL
+              const downloadUrl = await getDownloadURL(imageRef);
+              console.log('Got download URL:', downloadUrl.substring(0, 50) + '...');
+
               // Clean up the temporary URL
               console.log('Cleaning up temporary URL...');
               URL.revokeObjectURL(item.imageUrl);
 
-              // Return the item with Firebase storage details
+              // Return the item with Firebase storage details and the new URL
               console.log('Updating item with storage details');
               return {
                 ...item,
                 storageRef: imageRef.fullPath,
+                imageUrl: downloadUrl,
                 pendingUpload: undefined // Remove the pending upload data
               };
             } catch (error) {
@@ -493,11 +498,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
               return item;
             }
           } else {
-            // For already uploaded images, just keep the storage reference
-            return {
-              ...item,
-              imageUrl: undefined // Don't save the URL to Firestore
-            };
+            // For already uploaded images, keep both the storage reference and the URL
+            return item;
           }
         }
         return item;
@@ -517,11 +519,10 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
                 hasStorageRef: !!item.storageRef,
                 hasPendingUpload: !!item.pendingUpload
               });
-              // Only save the storage reference
+              // Save both the storage reference and the URL
               if (!cleanedItem.storageRef) {
                 console.warn('Image item missing storage reference:', cleanedItem);
               }
-              delete cleanedItem.imageUrl; // Don't store the URL
               delete cleanedItem.pendingUpload; // Don't store the pending upload data
             }
             return cleanedItem;
@@ -585,98 +586,108 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       // Process items to restore image URLs
       console.log('Starting to process items...');
       const processedItems = await Promise.all(boardData.content.items.map(async (item) => {
-        if (item.type === 'image' && item.storageRef) {
+        if (item.type === 'image') {
           try {
             console.log('Processing image item:', {
               storageRef: item.storageRef,
-              itemId: item.id
+              itemId: item.id,
+              hasExistingUrl: !!item.imageUrl
             });
 
-            const storage = getStorage();
-            const imageRef = storageRef(storage, item.storageRef);
-
-            // Verify the image metadata first
-            try {
-              const metadata = await getMetadata(imageRef);
-              console.log('Image metadata verified:', {
-                contentType: metadata.contentType,
-                size: metadata.size,
-                timeCreated: metadata.timeCreated,
-                fullPath: metadata.fullPath
-              });
-            } catch (metadataError) {
-              console.error('Failed to verify image metadata:', {
-                error: metadataError,
-                storageRef: item.storageRef,
-                itemId: item.id,
-                errorCode: metadataError.code,
-                errorMessage: metadataError.message
-              });
-              return {
-                ...item,
-                loadError: 'Failed to verify image metadata'
-              };
+            // If we already have a valid URL and storage ref, try to use it first
+            if (item.imageUrl && item.storageRef) {
+              try {
+                // Test if the existing URL is still valid
+                await new Promise((resolve, reject) => {
+                  const img = new Image();
+                  img.onload = resolve;
+                  img.onerror = reject;
+                  img.src = item.imageUrl;
+                });
+                
+                console.log('Existing image URL is valid:', {
+                  itemId: item.id,
+                  urlStart: item.imageUrl.substring(0, 50) + '...'
+                });
+                
+                return item;
+              } catch (error) {
+                console.log('Existing URL invalid, fetching new one:', {
+                  itemId: item.id,
+                  error: error.message
+                });
+              }
             }
 
-            // Get the download URL
-            let imageUrl;
-            try {
-              imageUrl = await getDownloadURL(imageRef);
-              console.log('Image URL retrieved successfully:', {
-                itemId: item.id,
-                urlStart: imageUrl.substring(0, 50) + '...'
-              });
-            } catch (urlError) {
-              console.error('Failed to get download URL:', {
-                error: urlError,
-                storageRef: item.storageRef,
-                itemId: item.id,
-                errorCode: urlError.code,
-                errorMessage: urlError.message
-              });
-              return {
-                ...item,
-                loadError: 'Failed to get image URL'
-              };
-            }
+            // If no valid URL or the existing one failed, get a new one from storage
+            if (item.storageRef) {
+              const storage = getStorage();
+              const imageRef = storageRef(storage, item.storageRef);
 
-            // Verify the image can be loaded
-            try {
-              await new Promise((resolve, reject) => {
-                const img = new Image();
-                img.onload = () => {
-                  console.log('Image loaded successfully:', {
-                    itemId: item.id,
-                    width: img.width,
-                    height: img.height
-                  });
-                  resolve();
+              // Verify the image metadata first
+              try {
+                const metadata = await getMetadata(imageRef);
+                console.log('Image metadata verified:', {
+                  contentType: metadata.contentType,
+                  size: metadata.size,
+                  timeCreated: metadata.timeCreated,
+                  fullPath: metadata.fullPath
+                });
+              } catch (metadataError) {
+                console.error('Failed to verify image metadata:', {
+                  error: metadataError,
+                  storageRef: item.storageRef,
+                  itemId: item.id,
+                  errorCode: metadataError.code,
+                  errorMessage: metadataError.message
+                });
+                return {
+                  ...item,
+                  loadError: 'Failed to verify image metadata'
                 };
-                img.onerror = (error) => {
-                  console.error('Failed to load image:', {
-                    error,
-                    itemId: item.id,
-                    imageUrl: imageUrl.substring(0, 50) + '...'
-                  });
-                  reject(new Error('Failed to load image'));
-                };
-                img.src = imageUrl;
-              });
+              }
 
-              return {
-                ...item,
-                imageUrl,
-                loadError: undefined
-              };
-            } catch (loadError) {
-              console.error('Failed to load image:', {
-                error: loadError,
-                itemId: item.id,
-                storageRef: item.storageRef
+              // Get the download URL
+              try {
+                const imageUrl = await getDownloadURL(imageRef);
+                console.log('Image URL retrieved successfully:', {
+                  itemId: item.id,
+                  urlStart: imageUrl.substring(0, 50) + '...'
+                });
+
+                // Verify the image can be loaded
+                await new Promise((resolve, reject) => {
+                  const img = new Image();
+                  img.onload = resolve;
+                  img.onerror = reject;
+                  img.src = imageUrl;
+                });
+
+                return {
+                  ...item,
+                  imageUrl,
+                  loadError: undefined
+                };
+              } catch (error) {
+                console.error('Failed to load image:', {
+                  error,
+                  itemId: item.id,
+                  storageRef: item.storageRef,
+                  errorCode: error.code,
+                  errorMessage: error.message
+                });
+                return {
+                  ...item,
+                  loadError: error.message || 'Failed to load image'
+                };
+              }
+            } else {
+              console.error('Image item missing storage reference:', {
+                itemId: item.id
               });
               return {
                 ...item,
-                loadError: 'Failed to load image'
+                loadError: 'Missing storage reference'
               };
             }
           } catch (error) {
