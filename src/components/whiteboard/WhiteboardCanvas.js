@@ -587,7 +587,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         if (item.type === 'image' && item.storageRef) {
           try {
             console.log('Processing image item:', {
-              storageRef: item.storageRef
+              storageRef: item.storageRef,
+              itemId: item.id
             });
 
             const storage = getStorage();
@@ -599,42 +600,110 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
               console.log('Image metadata verified:', {
                 contentType: metadata.contentType,
                 size: metadata.size,
-                timeCreated: metadata.timeCreated
+                timeCreated: metadata.timeCreated,
+                fullPath: metadata.fullPath
               });
             } catch (metadataError) {
-              console.error('Failed to verify image metadata:', metadataError);
-              return item;
+              console.error('Failed to verify image metadata:', {
+                error: metadataError,
+                storageRef: item.storageRef,
+                itemId: item.id,
+                errorCode: metadataError.code,
+                errorMessage: metadataError.message
+              });
+              return {
+                ...item,
+                loadError: 'Failed to verify image metadata'
+              };
             }
 
             // Get the download URL
-            const imageUrl = await getDownloadURL(imageRef);
-            console.log('Image URL retrieved successfully');
+            let imageUrl;
+            try {
+              imageUrl = await getDownloadURL(imageRef);
+              console.log('Image URL retrieved successfully:', {
+                itemId: item.id,
+                urlStart: imageUrl.substring(0, 50) + '...'
+              });
+            } catch (urlError) {
+              console.error('Failed to get download URL:', {
+                error: urlError,
+                storageRef: item.storageRef,
+                itemId: item.id,
+                errorCode: urlError.code,
+                errorMessage: urlError.message
+              });
+              return {
+                ...item,
+                loadError: 'Failed to get image URL'
+              };
+            }
 
             // Verify the image can be loaded
             try {
               await new Promise((resolve, reject) => {
                 const img = new Image();
-                img.onload = resolve;
-                img.onerror = reject;
+                img.onload = () => {
+                  console.log('Image loaded successfully:', {
+                    itemId: item.id,
+                    width: img.width,
+                    height: img.height
+                  });
+                  resolve();
+                };
+                img.onerror = (error) => {
+                  console.error('Failed to load image:', {
+                    error,
+                    itemId: item.id,
+                    imageUrl: imageUrl.substring(0, 50) + '...'
+                  });
+                  reject(new Error('Failed to load image'));
+                };
                 img.src = imageUrl;
               });
-              console.log('Image loaded successfully');
-            } catch (loadError) {
-              console.error('Failed to load image:', loadError);
-              return item;
-            }
 
+              return {
+                ...item,
+                imageUrl,
+                loadError: undefined
+              };
+            } catch (loadError) {
+              console.error('Failed to load image:', {
+                error: loadError,
+                itemId: item.id,
+                storageRef: item.storageRef
+              });
+              return {
+                ...item,
+                loadError: 'Failed to load image'
+              };
+            }
+          } catch (error) {
+            console.error('Error processing image item:', {
+              error,
+              itemId: item.id,
+              storageRef: item.storageRef,
+              errorCode: error.code,
+              errorMessage: error.message
+            });
             return {
               ...item,
-              imageUrl
+              loadError: error.message || 'Failed to process image'
             };
-          } catch (error) {
-            console.error('Error processing image item:', error);
-            return item;
           }
         }
         return item;
       }));
+
+      // Log any items with load errors
+      const itemsWithErrors = processedItems.filter(item => item.loadError);
+      if (itemsWithErrors.length > 0) {
+        console.error('Some images failed to load:', itemsWithErrors.map(item => ({
+          itemId: item.id,
+          error: item.loadError,
+          storageRef: item.storageRef
+        })));
+      }
 
       console.log('Setting whiteboard state...');
       setItems(processedItems);

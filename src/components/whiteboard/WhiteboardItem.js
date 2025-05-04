@@ -366,18 +366,40 @@ const WhiteboardItem = ({
           borderRadius: '4px',
           boxShadow: isSelected ? '0 2px 4px rgba(0,0,0,0.1)' : 'none'
         }}>
-          <img
-            src={item.imageUrl}
-            alt="Whiteboard item"
-            style={{
-              maxWidth: '100%',
-              maxHeight: '100%',
-              objectFit: 'contain',
-              userSelect: 'none',
-              pointerEvents: 'none'
-            }}
-            draggable={false}
-          />
+          {item.loadError ? (
+            <div style={{
+              padding: '8px',
+              backgroundColor: '#ffebee',
+              color: '#d32f2f',
+              borderRadius: '4px',
+              fontSize: '12px',
+              textAlign: 'center',
+              width: '100%'
+            }}>
+              <div>⚠️ Failed to load image</div>
+              <div style={{ fontSize: '10px', marginTop: '4px' }}>{item.loadError}</div>
+            </div>
+          ) : (
+            <img
+              src={item.imageUrl}
+              alt="Whiteboard item"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'contain',
+                userSelect: 'none',
+                pointerEvents: 'none'
+              }}
+              draggable={false}
+              onError={(e) => {
+                console.error('Image failed to load in WhiteboardItem:', {
+                  itemId: item.id,
+                  imageUrl: item.imageUrl?.substring(0, 50) + '...',
+                  error: e
+                });
+              }}
+            />
+          )}
         </div>
       );
     }
