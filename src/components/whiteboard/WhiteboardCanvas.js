@@ -15,6 +15,7 @@ import UserMenu from '../UserMenu';
 import PricingTable from '../Pricing';
 import { useNavigate } from 'react-router-dom';
 import { useTierPermissions } from '../../hooks/useTierPermissions';
+import { saveBoard } from '../../services/boardService';
 
 const WhiteboardCanvas = forwardRef((props, ref) => {
   const {
@@ -428,11 +429,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
   const handleSaveWhiteboard = async (name) => {
     try {
-      console.log('Starting whiteboard save process...');
-      console.log('Current items:', items);
+      if (!user) {
+        throw new Error('Please sign in to save whiteboards');
+      }
 
-      // Upload any pending images first
-      console.log('Processing items for pending uploads...');
+      console.log('Processing items for save...');
       const processedItems = await Promise.all(items.map(async (item, index) => {
         if (item.type === 'image') {
           if (item.pendingUpload) {
@@ -445,7 +446,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
             try {
               const storage = getStorage();
               const { file, fileName, contentType } = item.pendingUpload;
-              const imageRef = ref(storage, `mindmap-images/${user.uid}/${fileName}`);
+              const imageRef = storageRef(storage, `mindmap-images/${user.uid}/${fileName}`);
               
               // Upload with metadata
               const metadata = {
@@ -507,31 +508,33 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       console.log('Preparing board data for save...');
       const boardData = {
         name,
-        items: processedItems.map(item => {
-          const cleanedItem = { ...item };
-          if (item.type === 'image') {
-            console.log('Cleaning image item:', {
-              hasStorageRef: !!item.storageRef,
-              hasPendingUpload: !!item.pendingUpload
-            });
-            // Only save the storage reference
-            if (!cleanedItem.storageRef) {
-              console.warn('Image item missing storage reference:', cleanedItem);
+        content: {
+          items: processedItems.map(item => {
+            const cleanedItem = { ...item };
+            if (item.type === 'image') {
+              console.log('Cleaning image item:', {
+                hasStorageRef: !!item.storageRef,
+                hasPendingUpload: !!item.pendingUpload
+              });
+              // Only save the storage reference
+              if (!cleanedItem.storageRef) {
+                console.warn('Image item missing storage reference:', cleanedItem);
+              }
+              delete cleanedItem.imageUrl; // Don't store the URL
+              delete cleanedItem.pendingUpload; // Don't store the pending upload data
             }
-            delete cleanedItem.imageUrl; // Don't store the URL
-            delete cleanedItem.pendingUpload; // Don't store the pending upload data
-          }
-          return cleanedItem;
-        }),
-        connections,
-        userId: user.uid,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+            return cleanedItem;
+          }),
+          connections,
+          scale,
+          panOffset
+        }
       };
 
       console.log('Saving board to Firestore...');
-      const docRef = await addDoc(collection(db, 'whiteboards'), boardData);
-      console.log('Board saved successfully with ID:', docRef.id);
+      const savedBoard = await saveBoard(boardData, user.uid);
+      console.log('Board saved successfully with ID:', savedBoard.id);
+      setCurrentBoardId(savedBoard.id);
       setShowSaveDialog(false);
     } catch (error) {
       console.error('Error saving whiteboard:', {
@@ -557,7 +560,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         throw new Error('Please sign in to load whiteboards');
       }
 
-      const boardDoc = await getDoc(doc(db, 'whiteboards', boardId));
+      const boardDoc = await getDoc(doc(db, 'boards', boardId));
       
       if (!boardDoc.exists()) {
         console.error('Board document not found:', boardId);
@@ -567,108 +570,80 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
       const boardData = boardDoc.data();
       console.log('Retrieved board data:', {
-        itemCount: boardData.items?.length || 0,
-        connectionCount: boardData.connections?.length || 0,
+        itemCount: boardData.content?.items?.length || 0,
+        connectionCount: boardData.content?.connections?.length || 0,
         userId: boardData.userId
       });
 
-      if (!boardData.items) {
-        console.error('Board data is missing items array');
+      if (!boardData.content) {
+        console.error('Board data is missing content object');
         alert('Invalid board data');
         return;
       }
 
       // Process items to restore image URLs
       console.log('Starting to process items...');
-      const processedItems = await Promise.all(boardData.items.map(async (item, index) => {
-        console.log(`Processing item ${index}:`, {
-          type: item.type,
-          hasStorageRef: !!item.storageRef
-        });
-
-        if (item.type === 'image') {
-          if (!item.storageRef) {
-            console.error(`Image item ${index} missing storageRef:`, item);
-            return item;
-          }
-
+      const processedItems = await Promise.all(boardData.content.items.map(async (item) => {
+        if (item.type === 'image' && item.storageRef) {
           try {
-            console.log(`Loading image ${index} from storage:`, {
+            console.log('Processing image item:', {
               storageRef: item.storageRef
             });
 
             const storage = getStorage();
-            const imageRef = ref(storage, item.storageRef);
+            const imageRef = storageRef(storage, item.storageRef);
 
-            // First verify the image exists
+            // Verify the image metadata first
             try {
               const metadata = await getMetadata(imageRef);
-              console.log(`Image ${index} metadata:`, {
+              console.log('Image metadata verified:', {
                 contentType: metadata.contentType,
                 size: metadata.size,
-                fullPath: metadata.fullPath
+                timeCreated: metadata.timeCreated
               });
             } catch (metadataError) {
-              console.error(`Failed to get metadata for image ${index}:`, {
-                error: metadataError,
-                storageRef: item.storageRef
-              });
-              throw metadataError; // Re-throw to be caught by outer try-catch
+              console.error('Failed to verify image metadata:', metadataError);
+              return item;
             }
 
             // Get the download URL
             const imageUrl = await getDownloadURL(imageRef);
-            console.log(`Got download URL for image ${index}:`, {
-              urlStart: imageUrl.substring(0, 50) + '...'
-            });
+            console.log('Image URL retrieved successfully');
 
-            // Create an Image object to verify the URL works
-            await new Promise((resolve, reject) => {
-              const img = new Image();
-              img.onload = () => {
-                console.log(`Successfully loaded image ${index} from URL`);
-                resolve();
-              };
-              img.onerror = (error) => {
-                console.error(`Failed to load image ${index} from URL:`, error);
-                reject(new Error('Failed to load image from URL'));
-              };
-              img.src = imageUrl;
-            });
+            // Verify the image can be loaded
+            try {
+              await new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = resolve;
+                img.onerror = reject;
+                img.src = imageUrl;
+              });
+              console.log('Image loaded successfully');
+            } catch (loadError) {
+              console.error('Failed to load image:', loadError);
+              return item;
+            }
 
             return {
               ...item,
-              imageUrl,
-              width: item.width || 400, // Ensure we have default dimensions
-              height: item.height || 300
+              imageUrl
             };
           } catch (error) {
-            console.error(`Error processing image ${index}:`, {
-              error,
-              errorMessage: error.message,
-              errorCode: error.code,
-              storageRef: item.storageRef
-            });
-            // Return item without image URL if loading fails
-            return {
-              ...item,
-              loadError: error.message
-            };
+            console.error('Error processing image item:', error);
+            return item;
           }
         }
         return item;
       }));
 
-      console.log('Finished processing items:', {
-        totalItems: processedItems.length,
-        imageItems: processedItems.filter(item => item.type === 'image').length,
-        successfulImages: processedItems.filter(item => item.type === 'image' && item.imageUrl).length,
-        failedImages: processedItems.filter(item => item.type === 'image' && item.loadError).length
-      });
-
+      console.log('Setting whiteboard state...');
       setItems(processedItems);
-      setConnections(boardData.connections || []);
-      console.log('Board loaded successfully');
+      setConnections(boardData.content.connections || []);
+      setScale(boardData.content.scale || 1);
+      setPanOffset(boardData.content.panOffset || { x: 0, y: 0 });
+      setCurrentBoardId(boardId);
+
+      console.log('Whiteboard loaded successfully');
     } catch (error) {
       console.error('Error loading whiteboard:', {
         error,
@@ -677,7 +652,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         errorStack: error.stack,
         boardId
       });
-      alert('Failed to load whiteboard: ' + error.message);
+      alert('Failed to load whiteboard. Please try again.');
     }
   };
 
