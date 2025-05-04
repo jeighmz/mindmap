@@ -35,6 +35,20 @@ service cloud.firestore {
       
       allow update, delete: if isOwner(resource.data.userId);
     }
+
+    // Whiteboards collection rules
+    match /whiteboards/{whiteboardId} {
+      // Read rules
+      allow get, list: if isSignedIn();
+      
+      // Write rules
+      allow create: if isSignedIn() 
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasAll(['name', 'items', 'connections', 'userId', 'createdAt', 'updatedAt']);
+      
+      allow update, delete: if isSignedIn() 
+        && resource.data.userId == request.auth.uid;
+    }
     
     // Community posts rules
     match /communityPosts/{postId} {

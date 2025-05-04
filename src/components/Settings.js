@@ -31,24 +31,52 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
       
       if (settingsSnap.exists()) {
         const data = settingsSnap.data();
+        console.log('Retrieved settings - Has API key:', !!data.groqApiKey);
         if (data.groqApiKey) {
-          // Decrypt the API key using the Netlify Function
-          const response = await fetch('/.netlify/functions/decryptApiKey', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: user.uid,
-              encryptedData: data.groqApiKey
-            })
-          });
+          console.log('Retrieved key type:', typeof data.groqApiKey);
+          console.log('Retrieved key length:', data.groqApiKey.length);
+          try {
+            // Try to decode base64 first (for development environment)
+            console.log('Attempting base64 decode...');
+            const decodedKey = atob(data.groqApiKey);
+            console.log('Successfully decoded base64 API key');
+            console.log('Decoded key length:', decodedKey.length);
+            console.log('Decoded key starts with:', decodedKey.substring(0, 4));
+            setGroqApiKey(decodedKey);
+          } catch (e) {
+            console.log('Base64 decode failed:', e.message);
+            if (process.env.NODE_ENV === 'development') {
+              // If we're in development and it's not base64, show the encrypted value
+              console.log('Development mode - Using raw key value');
+              setGroqApiKey(data.groqApiKey);
+            } else {
+              // In production, try to decrypt
+              console.log('Production mode - Attempting to decrypt key...');
+              const response = await fetch('/.netlify/functions/decryptApiKey', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  userId: user.uid,
+                  encryptedData: data.groqApiKey
+                })
+              });
 
-          if (!response.ok) {
-            throw new Error('Failed to decrypt API key');
+              if (!response.ok) {
+                console.error('Decryption failed with status:', response.status);
+                const errorText = await response.text();
+                console.error('Decryption error:', errorText);
+                throw new Error('Failed to decrypt API key');
+              }
+
+              const { decrypted } = await response.json();
+              console.log('Successfully decrypted key');
+              console.log('Decrypted key length:', decrypted.length);
+              console.log('Decrypted key starts with:', decrypted.substring(0, 4));
+              setGroqApiKey(decrypted);
+            }
           }
-
-          const { decrypted } = await response.json();
-          setGroqApiKey(decrypted);
         } else {
+          console.log('No API key found in settings');
           setGroqApiKey('');
         }
       } else {
@@ -81,8 +109,15 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
       return;
     }
 
-    if (!groqApiKey.trim()) {
+    const trimmedApiKey = groqApiKey.trim();
+    if (!trimmedApiKey) {
       setMessage({ type: 'error', text: 'Please enter a valid API key' });
+      return;
+    }
+
+    // Validate API key format
+    if (!trimmedApiKey.startsWith('gsk_')) {
+      setMessage({ type: 'error', text: 'Invalid API key format. Groq API keys should start with "gsk_"' });
       return;
     }
 
@@ -90,29 +125,53 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
     setMessage({ type: '', text: '' });
 
     try {
-      // Encrypt the API key using the Netlify Function
-      const response = await fetch('/.netlify/functions/encryptApiKey', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.uid,
-          apiKey: groqApiKey.trim()
-        })
-      });
+      let settingsData;
+      
+      if (process.env.NODE_ENV === 'development') {
+        // In development, store the API key in base64 format
+        console.log('Development mode - Original API key length:', trimmedApiKey.length);
+        console.log('Development mode - Original API key starts with:', trimmedApiKey.substring(0, 4));
+        const encodedKey = btoa(trimmedApiKey);
+        console.log('Development mode - Base64 encoded key length:', encodedKey.length);
+        console.log('Development mode - Base64 encoded key starts with:', encodedKey.substring(0, 10));
+        settingsData = {
+          groqApiKey: encodedKey,
+          updatedAt: new Date().toISOString()
+        };
+      } else {
+        // In production, encrypt the API key
+        console.log('Production mode - Encrypting API key of length:', trimmedApiKey.length);
+        const response = await fetch('/.netlify/functions/encryptApiKey', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.uid,
+            apiKey: trimmedApiKey
+          })
+        });
 
-      if (!response.ok) {
-        throw new Error('Failed to encrypt API key');
+        if (!response.ok) {
+          console.error('Encryption failed with status:', response.status);
+          const errorText = await response.text();
+          console.error('Encryption error:', errorText);
+          throw new Error('Failed to encrypt API key');
+        }
+
+        const { encrypted } = await response.json();
+        console.log('Production mode - Encrypted key length:', encrypted?.length);
+        console.log('Production mode - Encrypted key format:', typeof encrypted);
+        settingsData = {
+          groqApiKey: encrypted,
+          updatedAt: new Date().toISOString()
+        };
       }
 
-      const { encrypted } = await response.json();
+      console.log('Saving to Firebase - Key type:', typeof settingsData.groqApiKey);
+      console.log('Saving to Firebase - Key length:', settingsData.groqApiKey.length);
       
       const settingsRef = doc(db, 'userSettings', user.uid);
-      const settingsData = {
-        groqApiKey: encrypted,
-        updatedAt: new Date().toISOString()
-      };
-
       await setDoc(settingsRef, settingsData, { merge: true });
+      console.log('Successfully saved settings to Firebase');
       setMessage({ type: 'success', text: 'Settings saved successfully' });
       setTimeout(() => onClose(), 1500);
     } catch (error) {

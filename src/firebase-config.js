@@ -26,16 +26,11 @@ const db = getFirestore(app);
 const storage = getStorage(app);
 
 // Add initialization logging
-console.log('Firebase initialized with config:', {
-  hasApiKey: !!firebaseConfig.apiKey,
-  hasAuthDomain: !!firebaseConfig.authDomain,
-  hasProjectId: !!firebaseConfig.projectId,
+console.log('Firebase Storage initialized with config:', {
   storageBucket: firebaseConfig.storageBucket,
-  services: {
-    auth: !!auth,
-    firestore: !!db,
-    storage: !!storage
-  }
+  isStorageInitialized: !!storage,
+  isAuthInitialized: !!auth,
+  isFirestoreInitialized: !!db
 });
 
 // Export the initialized app if needed elsewhere, or export specific services

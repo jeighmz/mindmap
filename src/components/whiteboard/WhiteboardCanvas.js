@@ -7,7 +7,7 @@ import SavedWhiteboardsMenu from './SavedWhiteboardsMenu';
 import SearchPanel from './SearchPanel';
 // import PublishModal from './PublishModal';  // Temporarily removed
 import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { ref as storageRef, uploadString, getDownloadURL } from 'firebase/storage';
+import { ref as storageRef, uploadString, getDownloadURL, getStorage, uploadBytes, getMetadata } from 'firebase/storage';
 import { db, storage } from '../../firebase-config';
 /* eslint-disable-next-line no-unused-vars */
 import { useAuth } from '../../contexts/AuthContext';
@@ -66,6 +66,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     width: window.innerWidth,
     height: window.innerHeight
   });
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
 
   // Sync with external state if provided
   useEffect(() => {
@@ -425,57 +426,258 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }
   }, []);
 
-  const handleSaveWhiteboard = (name) => {
-    const newBoard = {
-      id: Date.now(),
-      name,
-      savedAt: new Date().toISOString(),
-      data: {
-        items,
-        connections,
-        scale,
-        panOffset
-      }
-    };
+  const handleSaveWhiteboard = async (name) => {
+    try {
+      console.log('Starting whiteboard save process...');
+      console.log('Current items:', items);
 
-    const updatedBoards = [...savedWhiteboards, newBoard];
-    setSavedWhiteboards(updatedBoards);
-    localStorage.setItem('savedWhiteboards', JSON.stringify(updatedBoards));
-    setCurrentBoardId(newBoard.id);
+      // Upload any pending images first
+      console.log('Processing items for pending uploads...');
+      const processedItems = await Promise.all(items.map(async (item, index) => {
+        if (item.type === 'image') {
+          if (item.pendingUpload) {
+            console.log(`Found pending image upload at index ${index}:`, {
+              fileName: item.pendingUpload.fileName,
+              contentType: item.pendingUpload.contentType,
+              hasFile: !!item.pendingUpload.file
+            });
+
+            try {
+              const storage = getStorage();
+              const { file, fileName, contentType } = item.pendingUpload;
+              const imageRef = ref(storage, `mindmap-images/${user.uid}/${fileName}`);
+              
+              // Upload with metadata
+              const metadata = {
+                contentType,
+                customMetadata: {
+                  uploadedBy: user.uid,
+                  uploadedAt: new Date().toISOString()
+                }
+              };
+
+              console.log('Starting Firebase Storage upload:', {
+                path: `mindmap-images/${user.uid}/${fileName}`,
+                contentType,
+                fileSize: file.size,
+                userId: user.uid
+              });
+
+              const uploadResult = await uploadBytes(imageRef, file, metadata);
+              console.log('Upload successful:', {
+                fullPath: uploadResult.ref.fullPath,
+                bucket: uploadResult.ref.bucket,
+                generation: uploadResult.metadata.generation
+              });
+
+              // Clean up the temporary URL
+              console.log('Cleaning up temporary URL...');
+              URL.revokeObjectURL(item.imageUrl);
+
+              // Return the item with Firebase storage details
+              console.log('Updating item with storage details');
+              return {
+                ...item,
+                storageRef: imageRef.fullPath,
+                pendingUpload: undefined // Remove the pending upload data
+              };
+            } catch (error) {
+              console.error('Error uploading image:', {
+                error,
+                errorMessage: error.message,
+                errorCode: error.code,
+                fileName: item.pendingUpload.fileName
+              });
+              return item;
+            }
+          } else {
+            // For already uploaded images, just keep the storage reference
+            return {
+              ...item,
+              imageUrl: undefined // Don't save the URL to Firestore
+            };
+          }
+        }
+        return item;
+      }));
+
+      console.log('All items processed. Updating state...');
+      setItems(processedItems);
+
+      console.log('Preparing board data for save...');
+      const boardData = {
+        name,
+        items: processedItems.map(item => {
+          const cleanedItem = { ...item };
+          if (item.type === 'image') {
+            console.log('Cleaning image item:', {
+              hasStorageRef: !!item.storageRef,
+              hasPendingUpload: !!item.pendingUpload
+            });
+            // Only save the storage reference
+            if (!cleanedItem.storageRef) {
+              console.warn('Image item missing storage reference:', cleanedItem);
+            }
+            delete cleanedItem.imageUrl; // Don't store the URL
+            delete cleanedItem.pendingUpload; // Don't store the pending upload data
+          }
+          return cleanedItem;
+        }),
+        connections,
+        userId: user.uid,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      console.log('Saving board to Firestore...');
+      const docRef = await addDoc(collection(db, 'whiteboards'), boardData);
+      console.log('Board saved successfully with ID:', docRef.id);
+      setShowSaveDialog(false);
+    } catch (error) {
+      console.error('Error saving whiteboard:', {
+        error,
+        errorMessage: error.message,
+        errorCode: error.code,
+        errorStack: error.stack
+      });
+      alert('Failed to save whiteboard. Please try again.');
+    }
   };
 
-  const handleLoadWhiteboard = (boardId, content) => {
-    console.log('handleLoadWhiteboard called with:', { boardId, content });
-    
-    // For personal boards, use the passed content directly
-    if (content) {
-      console.log('Loading personal board with content:', content);
-      console.log('Content structure check:', {
-        hasItems: Array.isArray(content.items),
-        itemsLength: content.items?.length || 0,
-        hasConnections: Array.isArray(content.connections),
-        connectionsLength: content.connections?.length || 0,
-        scale: content.scale,
-        panOffset: content.panOffset
+  const handleLoadWhiteboard = async (boardId) => {
+    try {
+      console.log('Starting to load whiteboard:', boardId);
+      console.log('Current user:', {
+        isSignedIn: !!user,
+        userId: user?.uid,
+        email: user?.email
       });
       
-      setItems(content.items || []);
-      setConnections(content.connections || []);
-      setScale(content.scale || 1);
-      setPanOffset(content.panOffset || { x: 0, y: 0 });
-      setCurrentBoardId(boardId);
-      return;
-    }
+      if (!user) {
+        throw new Error('Please sign in to load whiteboards');
+      }
 
-    // For demo boards stored in localStorage
-    const board = savedWhiteboards.find(b => b.id === boardId);
-    if (board) {
-      console.log('Loading demo board from localStorage:', board);
-      setItems(board.data.items);
-      setConnections(board.data.connections);
-      setScale(board.data.scale);
-      setPanOffset(board.data.panOffset);
-      setCurrentBoardId(boardId);
+      const boardDoc = await getDoc(doc(db, 'whiteboards', boardId));
+      
+      if (!boardDoc.exists()) {
+        console.error('Board document not found:', boardId);
+        alert('Board not found');
+        return;
+      }
+
+      const boardData = boardDoc.data();
+      console.log('Retrieved board data:', {
+        itemCount: boardData.items?.length || 0,
+        connectionCount: boardData.connections?.length || 0,
+        userId: boardData.userId
+      });
+
+      if (!boardData.items) {
+        console.error('Board data is missing items array');
+        alert('Invalid board data');
+        return;
+      }
+
+      // Process items to restore image URLs
+      console.log('Starting to process items...');
+      const processedItems = await Promise.all(boardData.items.map(async (item, index) => {
+        console.log(`Processing item ${index}:`, {
+          type: item.type,
+          hasStorageRef: !!item.storageRef
+        });
+
+        if (item.type === 'image') {
+          if (!item.storageRef) {
+            console.error(`Image item ${index} missing storageRef:`, item);
+            return item;
+          }
+
+          try {
+            console.log(`Loading image ${index} from storage:`, {
+              storageRef: item.storageRef
+            });
+
+            const storage = getStorage();
+            const imageRef = ref(storage, item.storageRef);
+
+            // First verify the image exists
+            try {
+              const metadata = await getMetadata(imageRef);
+              console.log(`Image ${index} metadata:`, {
+                contentType: metadata.contentType,
+                size: metadata.size,
+                fullPath: metadata.fullPath
+              });
+            } catch (metadataError) {
+              console.error(`Failed to get metadata for image ${index}:`, {
+                error: metadataError,
+                storageRef: item.storageRef
+              });
+              throw metadataError; // Re-throw to be caught by outer try-catch
+            }
+
+            // Get the download URL
+            const imageUrl = await getDownloadURL(imageRef);
+            console.log(`Got download URL for image ${index}:`, {
+              urlStart: imageUrl.substring(0, 50) + '...'
+            });
+
+            // Create an Image object to verify the URL works
+            await new Promise((resolve, reject) => {
+              const img = new Image();
+              img.onload = () => {
+                console.log(`Successfully loaded image ${index} from URL`);
+                resolve();
+              };
+              img.onerror = (error) => {
+                console.error(`Failed to load image ${index} from URL:`, error);
+                reject(new Error('Failed to load image from URL'));
+              };
+              img.src = imageUrl;
+            });
+
+            return {
+              ...item,
+              imageUrl,
+              width: item.width || 400, // Ensure we have default dimensions
+              height: item.height || 300
+            };
+          } catch (error) {
+            console.error(`Error processing image ${index}:`, {
+              error,
+              errorMessage: error.message,
+              errorCode: error.code,
+              storageRef: item.storageRef
+            });
+            // Return item without image URL if loading fails
+            return {
+              ...item,
+              loadError: error.message
+            };
+          }
+        }
+        return item;
+      }));
+
+      console.log('Finished processing items:', {
+        totalItems: processedItems.length,
+        imageItems: processedItems.filter(item => item.type === 'image').length,
+        successfulImages: processedItems.filter(item => item.type === 'image' && item.imageUrl).length,
+        failedImages: processedItems.filter(item => item.type === 'image' && item.loadError).length
+      });
+
+      setItems(processedItems);
+      setConnections(boardData.connections || []);
+      console.log('Board loaded successfully');
+    } catch (error) {
+      console.error('Error loading whiteboard:', {
+        error,
+        errorMessage: error.message,
+        errorCode: error.code,
+        errorStack: error.stack,
+        boardId
+      });
+      alert('Failed to load whiteboard: ' + error.message);
     }
   };
 
@@ -1199,39 +1401,117 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const handleGenerateMindMap = async () => {
     setIsGeneratingMindMap(true);
     try {
-      // Create a central node
+      // Fetch the Groq API key from Firebase
+      if (!user?.uid) {
+        throw new Error('Please sign in to generate mind maps');
+      }
+
+      const settingsRef = doc(db, 'userSettings', user.uid);
+      const settingsSnap = await getDoc(settingsRef);
+      
+      console.log('Settings document exists:', settingsSnap.exists());
+      
+      if (!settingsSnap.exists() || !settingsSnap.data().groqApiKey) {
+        throw new Error('Please set your Groq API key in Settings first');
+      }
+
+      // Get the API key and decrypt it
+      const encryptedApiKey = settingsSnap.data().groqApiKey;
+      console.log('Retrieved encrypted key type:', typeof encryptedApiKey);
+      console.log('Retrieved encrypted key length:', encryptedApiKey.length);
+      console.log('Retrieved encrypted key starts with:', encryptedApiKey.substring(0, 10));
+      
+      let groqApiKey;
+
+      try {
+        // Try to decode base64 first (for development environment)
+        console.log('Attempting base64 decode...');
+        groqApiKey = atob(encryptedApiKey);
+        console.log('Successfully decoded base64 API key');
+        console.log('Decoded key length:', groqApiKey.length);
+        console.log('Decoded key starts with:', groqApiKey.substring(0, 4));
+      } catch (e) {
+        console.log('Base64 decode failed:', e.message);
+        console.log('Attempting to decrypt using Netlify function...');
+        // If base64 decode fails, try the decryption endpoint
+        const decryptResponse = await fetch('/.netlify/functions/decryptApiKey', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.uid,
+            encryptedData: encryptedApiKey
+          })
+        });
+
+        if (!decryptResponse.ok) {
+          console.error('Decryption failed with status:', decryptResponse.status);
+          const errorText = await decryptResponse.text();
+          console.error('Decryption error:', errorText);
+          throw new Error('Failed to decrypt API key');
+        }
+
+        const { decrypted } = await decryptResponse.json();
+        groqApiKey = decrypted;
+        console.log('Successfully decrypted API key');
+        console.log('Decrypted key length:', groqApiKey.length);
+        console.log('Decrypted key starts with:', groqApiKey.substring(0, 4));
+      }
+
+      if (!groqApiKey?.trim()) {
+        console.error('API key is empty or only whitespace after decryption');
+        throw new Error('Invalid API key format');
+      }
+
+      if (!groqApiKey.startsWith('gsk_')) {
+        console.error('API key does not start with gsk_');
+        throw new Error('Invalid API key format. API key should start with "gsk_"');
+      }
+
+      // Create a central node as a circle
       const centralNode = {
         id: Date.now(),
-        type: 'sticky',
+        type: 'circle',
         text: mindMapPrompt,
         position: { 
-          x: windowDimensions.width/2 - 100, 
-          y: windowDimensions.height/2 - 100 
+          x: windowDimensions.width/2 - 75, 
+          y: windowDimensions.height/2 - 75 
         },
-        width: 200,
-        height: 200
+        width: 150,
+        height: 150
       };
       
       // Add the central node
       setItems(prevItems => [...prevItems, centralNode]);
+      
+      // Model configuration
+      const MODEL_ID = 'llama-3.3-70b-versatile';
+      console.log('Using Groq model:', MODEL_ID);
+      console.log('Model capabilities:', {
+        contextWindow: '128K tokens',
+        maxCompletionTokens: '32,768 tokens',
+        type: 'Production model'
+      });
+      
+      console.log('Making API request with key starting with:', groqApiKey.substring(0, 4));
+      console.log('API key length for request:', groqApiKey.length);
       
       // Call Groq API to generate branches
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.REACT_APP_GROQ_API_KEY}`
+          'Authorization': `Bearer ${groqApiKey}`
         },
         body: JSON.stringify({
-          model: 'llama2-70b-4096',
+          model: MODEL_ID,
           messages: [
             {
               role: 'system',
-              content: 'You are a mind map generator. Generate 5-7 main branches for a mind map on the given topic. Each branch should be a key concept or aspect of the topic. Return ONLY the branch names, one per line, with no numbers, bullets, or other formatting.'
+              content: 'You are a mind map generator. First, generate 5-7 main branches for a mind map on the given topic. Then, for each main branch, generate 2-3 sub-branches that explore that aspect in more detail. Format your response as follows:\n\nMAIN: [Main Branch 1]\nSUB: [Sub Branch 1.1]\nSUB: [Sub Branch 1.2]\n\nMAIN: [Main Branch 2]\nSUB: [Sub Branch 2.1]\nSUB: [Sub Branch 2.2]\n\nAnd so on. Each line should start with either MAIN: or SUB: to indicate the branch type.'
             },
             {
               role: 'user',
-              content: `Generate main branches for a mind map about: ${mindMapPrompt}`
+              content: `Generate main branches and sub-branches for a mind map about: ${mindMapPrompt}`
             }
           ],
           temperature: 0.7,
@@ -1240,42 +1520,84 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate mind map branches');
+        const errorData = await response.json().catch(() => ({}));
+        console.error('API Error Response:', errorData);
+        console.error('API Error Status:', response.status);
+        console.error('API Error Status Text:', response.statusText);
+        throw new Error(errorData.error?.message || 'Failed to generate mind map branches');
       }
 
       const data = await response.json();
+      console.log('Successfully received API response');
+      console.log('Model used in response:', data.model);
+      console.log('Usage statistics:', data.usage);
+      
       const branches = data.choices[0].message.content
         .split('\n')
         .filter(line => line.trim())
-        .slice(0, 7); // Take max 7 branches
+        .map(line => {
+          const [type, text] = line.split(': ');
+          return { type, text: text.trim() };
+        });
+
+      console.log('Generated branches count:', branches.length);
 
       // Calculate positions for branches in a circular layout
+      const mainBranches = branches.filter(b => b.type === 'MAIN');
       const radius = Math.min(windowDimensions.width, windowDimensions.height) * 0.2; // 20% of the smaller dimension
-      const angleStep = (2 * Math.PI) / branches.length;
+      const angleStep = (2 * Math.PI) / mainBranches.length;
 
       // Add branches and connections
       const newItems = [];
       const newConnections = [];
 
-      branches.forEach((branch, index) => {
+      mainBranches.forEach((branch, index) => {
         const angle = index * angleStep;
-        const branchNode = {
+        const mainBranchNode = {
           id: Date.now() + index + 1,
-          type: 'sticky',
-          text: branch,
+          type: 'rectangle',
+          text: branch.text,
           position: {
             x: centralNode.position.x + radius * Math.cos(angle),
             y: centralNode.position.y + radius * Math.sin(angle)
           },
-          width: 150,
-          height: 100
+          width: 120,
+          height: 80
         };
 
-        newItems.push(branchNode);
+        newItems.push(mainBranchNode);
         newConnections.push({
           id: `connection-${Date.now()}-${index}`,
           from: centralNode.id,
-          to: branchNode.id
+          to: mainBranchNode.id
+        });
+
+        // Add sub-branches for this main branch
+        const subBranches = branches
+          .filter(b => b.type === 'SUB')
+          .slice(index * 2, index * 2 + 2); // Get 2 sub-branches for each main branch
+
+        subBranches.forEach((subBranch, subIndex) => {
+          const subAngle = angle - 0.3 + (subIndex * 0.6); // Spread sub-branches around main branch
+          const subRadius = radius * 0.7; // Place sub-branches closer to main branch
+          const subBranchNode = {
+            id: Date.now() + index + 1 + (subIndex + 1) * 1000,
+            type: 'rectangle',
+            text: subBranch.text,
+            position: {
+              x: mainBranchNode.position.x + subRadius * Math.cos(subAngle),
+              y: mainBranchNode.position.y + subRadius * Math.sin(subAngle)
+            },
+            width: 100,
+            height: 60
+          };
+
+          newItems.push(subBranchNode);
+          newConnections.push({
+            id: `connection-${Date.now()}-${index}-${subIndex}`,
+            from: mainBranchNode.id,
+            to: subBranchNode.id
+          });
         });
       });
 
@@ -1285,7 +1607,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       setIsMindMapPanelOpen(false);
     } catch (error) {
       console.error('Error generating mind map:', error);
-      alert('Failed to generate mind map. Please try again.');
+      alert(error.message || 'Failed to generate mind map. Please try again.');
     } finally {
       setIsGeneratingMindMap(false);
       setMindMapPrompt('');
