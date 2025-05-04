@@ -5,6 +5,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase-config';
 import { useAuth } from '../../contexts/AuthContext';
 import '../../styles/SearchPanel.css';
+import { getApiBaseUrl } from '../../utils/api';
 
 const SearchPanel = ({ highlightedItems, onClose }) => {
   const { user } = useAuth();
@@ -52,7 +53,7 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
 
     try {
       // Decrypt the API key using the Netlify Function
-      const response = await fetch('/.netlify/functions/decryptApiKey', {
+      const decryptResponse = await fetch(`${getApiBaseUrl()}/decryptApiKey`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -61,11 +62,11 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
         })
       });
 
-      if (!response.ok) {
+      if (!decryptResponse.ok) {
         throw new Error('Failed to decrypt API key');
       }
 
-      const { decrypted } = await response.json();
+      const { decrypted } = await decryptResponse.json();
       return decrypted;
     } catch (error) {
       console.error('Error decrypting API key:', error);

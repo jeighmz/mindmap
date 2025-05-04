@@ -16,6 +16,7 @@ import PricingTable from '../Pricing';
 import { useNavigate } from 'react-router-dom';
 import { useTierPermissions } from '../../hooks/useTierPermissions';
 import { saveBoard } from '../../services/boardService';
+import { getApiBaseUrl } from '../../utils/api';
 
 const WhiteboardCanvas = forwardRef((props, ref) => {
   const {
@@ -1478,7 +1479,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         console.log('Base64 decode failed:', e.message);
         console.log('Attempting to decrypt using Netlify function...');
         // If base64 decode fails, try the decryption endpoint
-        const decryptResponse = await fetch('/.netlify/functions/decryptApiKey', {
+        const decryptResponse = await fetch(`${getApiBaseUrl()}/decryptApiKey`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

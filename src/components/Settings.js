@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { USER_TIERS, TIER_FEATURES } from '../config/userTiers';
 import Modal from './Modal';
 import '../styles/Settings.css';
+import { getApiBaseUrl } from '../utils/api';
 
 export default function Settings({ isOpen, onClose, onUpgradeClick }) {
   const { user, userTier } = useAuth();
@@ -12,6 +13,7 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [error, setError] = useState('');
 
   const loadSettings = useCallback(async () => {
     if (!user?.uid) {
@@ -52,9 +54,11 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
             } else {
               // In production, try to decrypt
               console.log('Production mode - Attempting to decrypt key...');
-              const response = await fetch('/.netlify/functions/decryptApiKey', {
+              const response = await fetch(`${getApiBaseUrl()}/decryptApiKey`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                  'Content-Type': 'application/json'
+                },
                 body: JSON.stringify({
                   userId: user.uid,
                   encryptedData: data.groqApiKey
@@ -141,9 +145,11 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
       } else {
         // In production, encrypt the API key
         console.log('Production mode - Encrypting API key of length:', trimmedApiKey.length);
-        const response = await fetch('/.netlify/functions/encryptApiKey', {
+        const response = await fetch(`${getApiBaseUrl()}/encryptApiKey`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json'
+          },
           body: JSON.stringify({
             userId: user.uid,
             apiKey: trimmedApiKey
@@ -207,6 +213,44 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
     onClose();
     if (typeof onUpgradeClick === 'function') {
       onUpgradeClick();
+    }
+  };
+
+  const handleDecryptApiKey = async () => {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/decryptApiKey`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          userId: user.uid,
+          encryptedData: encryptedApiKey
+        })
+      });
+      // ... rest of the function
+    } catch (error) {
+      console.error('Error decrypting API key:', error);
+      setError('Failed to decrypt API key');
+    }
+  };
+
+  const handleEncryptApiKey = async () => {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/encryptApiKey`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          userId: user.uid,
+          apiKey: apiKey
+        })
+      });
+      // ... rest of the function
+    } catch (error) {
+      console.error('Error encrypting API key:', error);
+      setError('Failed to encrypt API key');
     }
   };
 

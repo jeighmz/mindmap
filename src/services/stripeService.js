@@ -2,6 +2,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import { db } from '../firebase-config';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { USER_TIERS, TIER_FEATURES } from '../config/userTiers';
+import { getApiBaseUrl } from '../utils/api';
 
 // Ensure Stripe is loaded only once
 let stripePromise;
@@ -16,11 +17,11 @@ const getStripe = () => {
 };
 
 // Get the base URL for API calls
-const getApiUrl = () => {
+const getBaseUrl = () => {
   if (process.env.NODE_ENV === 'development') {
-    return 'http://localhost:8888/.netlify/functions';
+    return 'http://localhost:8888/api';
   }
-  return '/.netlify/functions';
+  return '/api';
 };
 
 // Map our tiers to Stripe product IDs
@@ -64,7 +65,7 @@ class StripeService {
       const userData = userDoc.data();
 
       // Create checkout session through Firebase Function
-      const response = await fetch(`${getApiUrl()}/create-checkout-session`, {
+      const response = await fetch(`${getBaseUrl()}/create-checkout-session`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -120,7 +121,7 @@ class StripeService {
         throw new Error('No active subscription found for this user');
       }
 
-      const response = await fetch(`${getApiUrl()}/create-portal-session`, {
+      const response = await fetch(`${getBaseUrl()}/create-portal-session`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -175,7 +176,7 @@ class StripeService {
     try {
       if (!userId) throw new Error('User ID is required');
 
-      const response = await fetch(`${getApiUrl()}/cancel-subscription`, {
+      const response = await fetch(`${getBaseUrl()}/cancel-subscription`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
