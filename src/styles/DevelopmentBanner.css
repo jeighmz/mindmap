@@ -1,0 +1,40 @@
+.development-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background-color: #ffd700;
+  color: #333;
+  text-align: center;
+  padding: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 10000;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Adjust the whiteboard header position */
+.whiteboard-header {
+  top: 35px !important;
+}
+
+/* Adjust the whiteboard canvas margin */
+.whiteboard-canvas {
+  margin-top: 95px !important;
+}
+
+/* Adjust for mobile */
+@media (max-width: 768px) {
+  .development-banner {
+    padding: 6px;
+    font-size: 12px;
+  }
+  
+  .whiteboard-header {
+    top: 31px !important;
+  }
+  
+  .whiteboard-canvas {
+    margin-top: 81px !important;
+  }
+} 
