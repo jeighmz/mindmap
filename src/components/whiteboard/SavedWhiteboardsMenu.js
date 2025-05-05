@@ -100,12 +100,17 @@ const SavedWhiteboardsMenu = ({
   };
 
   const cleanItem = (item) => {
+    if (!item || typeof item !== 'object') {
+      console.warn('Invalid item:', item);
+      return null;
+    }
+
     if (item.type === 'chart') {
       return cleanChartConfig(item);
     }
 
     if (item.type === 'image') {
-      return {
+      const cleanedImage = {
         id: String(item.id || Date.now()),
         type: 'image',
         position: {
@@ -113,12 +118,24 @@ const SavedWhiteboardsMenu = ({
           y: Number(item.position?.y || 0)
         },
         width: Number(item.width || 400),
-        height: Number(item.height || 300),
-        imageUrl: String(item.imageUrl || '')
+        height: Number(item.height || 300)
       };
+
+      // Always preserve the storageRef for images
+      if (item.storageRef) {
+        cleanedImage.storageRef = String(item.storageRef);
+      } else {
+        console.error('Image item missing storage reference:', {
+          itemId: cleanedImage.id,
+          type: cleanedImage.type,
+          position: cleanedImage.position
+        });
+      }
+
+      return cleanedImage;
     }
 
-    // Clean non-chart items
+    // Clean non-chart items (rectangles, circles, sticky notes)
     return {
       id: String(item.id || Date.now()),
       type: String(item.type || 'sticky'),

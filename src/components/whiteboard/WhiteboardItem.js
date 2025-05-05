@@ -362,43 +362,72 @@ const WhiteboardItem = ({
           alignItems: 'center',
           justifyContent: 'center',
           overflow: 'hidden',
-          backgroundColor: 'transparent',
+          backgroundColor: item.errorOverlay ? '#ffebee' : 'transparent',
           borderRadius: '4px',
-          boxShadow: isSelected ? '0 2px 4px rgba(0,0,0,0.1)' : 'none'
+          boxShadow: isSelected ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+          position: 'relative'
         }}>
-          {item.loadError ? (
+          <img
+            src={item.imageUrl}
+            alt={item.loadError ? 'Failed to load image' : 'Whiteboard item'}
+            style={{
+              maxWidth: '100%',
+              maxHeight: '100%',
+              objectFit: 'contain',
+              userSelect: 'none',
+              pointerEvents: 'none',
+              opacity: item.errorOverlay ? 0.5 : 1
+            }}
+            draggable={false}
+            onError={(e) => {
+              console.error('Image failed to load in WhiteboardItem:', {
+                itemId: item.id,
+                imageUrl: item.imageUrl?.substring(0, 50) + '...',
+                error: e
+              });
+            }}
+          />
+          {item.errorOverlay && (
             <div style={{
-              padding: '8px',
-              backgroundColor: '#ffebee',
-              color: '#d32f2f',
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              backgroundColor: 'rgba(255, 255, 255, 0.9)',
+              padding: '12px',
               borderRadius: '4px',
-              fontSize: '12px',
-              textAlign: 'center',
-              width: '100%'
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              maxWidth: '90%',
+              textAlign: 'center'
             }}>
-              <div>⚠️ Failed to load image</div>
-              <div style={{ fontSize: '10px', marginTop: '4px' }}>{item.loadError}</div>
+              <div style={{ fontSize: '24px', marginBottom: '8px' }}>⚠️</div>
+              <div style={{ 
+                color: '#d32f2f',
+                fontWeight: 'bold',
+                marginBottom: '4px'
+              }}>
+                Image Load Error
+              </div>
+              <div style={{ 
+                fontSize: '12px',
+                color: '#666',
+                wordBreak: 'break-word'
+              }}>
+                {item.loadError}
+              </div>
+              {item.errorDetails && (
+                <div style={{
+                  fontSize: '10px',
+                  color: '#999',
+                  marginTop: '8px',
+                  wordBreak: 'break-word'
+                }}>
+                  Storage path: {item.errorDetails.storageRef}
+                  <br />
+                  Time: {new Date(item.errorDetails.timestamp).toLocaleString()}
+                </div>
+              )}
             </div>
-          ) : (
-            <img
-              src={item.imageUrl}
-              alt="Whiteboard item"
-              style={{
-                maxWidth: '100%',
-                maxHeight: '100%',
-                objectFit: 'contain',
-                userSelect: 'none',
-                pointerEvents: 'none'
-              }}
-              draggable={false}
-              onError={(e) => {
-                console.error('Image failed to load in WhiteboardItem:', {
-                  itemId: item.id,
-                  imageUrl: item.imageUrl?.substring(0, 50) + '...',
-                  error: e
-                });
-              }}
-            />
           )}
         </div>
       );

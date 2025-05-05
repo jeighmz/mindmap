@@ -22,7 +22,7 @@ const ToolbarItem = ({ type, icon, chartType }) => {
       return;
     }
 
-    console.log('Starting image addition process...');
+    console.log('Starting image addition process...', { userId: user.uid });
 
     const input = document.createElement('input');
     input.type = 'file';
@@ -30,72 +30,108 @@ const ToolbarItem = ({ type, icon, chartType }) => {
     input.onchange = async (e) => {
       const file = e.target.files[0];
       if (file) {
-        console.log('File selected:', {
-          name: file.name,
-          type: file.type,
-          size: file.size
-        });
-
         try {
           setIsUploading(true);
+          console.log('File selected:', {
+            name: file.name,
+            type: file.type,
+            size: file.size
+          });
           
-          // Validate file type
+          // Validate file type and size
           if (!file.type.startsWith('image/')) {
             throw new Error('Please select an image file');
           }
+          if (file.size > 10 * 1024 * 1024) { // 10MB limit
+            throw new Error('Image size must be less than 10MB');
+          }
 
-          console.log('Creating temporary URL for image...');
+          // Create temporary URL for preview
           const tempUrl = URL.createObjectURL(file);
-          console.log('Temporary URL created:', tempUrl);
-
+          
           // Create a new image element to get dimensions
-          console.log('Loading image to get dimensions...');
           const img = new Image();
-          img.onload = () => {
-            console.log('Image loaded, dimensions:', {
-              originalWidth: img.width,
-              originalHeight: img.height
-            });
-
-            const newItem = {
-              type: 'image',
-              imageUrl: tempUrl,
-              width: Math.min(400, img.width),
-              height: Math.min(300, img.height * (Math.min(400, img.width) / img.width)),
-              position: { x: 100, y: 100 },
-              // Store the file for later upload
-              pendingUpload: {
-                file,
-                fileName: `${Date.now()}_${file.name}`,
-                contentType: file.type
+          img.onload = async () => {
+            try {
+              // Calculate dimensions while maintaining aspect ratio
+              const maxWidth = 400;
+              const maxHeight = 300;
+              let width = img.width;
+              let height = img.height;
+              
+              if (width > maxWidth) {
+                height = (maxWidth / width) * height;
+                width = maxWidth;
               }
-            };
-
-            console.log('Created new image item:', {
-              dimensions: {
-                width: newItem.width,
-                height: newItem.height
-              },
-              pendingUpload: {
-                fileName: newItem.pendingUpload.fileName,
-                contentType: newItem.pendingUpload.contentType,
-                hasFile: !!newItem.pendingUpload.file
+              if (height > maxHeight) {
+                width = (maxHeight / height) * width;
+                height = maxHeight;
               }
-            });
 
-            // Dispatch a custom event to notify WhiteboardCanvas
-            const event = new CustomEvent('addImageItem', { detail: newItem });
-            window.dispatchEvent(event);
-            console.log('Dispatched addImageItem event');
+              // Create sanitized filename
+              const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+              const storagePath = `mindmap-images/${user.uid}/${fileName}`;
+              
+              // Upload the file immediately
+              const storage = getStorage();
+              const imageRef = ref(storage, storagePath);
+              
+              console.log('📦 STORAGE: Starting immediate image upload:', {
+                path: storagePath,
+                contentType: file.type,
+                fileSize: file.size
+              });
+
+              // Upload with metadata
+              const uploadResult = await uploadBytes(imageRef, file, {
+                contentType: file.type,
+                customMetadata: {
+                  uploadedBy: user.uid,
+                  uploadedAt: new Date().toISOString(),
+                  originalName: fileName
+                }
+              });
+
+              if (!uploadResult || !uploadResult.ref) {
+                throw new Error('Storage upload failed - no reference returned');
+              }
+
+              // Get the download URL
+              const downloadUrl = await getDownloadURL(imageRef);
+
+              console.log('📦 STORAGE: Upload completed successfully:', {
+                path: uploadResult.ref.fullPath,
+                contentType: uploadResult.metadata.contentType,
+                size: uploadResult.metadata.size
+              });
+
+              const newItem = {
+                type: 'image',
+                imageUrl: downloadUrl,
+                width,
+                height,
+                position: { x: 100, y: 100 },
+                storageRef: storagePath
+              };
+
+              console.log('Dispatching new image item:', {
+                id: Date.now(),
+                storageRef: newItem.storageRef,
+                hasUrl: !!newItem.imageUrl
+              });
+
+              // Dispatch event to add image to canvas
+              const event = new CustomEvent('addImageItem', { detail: newItem });
+              window.dispatchEvent(event);
+            } catch (error) {
+              console.error('📦 STORAGE ERROR: Failed to upload image:', error);
+              alert('Failed to upload image: ' + error.message);
+              URL.revokeObjectURL(tempUrl);
+            }
           };
           img.src = tempUrl;
         } catch (error) {
-          console.error('Error creating image item:', {
-            error,
-            errorMessage: error.message,
-            errorCode: error.code,
-            fileName: file.name
-          });
+          console.error('Error preparing image:', error);
           alert('Failed to add image: ' + error.message);
         } finally {
           setIsUploading(false);
