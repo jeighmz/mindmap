@@ -59,6 +59,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isSavedBoardsMenuOpen, setIsSavedBoardsMenuOpen] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
+  const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
+  const [isInstructionsCollapsed, setIsInstructionsCollapsed] = useState(false);
   const navigate = useNavigate();
   const { userTier } = useAuth();
   const { canExport, getCurrentTier } = useTierPermissions();
@@ -867,6 +869,142 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     };
   }, [updateMultipleItemPositions]);
 
+  // Add expand functionality
+  useEffect(() => {
+    window.expandSelectedConcept = async (itemId, text) => {
+      if (!text) return;
+      
+      setExpandingItemId(itemId);
+      setIsExpandingConcept(true);
+
+      try {
+        // Get the item being expanded
+        const sourceItem = items.find(item => item.id === itemId);
+        if (!sourceItem) throw new Error('Source item not found');
+
+        // Fetch the Groq API key from Firebase
+        if (!user?.uid) {
+          throw new Error('Please sign in to expand concepts');
+        }
+
+        const settingsRef = doc(db, 'userSettings', user.uid);
+        const settingsSnap = await getDoc(settingsRef);
+        
+        if (!settingsSnap.exists() || !settingsSnap.data().groqApiKey) {
+          throw new Error('Please set your Groq API key in Settings first');
+        }
+
+        // Get and decrypt the API key
+        const encryptedApiKey = settingsSnap.data().groqApiKey;
+        let groqApiKey;
+
+        try {
+          groqApiKey = atob(encryptedApiKey);
+        } catch (e) {
+          const decryptResponse = await fetch(`${getApiBaseUrl()}/decryptApiKey`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: user.uid,
+              encryptedData: encryptedApiKey
+            })
+          });
+
+          if (!decryptResponse.ok) {
+            throw new Error('Failed to decrypt API key');
+          }
+
+          const { decrypted } = await decryptResponse.json();
+          groqApiKey = decrypted;
+        }
+
+        if (!groqApiKey?.trim() || !groqApiKey.startsWith('gsk_')) {
+          throw new Error('Invalid API key format');
+        }
+
+        // Call Groq API to generate related concepts
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${groqApiKey}`
+          },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a mind map assistant. Generate 5 related concepts or ideas that expand upon the given concept. Each concept should be brief (2-5 words) but meaningful. Format your response as a simple list with one concept per line.'
+              },
+              {
+                role: 'user',
+                content: `Generate 5 related concepts that expand upon this idea: ${text}`
+              }
+            ],
+            temperature: 0.7,
+            max_tokens: 500
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error?.message || 'Failed to generate concepts');
+        }
+
+        const data = await response.json();
+        const concepts = data.choices[0].message.content
+          .split('\n')
+          .filter(line => line.trim())
+          .map(line => line.replace(/^\d+\.\s*/, '').trim()); // Remove numbering if present
+
+        // Calculate positions for new items in a circular layout
+        const radius = 200; // Distance from center item
+        const angleStep = (2 * Math.PI) / concepts.length;
+        
+        // Create new items and connections
+        const newItems = [];
+        const newConnections = [];
+
+        concepts.forEach((concept, i) => {
+          const angle = i * angleStep;
+          const newItem = {
+            id: Date.now() + i,
+            type: 'rectangle',
+            text: concept,
+            position: {
+              x: sourceItem.position.x + radius * Math.cos(angle),
+              y: sourceItem.position.y + radius * Math.sin(angle)
+            },
+            width: 120,
+            height: 80
+          };
+
+          newItems.push(newItem);
+          newConnections.push({
+            id: `connection-${Date.now()}-${i}`,
+            from: itemId,
+            to: newItem.id
+          });
+        });
+
+        // Update state with new items and connections
+        setItems(prevItems => [...prevItems, ...newItems]);
+        setConnections(prevConnections => [...prevConnections, ...newConnections]);
+
+      } catch (error) {
+        console.error('Error expanding concept:', error);
+        alert(error.message || 'Failed to expand concept. Please try again.');
+      } finally {
+        setExpandingItemId(null);
+        setIsExpandingConcept(false);
+      }
+    };
+
+    return () => {
+      window.expandSelectedConcept = undefined;
+    };
+  }, [items, user, getApiBaseUrl]);
+
   const handleCloseMindMapPanel = () => {
     setIsMindMapPanelOpen(false);
     setMindMapPrompt(''); // Reset the prompt when closing
@@ -1068,50 +1206,163 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     const currentTier = getCurrentTier();
     
     return (
-      <div className="export-menu">
+      <div className="export-menu" style={{
+        padding: '8px 0',
+        background: '#fff',
+        borderRadius: '8px',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+        minWidth: '220px'
+      }}>
         <button 
           onClick={() => { exportToPNG(); toggleExportMenu(); }}
-          className={canExport('png') ? '' : 'disabled'}
+          className={`export-menu-item ${canExport('png') ? '' : 'disabled'}`}
           disabled={!canExport('png')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            width: '100%',
+            padding: '8px 16px',
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
+            fontSize: '14px',
+            color: canExport('png') ? '#333' : '#999',
+            ':hover': {
+              backgroundColor: canExport('png') ? '#f5f5f5' : 'transparent'
+            }
+          }}
         >
-          🖼️ Export as PNG
-          {!canExport('png') && <span className="upgrade-note">Available in Free tier</span>}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21 15 16 10 5 21"/>
+          </svg>
+          <span style={{ flex: 1 }}>Export as PNG</span>
+          {!canExport('png') && <span className="upgrade-note" style={{ fontSize: '12px', color: '#666' }}>Free tier</span>}
         </button>
 
         <button 
           onClick={() => { exportToPDF(); toggleExportMenu(); }}
-          className={canExport('pdf') ? '' : 'disabled'}
+          className={`export-menu-item ${canExport('pdf') ? '' : 'disabled'}`}
           disabled={!canExport('pdf')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            width: '100%',
+            padding: '8px 16px',
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
+            fontSize: '14px',
+            color: canExport('pdf') ? '#333' : '#999',
+            ':hover': {
+              backgroundColor: canExport('pdf') ? '#f5f5f5' : 'transparent'
+            }
+          }}
         >
-          📄 Export as PDF
-          {!canExport('pdf') && <span className="upgrade-note">Available in Starter tier</span>}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          <span style={{ flex: 1 }}>Export as PDF</span>
+          {!canExport('pdf') && <span className="upgrade-note" style={{ fontSize: '12px', color: '#666' }}>Starter tier</span>}
         </button>
 
         <button 
           onClick={() => { exportToMarkdown(); toggleExportMenu(); }}
-          className={canExport('markdown') ? '' : 'disabled'}
+          className={`export-menu-item ${canExport('markdown') ? '' : 'disabled'}`}
           disabled={!canExport('markdown')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            width: '100%',
+            padding: '8px 16px',
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
+            fontSize: '14px',
+            color: canExport('markdown') ? '#333' : '#999',
+            ':hover': {
+              backgroundColor: canExport('markdown') ? '#f5f5f5' : 'transparent'
+            }
+          }}
         >
-          📝 Export as Markdown
-          {!canExport('markdown') && <span className="upgrade-note">Available in Starter tier</span>}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            <path d="M7 8h10M7 12h4"/>
+          </svg>
+          <span style={{ flex: 1 }}>Export as Markdown</span>
+          {!canExport('markdown') && <span className="upgrade-note" style={{ fontSize: '12px', color: '#666' }}>Starter tier</span>}
         </button>
 
         <button 
           onClick={() => { exportToJSON(); toggleExportMenu(); }}
-          className={canExport('json') ? '' : 'disabled'}
+          className={`export-menu-item ${canExport('json') ? '' : 'disabled'}`}
           disabled={!canExport('json')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            width: '100%',
+            padding: '8px 16px',
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
+            fontSize: '14px',
+            color: canExport('json') ? '#333' : '#999',
+            ':hover': {
+              backgroundColor: canExport('json') ? '#f5f5f5' : 'transparent'
+            }
+          }}
         >
-          🔧 Export as JSON
-          {!canExport('json') && <span className="upgrade-note">Available in Pro tier</span>}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <path d="M10 12a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2"/>
+            <path d="M14 16a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2"/>
+          </svg>
+          <span style={{ flex: 1 }}>Export as JSON</span>
+          {!canExport('json') && <span className="upgrade-note" style={{ fontSize: '12px', color: '#666' }}>Pro tier</span>}
         </button>
 
         <button 
           onClick={() => { exportToMM(); toggleExportMenu(); }}
-          className={canExport('mm') ? '' : 'disabled'}
+          className={`export-menu-item ${canExport('mm') ? '' : 'disabled'}`}
           disabled={!canExport('mm')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            width: '100%',
+            padding: '8px 16px',
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
+            fontSize: '14px',
+            color: canExport('mm') ? '#333' : '#999',
+            ':hover': {
+              backgroundColor: canExport('mm') ? '#f5f5f5' : 'transparent'
+            }
+          }}
         >
-          🗺️ Export as Mind Map (.mm)
-          {!canExport('mm') && <span className="upgrade-note">Available in Pro tier</span>}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 16 C14.2091 16 16 14.2091 16 12 C16 9.79086 14.2091 8 12 8"/>
+            <path d="M12 8 C9.79086 8 8 9.79086 8 12 C8 14.2091 9.79086 16 12 16"/>
+          </svg>
+          <span style={{ flex: 1 }}>Export as Mind Map (.mm)</span>
+          {!canExport('mm') && <span className="upgrade-note" style={{ fontSize: '12px', color: '#666' }}>Pro tier</span>}
         </button>
       </div>
     );
@@ -1641,7 +1892,12 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
               className="export-button header-button" 
               onClick={toggleExportMenu}
             >
-              📥 Export
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Export
             </button>
             {isExportMenuOpen && renderExportMenu()}
           </div>
@@ -1649,7 +1905,10 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
             className="header-button"
             onClick={() => setIsPricingOpen(true)}
           >
-            💎 Pricing
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            Pricing
           </button>
           {/* Temporarily removed community and publish buttons
           <button 
@@ -1695,7 +1954,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           </div>
         </div>
 
-        <div className="whiteboard-controls-overlay">
+        <div className={`whiteboard-controls-overlay ${isInstructionsCollapsed ? 'collapsed' : ''}`}>
           <div className="controls-help">
             <div className="control-tip-container">
               <div className="control-tip">
@@ -1914,6 +2173,15 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         isPublishing={isPublishing}
       />
       */}
+
+      {/* Add the help toggle button */}
+      <button 
+        className="help-toggle-button"
+        onClick={() => setIsInstructionsCollapsed(!isInstructionsCollapsed)}
+        title={isInstructionsCollapsed ? "Show Instructions" : "Hide Instructions"}
+      >
+        ?
+      </button>
     </div>
   );
 });

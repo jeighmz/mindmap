@@ -1,17 +1,18 @@
 .search-panel {
   position: fixed;
   right: 0;
-  top: 0;
+  top: 60px;
   width: 400px;
-  height: 100%;
+  height: calc(100% - 35px);
   background-color: white;
   box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
-  z-index: 1000;
+  z-index: 100;
   display: flex;
   flex-direction: column;
   border-left: 1px solid #ddd;
   transition: transform 0.3s ease;
   will-change: transform;
+  overflow-y: auto;
 }
 
 .search-panel-header {
@@ -21,6 +22,9 @@
   justify-content: space-between;
   align-items: center;
   background-color: #f8f9fa;
+  position: sticky;
+  top: 0;
+  z-index: 101;
 }
 
 .search-panel-header h3 {
@@ -411,4 +415,14 @@
 
 .search-panel {
   animation: slideIn 0.3s ease;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .search-panel {
+    top: 31px;
+    height: calc(100% - 31px);
+    width: 100%;
+    box-shadow: -5px 0 15px rgba(0, 0, 0, 0.2);
+  }
 } 

@@ -859,36 +859,17 @@
   height: 24px;
   background: #4CAF50;
   border-radius: 50%;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   border: 2px solid white;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-  opacity: 0;
-  transition: all 0.2s ease;
-  transform-origin: center;
+  z-index: 1003;
 }
 
-.whiteboard-item:hover .connector-control {
-  opacity: 1;
-}
-
-.connector-control:hover {
-  background: #45a049;
-}
-
-.whiteboard-item.connecting {
-  outline: 2px dashed #4CAF50;
-}
-
-.whiteboard-item.valid-target {
-  outline: 2px solid #4CAF50;
-  cursor: pointer !important;
-}
-
-.whiteboard-item.valid-target:hover {
-  outline: 2px solid #45a049;
+.whiteboard-item.selected .connector-control {
+  display: flex;
 }
 
 .connector path {
@@ -935,7 +916,7 @@
 
 /* Add this new overlay container */
 .whiteboard-controls-overlay {
-  position: absolute;
+  position: fixed;
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
@@ -946,8 +927,14 @@
   background-color: rgba(255, 255, 255, 0.9);
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  transition: opacity 0.3s ease;
+  transition: all 0.3s ease;
   opacity: 0.7;
+}
+
+.whiteboard-controls-overlay.collapsed {
+  transform: translateX(-50%) translateY(calc(100% + 20px));
+  opacity: 0;
+  pointer-events: none;
 }
 
 .whiteboard-controls-overlay:hover {
@@ -1322,28 +1309,7 @@
 
 /* Right-click hint notification */
 .right-click-hint {
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  background-color: rgba(102, 16, 242, 0.9);
-  color: white;
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-size: 14px;
-  z-index: 2000;
-  pointer-events: none;
-  animation: fade-in 0.3s ease, float 2s ease infinite;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translateX(-50%) translateY(0);
-  }
-  50% {
-    transform: translateX(-50%) translateY(-5px);
-  }
+  display: none;
 }
 
 .toolbar-button {
@@ -1369,10 +1335,10 @@
 .search-panel,
 .mind-map-panel {
   position: fixed;
-  top: 60px;
+  top: 95px;
   right: 0;
   width: 400px;
-  height: calc(100vh - 60px);
+  height: 100%;
   background: white;
   box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
   z-index: 2000;
@@ -1488,6 +1454,8 @@
   .search-panel,
   .mind-map-panel {
     box-shadow: -5px 0 15px rgba(0, 0, 0, 0.2);
+    top: 50px;
+    height: calc(95% - 50px);
   }
 
   .panel-open .whiteboard-zoom-overlay,
@@ -1748,6 +1716,7 @@
   transition: all 0.2s ease;
   z-index: 1003;
   border: 2px solid #fff;
+  transform: translate(0, 0);
 }
 
 .whiteboard-item:hover .expand-control,
@@ -1844,39 +1813,6 @@
 .mind-map-button:active::after {
   transform: translate(-50%, -50%) scale(2);
   opacity: 0;
-}
-
-.organize-control {
-  position: absolute;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  background-color: #4CAF50;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  z-index: 1003;
-  border: 2px solid #fff;
-}
-
-.whiteboard-item:hover .organize-control,
-.whiteboard-item.selected .organize-control {
-  display: flex;
-}
-
-.organize-control:hover {
-  transform: scale(1.1);
-  background-color: #388E3C;
-}
-
-.organize-control svg {
-  width: 16px;
-  height: 16px;
-  stroke: white;
-  stroke-width: 2;
 }
 
 .export-controls {
@@ -2159,4 +2095,36 @@
 @keyframes spin {
   0% { transform: translate(-50%, -50%) rotate(0deg); }
   100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Add this new help toggle button */
+.help-toggle-button {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #007bff;
+  border: none;
+  color: white;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1001;
+  transition: all 0.2s ease;
+}
+
+.help-toggle-button:hover {
+  background: #0056b3;
+  transform: scale(1.05);
+}
+
+/* Remove the organize button styles */
+.organize-control {
+  display: none;
 } 

@@ -156,12 +156,62 @@ const ToolbarItem = ({ type, icon, chartType }) => {
 
 const WhiteboardToolbar = ({ onOpenMindMapPanel, items, connections }) => {
   const tools = [
-    { type: 'sticky', icon: '📝' },
-    { type: 'rectangle', icon: '⬜' },
-    { type: 'circle', icon: '⭕' },
-    { type: 'chart', icon: '📊', chartType: 'xy' },
-    { type: 'chart', icon: '〰️', chartType: 'sine' },
-    { type: 'image', icon: '🖼️' },
+    { 
+      type: 'sticky', 
+      icon: (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="4" y="4" width="16" height="16" rx="2" />
+          <line x1="8" y1="10" x2="16" y2="10" />
+          <line x1="8" y1="14" x2="16" y2="14" />
+        </svg>
+      )
+    },
+    { 
+      type: 'rectangle', 
+      icon: (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="4" y="4" width="16" height="16" rx="1" />
+        </svg>
+      )
+    },
+    { 
+      type: 'circle', 
+      icon: (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="8" />
+        </svg>
+      )
+    },
+    { 
+      type: 'chart', 
+      chartType: 'xy',
+      icon: (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <line x1="4" y1="20" x2="20" y2="20" />
+          <line x1="4" y1="20" x2="4" y2="4" />
+          <path d="M7 14l3-3 4 4 4-8" />
+        </svg>
+      )
+    },
+    { 
+      type: 'chart', 
+      chartType: 'sine',
+      icon: (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M4 12c2-2.67 4-4 6-4s4 1.33 6 4c2 2.67 4 4 6 4s4-1.33 6-4" />
+        </svg>
+      )
+    },
+    { 
+      type: 'image', 
+      icon: (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <path d="M21 15l-5-5L5 21" />
+        </svg>
+      )
+    },
   ];
 
   const [isAgentChatOpen, setIsAgentChatOpen] = useState(false);
@@ -186,7 +236,17 @@ const WhiteboardToolbar = ({ onOpenMindMapPanel, items, connections }) => {
           transition: 'transform 0.2s ease, background-color 0.2s ease'
         }}
       >
-        🧠
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 4v4" />
+          <path d="M12 16v4" />
+          <path d="M4 12h4" />
+          <path d="M16 12h4" />
+          <path d="M7 7l2 2" />
+          <path d="M15 15l2 2" />
+          <path d="M15 7l-2 2" />
+          <path d="M7 15l2 2" />
+        </svg>
       </button>
       {/* Agent chat button temporarily disabled
       <button 
@@ -194,7 +254,10 @@ const WhiteboardToolbar = ({ onOpenMindMapPanel, items, connections }) => {
         onClick={() => setIsAgentChatOpen(true)}
         title="Open AI Agent Chat"
       >
-        🤖
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z" />
+          <path d="M12 6v6l4 2" />
+        </svg>
       </button>
       <AgentChat
         isOpen={isAgentChatOpen}

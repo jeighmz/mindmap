@@ -1092,12 +1092,14 @@ const WhiteboardItem = ({
         }}
       >
         <svg 
-          width="16" 
-          height="16" 
+          width="14" 
+          height="14" 
           viewBox="0 0 24 24" 
           fill="none" 
           stroke="white" 
-          strokeWidth="2"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         >
           <path d="M7 17L17 7M17 7H7M17 7V17" />
         </svg>
@@ -1139,15 +1141,16 @@ const WhiteboardItem = ({
         }}
       >
         <svg 
-          width="16" 
-          height="16" 
+          width="14" 
+          height="14" 
           viewBox="0 0 24 24" 
           fill="none" 
           stroke="white" 
-          strokeWidth="2"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         >
-          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+          <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
         </svg>
       </div>
     );
@@ -1186,60 +1189,18 @@ const WhiteboardItem = ({
           <div className="spinner" style={{ width: '12px', height: '12px' }}></div>
         ) : (
           <svg 
-            width="16" 
-            height="16" 
+            width="14" 
+            height="14" 
             viewBox="0 0 24 24" 
             fill="none" 
             stroke="white" 
-            strokeWidth="2"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <path d="M12 2v20M2 12h20" />
           </svg>
         )}
-      </div>
-    );
-  };
-
-  const OrganizeButton = ({ onOrganize, scale }) => {
-    return (
-      <div
-        className="organize-control"
-        onClick={(e) => {
-          e.stopPropagation();
-          onOrganize(item.id);
-        }}
-        style={{
-          position: 'absolute',
-          top: '50%',
-          right: '-28px',
-          transform: `scale(${1/scale})`,
-          width: '24px',
-          height: '24px',
-          background: '#4CAF50',
-          borderRadius: '50%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-          border: '2px solid white',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-          zIndex: 1003,
-          marginTop: '60px'
-        }}
-      >
-        <svg 
-          width="16" 
-          height="16" 
-          viewBox="0 0 24 24" 
-          fill="none" 
-          stroke="white" 
-          strokeWidth="2"
-        >
-          <circle cx="12" cy="12" r="3" />
-          <path d="M12 3a9 9 0 0 1 0 18" />
-          <path d="M12 3a9 9 0 0 0 0 18" />
-        </svg>
       </div>
     );
   };
@@ -1295,10 +1256,6 @@ const WhiteboardItem = ({
                 }}
                 scale={scale}
                 isExpanding={isExpanding}
-              />
-              <OrganizeButton 
-                onOrganize={onOrganize}
-                scale={scale}
               />
             </>
           )}
