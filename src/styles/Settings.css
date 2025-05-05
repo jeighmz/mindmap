@@ -9,7 +9,8 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000;
+  z-index: 10000;
+  pointer-events: all;
 }
 
 .modal-container {
@@ -18,10 +19,13 @@
   left: 50%;
   transform: translate(-50%, -50%);
   background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  z-index: 1001;
-  width: 400px; /* Reduced width for better fit */
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  z-index: 10001;
+  width: 480px;
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .modal-content {
@@ -45,42 +49,104 @@
 
 /* Settings modal styles */
 .settings-modal {
-  padding: 20px;
+  padding: 24px;
 }
 
 .settings-modal h2 {
-  margin: 0 0 20px 0;
+  margin: 0 0 24px 0;
   color: #333;
   font-size: 20px;
   font-weight: 600;
-  padding-right: 24px; /* Make space for close button */
+  padding-right: 32px;
+}
+
+.subscription-info {
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 32px;
+}
+
+.tier-display {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.current-tier {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.tier-name {
+  font-size: 16px;
+  color: #333;
+}
+
+.tier-features {
+  margin-top: 20px;
+}
+
+.tier-features h4 {
+  margin: 0 0 16px 0;
+  color: #333;
+  font-size: 15px;
+}
+
+.tier-features ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.tier-features li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: #4a5568;
+  font-size: 14px;
+}
+
+.tier-features li svg {
+  color: #48bb78;
+  flex-shrink: 0;
 }
 
 .form-group {
-  margin-bottom: 16px;
+  margin-bottom: 24px;
 }
 
 .form-group label {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   font-weight: 500;
   color: #333;
   font-size: 14px;
 }
 
 .form-group input {
-  width: fit;
-  padding: 8px 10px;
+  width: 100%;
+  padding: 10px 12px;
   border: 1px solid #ddd;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 14px;
   background-color: #fff;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: all 0.2s ease;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
 }
 
 .form-group small {
   display: block;
-  margin-top: 4px;
+  margin-top: 6px;
   color: #666;
   font-size: 12px;
 }
@@ -88,18 +154,18 @@
 .form-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 20px;
+  gap: 12px;
+  margin-top: 32px;
 }
 
 .form-actions button {
-  padding: 8px 16px;
+  padding: 10px 20px;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
 }
 
 .form-actions button[type="button"] {
@@ -113,12 +179,40 @@
 }
 
 .form-actions button:hover {
-  opacity: 0.9;
+  transform: translateY(-1px);
 }
 
 .form-actions button:disabled {
   background-color: #ccc;
   cursor: not-allowed;
+  transform: none;
+}
+
+.groq-dashboard-link {
+  color: #007bff;
+  text-decoration: none;
+  font-size: 13px;
+  transition: color 0.2s ease;
+}
+
+.groq-dashboard-link:hover {
+  color: #0056b3;
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .settings-modal {
+    padding: 20px;
+  }
+  
+  .subscription-info {
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+  
+  .form-actions {
+    margin-top: 24px;
+  }
 }
 
 .message {
@@ -148,25 +242,11 @@
   font-size: 14px;
 }
 
-/* Input focus styles */
-.form-group input:focus {
-  outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.15);
-}
-
 /* Disabled button styles */
 .form-actions button[type="submit"]:disabled {
   background-color: #ccc;
   cursor: not-allowed;
   opacity: 0.7;
-}
-
-.subscription-info {
-  background-color: #f8f9fa;
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 24px;
 }
 
 .subscription-info h3 {

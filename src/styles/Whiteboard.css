@@ -1099,14 +1099,14 @@
 
 /* Make sure the saved boards menu stays on top */
 .saved-whiteboards-container {
-  z-index: 2001;
+  z-index: 1000;
 }
 
 .whiteboard-menu-overlay {
   position: fixed;
   bottom: 20px;
   left: 20px;
-  z-index: 2000;
+  z-index: 1000;
   pointer-events: none;
   transition: right 0.3s ease;
 }
@@ -1960,7 +1960,7 @@
     background-color: #e9ecef;
     border-color: #ced4da;
   }
-  z-index: 1600;
+  z-index: 1000;
 }
 
 /* You might need to adjust the dropdown position in SavedWhiteboardsMenu.css */

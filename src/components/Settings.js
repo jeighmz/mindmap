@@ -7,6 +7,46 @@ import Modal from './Modal';
 import '../styles/Settings.css';
 import { getApiBaseUrl } from '../utils/api';
 
+const TierIcon = ({ tier }) => {
+  switch (tier) {
+    case 'FREE':
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M8 12h8"/>
+        </svg>
+      );
+    case 'PRO':
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+      );
+    case 'ENTERPRISE':
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 3h18v18H3zM9 3v18M15 3v18M3 9h18M3 15h18"/>
+        </svg>
+      );
+    default:
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+          <line x1="10" y1="9" x2="8" y2="9"/>
+        </svg>
+      );
+  }
+};
+
+const CheckIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12"/>
+  </svg>
+);
+
 export default function Settings({ isOpen, onClose, onUpgradeClick }) {
   const { user, userTier } = useAuth();
   const [groqApiKey, setGroqApiKey] = useState('');
@@ -188,19 +228,6 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
     }
   };
 
-  const getTierIcon = (tier) => {
-    switch (tier) {
-      case 'FREE':
-        return '🆓';
-      case 'PRO':
-        return '💎';
-      case 'ENTERPRISE':
-        return '🏢';
-      default:
-        return '📋';
-    }
-  };
-
   const formatFeatureName = (feature) => {
     // Convert camelCase to Title Case with spaces
     return feature
@@ -251,7 +278,8 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
             <div className="subscription-info">
               <div className="tier-display">
                 <span className="current-tier">
-                  {getTierIcon(userTier)} {userTier} Plan
+                  <TierIcon tier={userTier} />
+                  <span className="tier-name">{userTier} Plan</span>
                 </span>
                 <button type="button" className="upgrade-button" onClick={handleUpgradeClick}>
                   Upgrade Plan
@@ -260,14 +288,14 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
               <div className="tier-features">
                 <h4>Your Features & Limits</h4>
                 <ul>
-                  <li>✓ Up to {TIER_FEATURES[userTier].maxMindMaps} mind maps</li>
-                  <li>✓ Maximum {TIER_FEATURES[userTier].maxNodesPerMap} nodes per map</li>
-                  <li>✓ {TIER_FEATURES[userTier].maxCollaborators} collaborator{TIER_FEATURES[userTier].maxCollaborators !== 1 ? 's' : ''}</li>
-                  <li>✓ Export formats: {TIER_FEATURES[userTier].allowedExportFormats.join(', ')}</li>
+                  <li><CheckIcon /> Up to {TIER_FEATURES[userTier].maxMindMaps} mind maps</li>
+                  <li><CheckIcon /> Maximum {TIER_FEATURES[userTier].maxNodesPerMap} nodes per map</li>
+                  <li><CheckIcon /> {TIER_FEATURES[userTier].maxCollaborators} collaborator{TIER_FEATURES[userTier].maxCollaborators !== 1 ? 's' : ''}</li>
+                  <li><CheckIcon /> Export formats: {TIER_FEATURES[userTier].allowedExportFormats.join(', ')}</li>
                   {Object.entries(TIER_FEATURES[userTier].features)
                     .filter(([_, enabled]) => enabled)
                     .map(([feature]) => (
-                      <li key={feature}>✓ {formatFeatureName(feature)}</li>
+                      <li key={feature}><CheckIcon /> {formatFeatureName(feature)}</li>
                     ))
                   }
                 </ul>

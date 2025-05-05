@@ -8,13 +8,13 @@ import { USER_TIERS } from '../config/userTiers';
 const plans = [
   {
     name: 'Free',
-    price: '$0',
+    price: '0',
     description: 'Perfect for trying out and basic mind mapping.',
     features: [
-      '✅ Create unlimited mind maps',
-      '✅ Basic PNG export',
-      '✅ 1 saved map',
-      '✅ Core features',
+      'Create unlimited mind maps',
+      'Basic PNG export',
+      '1 saved map',
+      'Core features',
     ],
     cta: 'Get Started Free',
     popular: false,
@@ -22,13 +22,13 @@ const plans = [
   },
   {
     name: 'Starter',
-    price: '$9',
+    price: '9',
     description: 'For light users who want to map ideas manually.',
     features: [
-      '✅ Everything in Free',
-      '✅ 5 saved maps',
-      '✅ PDF & Markdown export',
-      '✅ Community templates',
+      'Everything in Free',
+      '5 saved maps',
+      'PDF & Markdown export',
+      'Community templates',
     ],
     cta: 'Get Starter',
     popular: false,
@@ -36,14 +36,14 @@ const plans = [
   },
   {
     name: 'Pro',
-    price: '$29',
+    price: '29',
     description: 'Unlock AI expansion and advanced features.',
     features: [
-      '✅ Everything in Starter',
-      '✅ AI "Expand" tool',
-      '✅ 20 saved maps',
-      '✅ JSON & .mm export',
-      '✅ Priority support',
+      'Everything in Starter',
+      'AI "Expand" tool',
+      '20 saved maps',
+      'JSON & .mm export',
+      'Priority support',
     ],
     cta: 'Upgrade to Pro',
     popular: true,
@@ -51,14 +51,14 @@ const plans = [
   },
   {
     name: 'Creator AI',
-    price: '$59',
+    price: '59',
     description: 'Full AI capabilities for power users.',
     features: [
-      '✅ Everything in Pro',
-      '✅ Full AI-generated maps',
-      '✅ AI analysis panel',
-      '✅ Unlimited saved maps',
-      '✅ Early access features',
+      'Everything in Pro',
+      'Full AI-generated maps',
+      'AI analysis panel',
+      'Unlimited saved maps',
+      'Early access features',
     ],
     cta: 'Join Creator AI',
     popular: false,
@@ -73,18 +73,15 @@ export default function PricingTable({ isOpen, onClose }) {
   const [processingTier, setProcessingTier] = useState(null);
 
   const handlePlanSelect = async (plan) => {
-    // Reset error state
     setError(null);
     setProcessingTier(plan.tier);
 
     try {
-      // If selecting free plan, no Stripe checkout needed
       if (plan.tier === USER_TIERS.FREE) {
         onClose();
         return;
       }
 
-      // Require authentication before checkout
       if (!user) {
         setError({
           message: 'Please log in to upgrade your plan',
@@ -94,7 +91,6 @@ export default function PricingTable({ isOpen, onClose }) {
         return;
       }
 
-      // Prevent selecting current tier
       if (plan.tier === userTier) {
         setError({
           message: 'You are already subscribed to this plan',
@@ -105,15 +101,11 @@ export default function PricingTable({ isOpen, onClose }) {
       }
 
       setIsLoading(true);
-
-      // Start Stripe checkout process
       await StripeService.createCheckoutSession(
         user.uid,
         plan.tier,
-        'monthly' // You could add a toggle for annual/monthly
+        'monthly'
       );
-      
-      // Note: No need to close modal here as we're redirecting to Stripe
     } catch (err) {
       console.error('Error starting checkout:', err);
       setError({
@@ -130,8 +122,6 @@ export default function PricingTable({ isOpen, onClose }) {
   const handleErrorAction = async (error) => {
     switch (error.action) {
       case 'login':
-        // Implement login redirect or modal
-        // You might want to save the selected plan to redirect back after login
         window.location.href = '/login?redirect=pricing&plan=' + error.tier;
         break;
       case 'manage':
@@ -165,18 +155,16 @@ export default function PricingTable({ isOpen, onClose }) {
         {error && (
           <div className="error-message">
             <p>{error.message}</p>
-            {error.action && (
-              <button 
-                onClick={() => handleErrorAction(error)}
-                className="error-action-button"
-                disabled={isLoading}
-              >
-                {isLoading ? 'Processing...' : 
-                  error.action === 'login' ? 'Log In' :
-                  error.action === 'manage' ? 'Manage Subscription' :
-                  'Try Again'}
-              </button>
-            )}
+            <button 
+              onClick={() => handleErrorAction(error)}
+              className="error-action-button"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Processing...' : 
+                error.action === 'login' ? 'Log In' :
+                error.action === 'manage' ? 'Manage Subscription' :
+                'Try Again'}
+            </button>
           </div>
         )}
         <div className="pricing-grid">
@@ -188,11 +176,14 @@ export default function PricingTable({ isOpen, onClose }) {
               {plan.popular && <div className="badge">Most Popular</div>}
               {plan.tier === userTier && <div className="badge current">Current Plan</div>}
               <h3>{plan.name}</h3>
-              <p className="price">{plan.price}/mo</p>
+              <div className="price">${plan.price}</div>
               <p className="desc">{plan.description}</p>
               <ul>
                 {plan.features.map((feature, idx) => (
-                  <li key={idx}>{feature}</li>
+                  <li key={idx}>
+                    <span>✓</span>
+                    {feature}
+                  </li>
                 ))}
               </ul>
               <button 
