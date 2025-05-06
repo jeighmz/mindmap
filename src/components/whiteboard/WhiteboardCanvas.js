@@ -326,10 +326,10 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     ));
   };
 
-  const updateItemText = (id, text) => {
+  const updateItemText = (id, text, updatedItem) => {
     setItems(items.map(item =>
       item.id === id
-        ? { ...item, text }
+        ? updatedItem || { ...item, text }  // Use updatedItem if provided, otherwise just update text
         : item
     ));
   };
@@ -938,39 +938,31 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
             messages: [
               {
                 role: 'system',
-                content: `You are a mind map generator specializing in creating hierarchical knowledge structures. Follow these guidelines:
+                content: `You are an expert at identifying key related concepts. When given a concept, generate exactly 5 closely related ideas or aspects that help expand understanding of the original concept.
 
-1. Central Node (Level 0):
-   - This is the main topic provided by the user
-   - Treat this as the core concept to expand upon
+Guidelines:
+- Generate exactly 5 related concepts, no more and no less
+- Each concept should be 2-4 words long
+- Make each concept clear and specific
+- Ensure direct relevance to the original topic
+- Use professional, field-appropriate terminology
+- Avoid generic or redundant information
 
-2. Main Branches (Level 1):
-   - Generate 5-7 fundamental aspects or key categories of the central topic
-   - These should be broad enough to warrant further exploration
-   - Each should represent a distinct facet of the main topic
-   - Format: MAIN: [concise label, max 4 words]
+Format:
+- Return only the 5 concepts, one per line
+- No prefixes, numbers, or bullet points
+- Just plain text, each on its own line
 
-3. Sub-Branches (Level 2):
-   - For each main branch, generate 2-3 specific sub-topics
-   - These should directly elaborate on their parent branch
-   - Must be more specific and detailed than the parent
-   - Should show clear relationship to both central topic and parent branch
-   - Format: SUB: [specific detail, max 6 words]
-
-Format your response as:
-MAIN: [Main Branch 1]
-SUB: [Sub Branch 1.1 - specific detail]
-SUB: [Sub Branch 1.2 - specific detail]
-
-MAIN: [Main Branch 2]
-SUB: [Sub Branch 2.1 - specific detail]
-SUB: [Sub Branch 2.2 - specific detail]
-
-And so on. Each line must start with either MAIN: or SUB: to indicate the branch type.`
+Example for "Machine Learning":
+Neural Network Architecture
+Training Data Preparation
+Model Optimization Techniques
+Hyperparameter Tuning
+Performance Metrics Analysis`
               },
               {
                 role: 'user',
-                content: `Generate a hierarchical mind map about: ${text}`
+                content: `Generate 5 key related concepts for: ${text}`
               }
             ],
             temperature: 0.7,
@@ -987,7 +979,7 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
         const concepts = data.choices[0].message.content
           .split('\n')
           .filter(line => line.trim())
-          .map(line => line.replace(/^\d+\.\s*/, '').trim()); // Remove numbering if present
+          .slice(0, 5); // Ensure we only take 5 concepts
 
         // Calculate positions for new items in a circular layout
         const radius = 200; // Distance from center item
@@ -1790,13 +1782,13 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
    - Treat this as the core concept to expand upon
 
 2. Main Branches (Level 1):
-   - Generate 5-7 fundamental aspects or key categories of the central topic
+   - Generate 4-6 fundamental aspects or key categories of the central topic
    - These should be broad enough to warrant further exploration
    - Each should represent a distinct facet of the main topic
    - Format: MAIN: [concise label, max 4 words]
 
 3. Sub-Branches (Level 2):
-   - For each main branch, generate 2-3 specific sub-topics
+   - For each main branch, generate 2-4 specific sub-topics
    - These should directly elaborate on their parent branch
    - Must be more specific and detailed than the parent
    - Should show clear relationship to both central topic and parent branch
