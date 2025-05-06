@@ -18,12 +18,23 @@ const initializeFirebase = () => {
         throw new Error('Missing required Firebase Admin environment variables');
       }
 
-      // Log the first few characters of the private key to verify format
-      const privateKeyPreview = process.env.FIREBASE_PRIVATE_KEY.substring(0, 50) + '...';
-      console.log('Private key preview:', privateKeyPreview);
-
-      const privateKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n');
+      // Handle private key formatting
+      let privateKey = process.env.FIREBASE_PRIVATE_KEY;
       
+      // Remove any surrounding quotes and spaces
+      privateKey = privateKey.trim().replace(/^["']|["']$/g, '');
+      
+      // Replace escaped newlines with actual newlines
+      privateKey = privateKey.replace(/\\n/g, '\n');
+      
+      // Ensure the key has the proper PEM format
+      if (!privateKey.startsWith('-----BEGIN PRIVATE KEY-----')) {
+        privateKey = '-----BEGIN PRIVATE KEY-----\n' + privateKey;
+      }
+      if (!privateKey.endsWith('-----END PRIVATE KEY-----')) {
+        privateKey = privateKey + '\n-----END PRIVATE KEY-----';
+      }
+
       const config = {
         credential: admin.credential.cert({
           projectId: process.env.FIREBASE_PROJECT_ID,
@@ -60,7 +71,8 @@ initializeFirebase();
 // Generate a unique encryption key for a user
 const generateUserKey = () => {
   try {
-    return crypto.randomBytes(32);
+    const key = crypto.randomBytes(32);
+    return key;
   } catch (error) {
     console.error('Error generating user key:', error);
     throw new Error(`Failed to generate encryption key: ${error.message}`);
@@ -104,7 +116,8 @@ const encrypt = async (data, userId) => {
     console.log('Encryption parameters:', {
       hasData: !!data,
       hasUserId: !!userId,
-      dataType: typeof data
+      dataType: typeof data,
+      userKeyLength: userKey.length
     });
 
     const iv = crypto.randomBytes(16);
