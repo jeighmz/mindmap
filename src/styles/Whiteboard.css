@@ -920,7 +920,7 @@
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 1000;
+  z-index: 900;
   display: flex;
   justify-content: center;
   padding: 8px 12px;
@@ -929,6 +929,7 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   transition: all 0.3s ease;
   opacity: 0.7;
+  pointer-events: auto;
 }
 
 .whiteboard-controls-overlay.collapsed {
@@ -1034,7 +1035,7 @@
 /* Adjust position for when panels are open */
 .panel-open .whiteboard-controls-overlay,
 .mind-map-panel-open .whiteboard-controls-overlay {
-  left: calc(50% - 100px);
+  left: calc(50% - 200px);
 }
 
 @media (max-width: 768px) {
@@ -1119,23 +1120,45 @@
   position: fixed;
   bottom: 20px;
   right: 20px;
-  z-index: 2000;
+  z-index: 900;
   pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+/* Hide zoom controls during group select */
+.whiteboard-item.group-select-mode ~ .whiteboard-zoom-overlay {
+  opacity: 0.3;
+}
+
+.whiteboard-zoom-overlay:hover {
+  opacity: 1 !important;
 }
 
 .whiteboard-zoom-overlay > * {
   pointer-events: auto;
 }
 
-/* Adjust positions when search panel is open */
-.panel-open .whiteboard-zoom-overlay {
-  right: 420px; /* 400px panel width + 20px margin */
+/* Adjust positions when panels are open */
+.panel-open .whiteboard-zoom-overlay,
+.mind-map-panel-open .whiteboard-zoom-overlay {
+  right: 420px;
 }
 
-/* For very small screens, ensure controls remain visible */
+.panel-open .whiteboard-controls-overlay,
+.mind-map-panel-open .whiteboard-controls-overlay {
+  left: calc(50% - 200px);
+}
+
+/* For small screens, ensure controls remain accessible */
 @media (max-width: 900px) {
-  .panel-open .whiteboard-zoom-overlay {
+  .panel-open .whiteboard-zoom-overlay,
+  .mind-map-panel-open .whiteboard-zoom-overlay {
     right: 20px;
+    bottom: 80px;
+    opacity: 0.7;
+  }
+
+  .whiteboard-controls-overlay {
     bottom: 80px;
   }
 }
@@ -1148,6 +1171,7 @@
   display: flex;
   gap: 8px;
   align-items: center;
+  transition: opacity 0.3s ease;
 }
 
 .zoom-controls button {
@@ -1196,6 +1220,13 @@
 /* Add these styles */
 .whiteboard-item.group-select-mode {
   cursor: context-menu !important;
+}
+
+.whiteboard-item.group-select-mode .expand-control,
+.whiteboard-item.group-select-mode .connector-control,
+.whiteboard-item.group-select-mode .resize-handle,
+.whiteboard-item.group-select-mode .edit-control {
+  display: none !important;
 }
 
 .whiteboard-item.group-select-mode.selected {
@@ -2127,4 +2158,10 @@
 /* Remove the organize button styles */
 .organize-control {
   display: none;
+}
+
+/* Update controls visibility during group select */
+.whiteboard-item.group-select-mode ~ .whiteboard-controls-overlay {
+  opacity: 0;
+  pointer-events: none;
 } 
