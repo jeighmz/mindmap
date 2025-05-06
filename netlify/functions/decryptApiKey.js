@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const { decrypt } = require('./utils/encryption');
 
 // Initialize Firebase Admin with explicit error handling
 const initializeFirebase = () => {
@@ -109,8 +110,8 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // For now, just decode from base64 (matching the current encryption in encryptApiKey.js)
-    const decrypted = Buffer.from(settingsDoc.data().groqApiKey, 'base64').toString();
+    // Decrypt using the user-specific key
+    const decrypted = await decrypt(settingsDoc.data().groqApiKey, userId);
 
     return {
       statusCode: 200,

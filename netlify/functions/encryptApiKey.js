@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const { encrypt } = require('./utils/encryption');
 
 // Initialize Firebase Admin with explicit error handling
 const initializeFirebase = () => {
@@ -86,8 +87,8 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // Encrypt using base64 encoding
-    const encrypted = Buffer.from(apiKey).toString('base64');
+    // Encrypt the API key using the user-specific encryption
+    const encrypted = await encrypt(apiKey, userId);
     
     // Store in Firestore
     await db.collection('userSettings').doc(userId).set({

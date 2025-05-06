@@ -67,16 +67,42 @@ const generateUserKey = () => {
   }
 };
 
-// Encrypt data with a user-specific key
-const encrypt = (data, userKey) => {
+// Get or create a user's encryption key
+const getUserKey = async (userId) => {
   try {
-    if (!data || !userKey) {
+    // Try to get existing key
+    const userKeyDoc = await db.collection('userKeys').doc(userId).get();
+    
+    if (userKeyDoc.exists) {
+      return userKeyDoc.data().key;
+    }
+    
+    // Generate new key if none exists
+    const newKey = generateUserKey();
+    await db.collection('userKeys').doc(userId).set({
+      key: newKey,
+      createdAt: new Date().toISOString()
+    });
+    
+    return newKey;
+  } catch (error) {
+    console.error('Error getting/creating user key:', error);
+    throw new Error(`Failed to get/create user key: ${error.message}`);
+  }
+};
+
+// Encrypt data with a user-specific key
+const encrypt = async (data, userId) => {
+  try {
+    if (!data || !userId) {
       throw new Error('Missing required encryption parameters');
     }
 
+    const userKey = await getUserKey(userId);
+
     console.log('Encryption parameters:', {
       hasData: !!data,
-      userKeyLength: userKey.length,
+      hasUserId: !!userId,
       dataType: typeof data
     });
 
@@ -103,11 +129,13 @@ const encrypt = (data, userKey) => {
 };
 
 // Decrypt data with a user-specific key
-const decrypt = (encryptedData, userKey) => {
+const decrypt = async (encryptedData, userId) => {
   try {
-    if (!encryptedData || !userKey) {
+    if (!encryptedData || !userId) {
       throw new Error('Missing required decryption parameters');
     }
+
+    const userKey = await getUserKey(userId);
 
     const [ivHex, encrypted, authTagHex] = encryptedData.split(':');
     
@@ -137,6 +165,7 @@ const decrypt = (encryptedData, userKey) => {
 
 module.exports = {
   generateUserKey,
+  getUserKey,
   encrypt,
   decrypt,
   db
