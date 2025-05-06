@@ -191,17 +191,18 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
     }
 
     try {
-      // In development mode, try to decode base64
-      if (process.env.NODE_ENV === 'development') {
-        try {
-          return atob(userSettings.groqApiKey);
-        } catch (e) {
-          // If not base64 encoded, return as is (for development convenience)
-          return userSettings.groqApiKey;
+      // First try base64 decoding
+      try {
+        const decoded = atob(userSettings.groqApiKey);
+        if (decoded.startsWith('gsk_')) {
+          return decoded;
         }
+      } catch (e) {
+        // If not base64 encoded, continue to API attempt
+        console.log('Not a valid base64 encoded key, trying API...');
       }
 
-      // In production, use the decryption API
+      // If base64 decode failed or didn't return a valid key, try the API
       const apiBaseUrl = getApiBaseUrl();
       if (!apiBaseUrl) {
         throw new Error('API base URL not configured');
@@ -217,6 +218,10 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
       });
 
       if (!decryptResponse.ok) {
+        // If API fails, try base64 one more time or return as-is for development
+        if (process.env.NODE_ENV === 'development') {
+          return userSettings.groqApiKey;
+        }
         throw new Error('Failed to decrypt API key');
       }
 
