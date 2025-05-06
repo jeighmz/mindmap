@@ -298,13 +298,17 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }
   }), [scale]);
 
-  const handleWheel = (e) => {
+  const handleWheel = useCallback((e) => {
     if (e.ctrlKey) {
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      setScale(s => Math.min(Math.max(0.1, s * delta), 4));
+      const dpr = window.devicePixelRatio || 1;
+      setScale(s => {
+        const newScale = Math.min(Math.max(0.1, s * delta), 4);
+        return newScale / dpr;
+      });
     }
-  };
+  }, []);
 
   const updateItemPosition = (id, position) => {
     setItems(items.map(item => 
@@ -1963,6 +1967,15 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
     };
   };
 
+  useEffect(() => {
+    console.log('Canvas dimensions:', {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      scale,
+      dpr: window.devicePixelRatio
+    });
+  }, [scale]);
+
   return (
     <div className={`whiteboard-container ${isSearchPanelOpen ? 'panel-open' : ''}`} style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div className="whiteboard-header">
@@ -2097,7 +2110,7 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
         <div 
           className="canvas-content"
           style={{
-            transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${scale})`,
+            transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${scale * (window.devicePixelRatio || 1)})`,
             transformOrigin: '0 0',
             position: 'absolute',
             top: 0,

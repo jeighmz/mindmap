@@ -48,7 +48,7 @@ const DraggableElement = ({ element, isSelected, onClick, updatePosition, scale 
         left: element.position.x,
         top: element.position.y,
         opacity: isDragging ? 0.5 : 1,
-        transform: `scale(${1/scale})`,
+        transform: `scale(${1 / (scale * (window.devicePixelRatio || 1))})`,
         transition: isDragging ? 'none' : 'all 0.1s ease'
       }}
       onClick={onClick}
