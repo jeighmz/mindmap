@@ -7,7 +7,8 @@ import {
   signOut,
   sendPasswordResetEmail,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  updateProfile
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase-config';
@@ -102,18 +103,26 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const signup = async (email, password) => {
+  const signup = async (email, password, displayName) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const firebaseUser = userCredential.user;
+    
+    // Update the user's profile with display name
+    if (displayName) {
+      await updateProfile(firebaseUser, {
+        displayName: displayName
+      });
+    }
     
     // Create user document in Firestore
     await setDoc(doc(db, 'users', firebaseUser.uid), {
       email: firebaseUser.email,
+      displayName: displayName || null,
       tier: USER_TIERS.FREE,
       createdAt: new Date().toISOString()
     });
     
-    return firebaseUser;
+    return fetchUserData(firebaseUser);
   };
 
   const login = async (email, password) => {

@@ -8,9 +8,11 @@ export default function Login({ isOpen, onClose }) {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [displayNameError, setDisplayNameError] = useState('');
 
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -37,20 +39,30 @@ export default function Login({ isOpen, onClose }) {
     return true;
   };
 
+  const validateDisplayName = (name) => {
+    if (isRegistering && !name.trim()) {
+      setDisplayNameError('Display name is required');
+      return false;
+    }
+    setDisplayNameError('');
+    return true;
+  };
+
   const handleEmailSubmit = async (e) => {
     e.preventDefault();
     setError('');
     
     const isEmailValid = validateEmail(email);
     const isPasswordValid = validatePassword(password);
+    const isDisplayNameValid = validateDisplayName(displayName);
     
-    if (!isEmailValid || !isPasswordValid) {
+    if (!isEmailValid || !isPasswordValid || (isRegistering && !isDisplayNameValid)) {
       return;
     }
     
     try {
       if (isRegistering) {
-        await signup(email, password);
+        await signup(email, password, displayName);
       } else {
         await login(email, password);
       }
@@ -87,6 +99,22 @@ export default function Login({ isOpen, onClose }) {
         {error && <p className="error-message">{error}</p>}
 
         <form onSubmit={handleEmailSubmit} className="email-form">
+          {isRegistering && (
+            <div className="form-group">
+              <input
+                type="text"
+                placeholder="Display Name"
+                value={displayName}
+                onChange={(e) => {
+                  setDisplayName(e.target.value);
+                  if (displayNameError) validateDisplayName(e.target.value);
+                }}
+                className={displayNameError ? 'input-error' : ''}
+                required={isRegistering}
+              />
+              {displayNameError && <p className="input-error-message">{displayNameError}</p>}
+            </div>
+          )}
           <div className="form-group">
             <input
               type="email"

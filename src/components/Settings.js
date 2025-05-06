@@ -6,6 +6,10 @@ import { USER_TIERS, TIER_FEATURES } from '../config/userTiers';
 import Modal from './Modal';
 import '../styles/Settings.css';
 import { getApiBaseUrl } from '../utils/api';
+import {
+  getAuth,
+  updateProfile
+} from 'firebase/auth';
 
 const TierIcon = ({ tier }) => {
   switch (tier) {
@@ -50,6 +54,7 @@ const CheckIcon = () => (
 export default function Settings({ isOpen, onClose, onUpgradeClick }) {
   const { user, userTier } = useAuth();
   const [groqApiKey, setGroqApiKey] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState({ type: '', text: '' });
@@ -66,6 +71,9 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
     try {
       setIsLoading(true);
       setMessage({ type: '', text: '' });
+      
+      // Set display name from user object
+      setDisplayName(user.displayName || '');
       
       console.log('Attempting to load settings for user:', user.uid);
       const settingsRef = doc(db, 'userSettings', user.uid);
@@ -153,64 +161,78 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
       return;
     }
 
-    const trimmedApiKey = groqApiKey.trim();
-    if (!trimmedApiKey) {
-      setMessage({ type: 'error', text: 'Please enter a valid API key' });
-      return;
-    }
-
-    // Validate API key format
-    if (!trimmedApiKey.startsWith('gsk_')) {
-      setMessage({ type: 'error', text: 'Invalid API key format. Groq API keys should start with "gsk_"' });
-      return;
-    }
-
     setIsSaving(true);
     setMessage({ type: '', text: '' });
 
     try {
-      let settingsData;
-      
-      if (process.env.NODE_ENV === 'development') {
-        // In development, store the API key in base64 format
-        console.log('Development mode - Storing API key in base64 format');
-        const encodedKey = btoa(trimmedApiKey);
-        settingsData = {
-          groqApiKey: encodedKey,
-          updatedAt: new Date().toISOString()
-        };
-      } else {
-        // In production, encrypt the API key
-        const apiBaseUrl = getApiBaseUrl();
-        if (!apiBaseUrl) {
-          throw new Error('API base URL not configured');
-        }
-
-        const response = await fetch(`${apiBaseUrl}/encryptApiKey`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            userId: user.uid,
-            apiKey: trimmedApiKey
-          })
+      // Update display name if changed
+      const trimmedDisplayName = displayName.trim();
+      if (trimmedDisplayName !== user.displayName) {
+        const auth = getAuth();
+        await updateProfile(auth.currentUser, {
+          displayName: trimmedDisplayName || null
         });
 
-        if (!response.ok) {
-          throw new Error('Failed to encrypt API key');
-        }
-
-        const { encrypted } = await response.json();
-        settingsData = {
-          groqApiKey: encrypted,
+        // Update display name in Firestore
+        const userRef = doc(db, 'users', user.uid);
+        await setDoc(userRef, {
+          displayName: trimmedDisplayName || null,
           updatedAt: new Date().toISOString()
-        };
+        }, { merge: true });
       }
 
-      // Save to Firebase
-      const settingsRef = doc(db, 'userSettings', user.uid);
-      await setDoc(settingsRef, settingsData, { merge: true });
+      // Handle API key update
+      const trimmedApiKey = groqApiKey.trim();
+      if (trimmedApiKey) {
+        // Validate API key format
+        if (!trimmedApiKey.startsWith('gsk_')) {
+          setMessage({ type: 'error', text: 'Invalid API key format. Groq API keys should start with "gsk_"' });
+          return;
+        }
+
+        let settingsData;
+        
+        if (process.env.NODE_ENV === 'development') {
+          // In development, store the API key in base64 format
+          console.log('Development mode - Storing API key in base64 format');
+          const encodedKey = btoa(trimmedApiKey);
+          settingsData = {
+            groqApiKey: encodedKey,
+            updatedAt: new Date().toISOString()
+          };
+        } else {
+          // In production, encrypt the API key
+          const apiBaseUrl = getApiBaseUrl();
+          if (!apiBaseUrl) {
+            throw new Error('API base URL not configured');
+          }
+
+          const response = await fetch(`${apiBaseUrl}/encryptApiKey`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              userId: user.uid,
+              apiKey: trimmedApiKey
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to encrypt API key');
+          }
+
+          const { encrypted } = await response.json();
+          settingsData = {
+            groqApiKey: encrypted,
+            updatedAt: new Date().toISOString()
+          };
+        }
+
+        // Save API key settings to Firebase
+        const settingsRef = doc(db, 'userSettings', user.uid);
+        await setDoc(settingsRef, settingsData, { merge: true });
+      }
       
       setMessage({ type: 'success', text: 'Settings saved successfully' });
     } catch (error) {
@@ -293,6 +315,18 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
                   }
                 </ul>
               </div>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="displayName">Display Name</label>
+              <input
+                type="text"
+                id="displayName"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Enter your display name"
+              />
+              <small>Your name will be visible to other users</small>
             </div>
 
             <div className="form-group">
