@@ -60,7 +60,7 @@ initializeFirebase();
 // Generate a unique encryption key for a user
 const generateUserKey = () => {
   try {
-    return crypto.randomBytes(32).toString('hex');
+    return crypto.randomBytes(32);
   } catch (error) {
     console.error('Error generating user key:', error);
     throw new Error(`Failed to generate encryption key: ${error.message}`);
@@ -74,13 +74,14 @@ const getUserKey = async (userId) => {
     const userKeyDoc = await db.collection('userKeys').doc(userId).get();
     
     if (userKeyDoc.exists) {
-      return userKeyDoc.data().key;
+      const keyData = userKeyDoc.data().key;
+      return Buffer.from(keyData, 'base64');
     }
     
     // Generate new key if none exists
     const newKey = generateUserKey();
     await db.collection('userKeys').doc(userId).set({
-      key: newKey,
+      key: newKey.toString('base64'),
       createdAt: new Date().toISOString()
     });
     
@@ -107,7 +108,7 @@ const encrypt = async (data, userId) => {
     });
 
     const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(userKey, 'hex'), iv);
+    const cipher = crypto.createCipheriv('aes-256-gcm', userKey, iv);
     
     let encrypted = cipher.update(data, 'utf8', 'hex');
     encrypted += cipher.final('hex');
@@ -146,7 +147,7 @@ const decrypt = async (encryptedData, userId) => {
     const iv = Buffer.from(ivHex, 'hex');
     const authTag = Buffer.from(authTagHex, 'hex');
     
-    const decipher = crypto.createDecipheriv('aes-256-gcm', Buffer.from(userKey, 'hex'), iv);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', userKey, iv);
     decipher.setAuthTag(authTag);
     
     let decrypted = decipher.update(encrypted, 'hex', 'utf8');
