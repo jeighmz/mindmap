@@ -64,6 +64,7 @@ const WhiteboardItem = ({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState(null);
   const [isChartEditing, setIsChartEditing] = useState(false);
+  const [showControls, setShowControls] = useState(false);
 
   // Initialize chart config from saved item data or defaults
   const getInitialChartConfig = () => ({
@@ -328,6 +329,14 @@ const WhiteboardItem = ({
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isSelected, isEditing, item.id, onDelete]);
+
+  const handleMouseEnter = () => {
+    setShowControls(true);
+  };
+
+  const handleMouseLeave = () => {
+    setShowControls(false);
+  };
 
   const renderContent = () => {
     const stickyStyle = item.type === 'sticky' ? {
@@ -1232,20 +1241,29 @@ const WhiteboardItem = ({
       }}
       onClick={handleClick}
       onMouseDown={handleMouseDown}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       onContextMenu={(e) => onContextMenu && onContextMenu(e)}
     >
       {renderContent()}
       {renderResizeHandles()}
-      {isSelected && !isEditing && (
+      {isSelected && !isEditing && !isChartEditing && (
         <>
-          <EditButton 
-            onStartEditing={() => setIsEditing(true)}
-            scale={scale}
-          />
+          {/* Show connect button for all items except charts */}
           {item.type !== 'chart' && (
+            <ConnectorButton 
+              onStartConnection={onConnectionStart}
+              scale={scale}
+            />
+          )}
+          
+          {/* Show edit and expand buttons only for non-image, non-chart items */}
+          {item.type !== 'chart' && item.type !== 'image' && (
             <>
-              <ConnectorButton 
-                onStartConnection={onConnectionStart}
+              <EditButton 
+                onStartEditing={() => {
+                  setIsEditing(true);
+                }}
                 scale={scale}
               />
               <ExpandButton 
@@ -1258,6 +1276,16 @@ const WhiteboardItem = ({
                 isExpanding={isExpanding}
               />
             </>
+          )}
+
+          {/* Show edit button for charts */}
+          {item.type === 'chart' && (
+            <EditButton 
+              onStartEditing={() => {
+                setIsChartEditing(true);
+              }}
+              scale={scale}
+            />
           )}
         </>
       )}

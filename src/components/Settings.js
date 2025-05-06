@@ -173,19 +173,20 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
       
       if (process.env.NODE_ENV === 'development') {
         // In development, store the API key in base64 format
-        console.log('Development mode - Original API key length:', trimmedApiKey.length);
-        console.log('Development mode - Original API key starts with:', trimmedApiKey.substring(0, 4));
+        console.log('Development mode - Storing API key in base64 format');
         const encodedKey = btoa(trimmedApiKey);
-        console.log('Development mode - Base64 encoded key length:', encodedKey.length);
-        console.log('Development mode - Base64 encoded key starts with:', encodedKey.substring(0, 10));
         settingsData = {
           groqApiKey: encodedKey,
           updatedAt: new Date().toISOString()
         };
       } else {
         // In production, encrypt the API key
-        console.log('Production mode - Encrypting API key of length:', trimmedApiKey.length);
-        const response = await fetch(`${getApiBaseUrl()}/encryptApiKey`, {
+        const apiBaseUrl = getApiBaseUrl();
+        if (!apiBaseUrl) {
+          throw new Error('API base URL not configured');
+        }
+
+        const response = await fetch(`${apiBaseUrl}/encryptApiKey`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -197,29 +198,21 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
         });
 
         if (!response.ok) {
-          console.error('Encryption failed with status:', response.status);
-          const errorText = await response.text();
-          console.error('Encryption error:', errorText);
           throw new Error('Failed to encrypt API key');
         }
 
         const { encrypted } = await response.json();
-        console.log('Production mode - Encrypted key length:', encrypted?.length);
-        console.log('Production mode - Encrypted key format:', typeof encrypted);
         settingsData = {
           groqApiKey: encrypted,
           updatedAt: new Date().toISOString()
         };
       }
 
-      console.log('Saving to Firebase - Key type:', typeof settingsData.groqApiKey);
-      console.log('Saving to Firebase - Key length:', settingsData.groqApiKey.length);
-      
+      // Save to Firebase
       const settingsRef = doc(db, 'userSettings', user.uid);
       await setDoc(settingsRef, settingsData, { merge: true });
-      console.log('Successfully saved settings to Firebase');
+      
       setMessage({ type: 'success', text: 'Settings saved successfully' });
-      setTimeout(() => onClose(), 1500);
     } catch (error) {
       console.error('Error saving settings:', error);
       setMessage({ type: 'error', text: 'Failed to save settings. Please try again.' });

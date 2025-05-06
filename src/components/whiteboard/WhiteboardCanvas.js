@@ -934,11 +934,39 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
             messages: [
               {
                 role: 'system',
-                content: 'You are a mind map assistant. Generate 5 related concepts or ideas that expand upon the given concept. Each concept should be brief (2-5 words) but meaningful. Format your response as a simple list with one concept per line.'
+                content: `You are a mind map generator specializing in creating hierarchical knowledge structures. Follow these guidelines:
+
+1. Central Node (Level 0):
+   - This is the main topic provided by the user
+   - Treat this as the core concept to expand upon
+
+2. Main Branches (Level 1):
+   - Generate 5-7 fundamental aspects or key categories of the central topic
+   - These should be broad enough to warrant further exploration
+   - Each should represent a distinct facet of the main topic
+   - Format: MAIN: [concise label, max 4 words]
+
+3. Sub-Branches (Level 2):
+   - For each main branch, generate 2-3 specific sub-topics
+   - These should directly elaborate on their parent branch
+   - Must be more specific and detailed than the parent
+   - Should show clear relationship to both central topic and parent branch
+   - Format: SUB: [specific detail, max 6 words]
+
+Format your response as:
+MAIN: [Main Branch 1]
+SUB: [Sub Branch 1.1 - specific detail]
+SUB: [Sub Branch 1.2 - specific detail]
+
+MAIN: [Main Branch 2]
+SUB: [Sub Branch 2.1 - specific detail]
+SUB: [Sub Branch 2.2 - specific detail]
+
+And so on. Each line must start with either MAIN: or SUB: to indicate the branch type.`
               },
               {
                 role: 'user',
-                content: `Generate 5 related concepts that expand upon this idea: ${text}`
+                content: `Generate a hierarchical mind map about: ${text}`
               }
             ],
             temperature: 0.7,
@@ -967,6 +995,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
         concepts.forEach((concept, i) => {
           const angle = i * angleStep;
+          const dimensions = calculateTextDimensions(concept, 'rectangle');
           const newItem = {
             id: Date.now() + i,
             type: 'rectangle',
@@ -975,8 +1004,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
               x: sourceItem.position.x + radius * Math.cos(angle),
               y: sourceItem.position.y + radius * Math.sin(angle)
             },
-            width: 120,
-            height: 80
+            width: dimensions.width,
+            height: dimensions.height
           };
 
           newItems.push(newItem);
@@ -1750,11 +1779,39 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           messages: [
             {
               role: 'system',
-              content: 'You are a mind map generator. First, generate 5-7 main branches for a mind map on the given topic. Then, for each main branch, generate 2-3 sub-branches that explore that aspect in more detail. Format your response as follows:\n\nMAIN: [Main Branch 1]\nSUB: [Sub Branch 1.1]\nSUB: [Sub Branch 1.2]\n\nMAIN: [Main Branch 2]\nSUB: [Sub Branch 2.1]\nSUB: [Sub Branch 2.2]\n\nAnd so on. Each line should start with either MAIN: or SUB: to indicate the branch type.'
+              content: `You are a mind map generator specializing in creating hierarchical knowledge structures. Follow these guidelines:
+
+1. Central Node (Level 0):
+   - This is the main topic provided by the user
+   - Treat this as the core concept to expand upon
+
+2. Main Branches (Level 1):
+   - Generate 5-7 fundamental aspects or key categories of the central topic
+   - These should be broad enough to warrant further exploration
+   - Each should represent a distinct facet of the main topic
+   - Format: MAIN: [concise label, max 4 words]
+
+3. Sub-Branches (Level 2):
+   - For each main branch, generate 2-3 specific sub-topics
+   - These should directly elaborate on their parent branch
+   - Must be more specific and detailed than the parent
+   - Should show clear relationship to both central topic and parent branch
+   - Format: SUB: [specific detail, max 6 words]
+
+Format your response as:
+MAIN: [Main Branch 1]
+SUB: [Sub Branch 1.1 - specific detail]
+SUB: [Sub Branch 1.2 - specific detail]
+
+MAIN: [Main Branch 2]
+SUB: [Sub Branch 2.1 - specific detail]
+SUB: [Sub Branch 2.2 - specific detail]
+
+And so on. Each line must start with either MAIN: or SUB: to indicate the branch type.`
             },
             {
               role: 'user',
-              content: `Generate main branches and sub-branches for a mind map about: ${mindMapPrompt}`
+              content: `Generate a hierarchical mind map about: ${mindMapPrompt}`
             }
           ],
           temperature: 0.7,
@@ -1796,16 +1853,17 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
       mainBranches.forEach((branch, index) => {
         const angle = index * angleStep;
+        const dimensions = calculateTextDimensions(branch.text, 'rectangle');
         const mainBranchNode = {
-          id: Date.now() + index + 1,
+          id: Date.now() + index,
           type: 'rectangle',
           text: branch.text,
           position: {
             x: centralNode.position.x + radius * Math.cos(angle),
             y: centralNode.position.y + radius * Math.sin(angle)
           },
-          width: 120,
-          height: 80
+          width: dimensions.width,
+          height: dimensions.height
         };
 
         newItems.push(mainBranchNode);
@@ -1868,6 +1926,42 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Calculate dimensions based on text content and node type
+  const calculateTextDimensions = (text, nodeType = 'rectangle') => {
+    // Create a temporary span to measure text
+    const span = document.createElement('span');
+    span.style.visibility = 'hidden';
+    span.style.position = 'absolute';
+    span.style.whiteSpace = 'pre-wrap'; // Allow text wrapping
+    span.style.maxWidth = '300px'; // Maximum width before wrapping
+    span.style.font = '14px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    span.style.padding = '10px';
+    span.textContent = text;
+    document.body.appendChild(span);
+
+    // Get dimensions
+    const width = span.offsetWidth;
+    const height = span.offsetHeight;
+
+    // Clean up
+    document.body.removeChild(span);
+
+    // Different minimum dimensions based on node type
+    if (nodeType === 'circle') {
+      const size = Math.max(width, height, 150); // Minimum size of 150px for circles
+      return {
+        width: size,
+        height: size
+      };
+    }
+
+    // For rectangles and other shapes
+    return {
+      width: Math.max(width + 40, 120), // minimum width of 120px
+      height: Math.max(height + 20, 40)  // minimum height of 40px
+    };
+  };
 
   return (
     <div className={`whiteboard-container ${isSearchPanelOpen ? 'panel-open' : ''}`} style={{ position: 'relative', width: '100%', height: '100%' }}>

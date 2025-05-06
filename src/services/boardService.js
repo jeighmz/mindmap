@@ -64,6 +64,46 @@ export const getUserBoards = async (userId) => {
   }
 };
 
+// Clean chart configuration
+const cleanChartConfig = (item) => {
+  if (item.type !== 'chart') return item;
+
+  const baseConfig = {
+    ...item,
+    xAxisTitle: String(item.xAxisTitle || ''),
+    yAxisTitle: String(item.yAxisTitle || ''),
+    xAxisUnit: Number(item.xAxisUnit || 1),
+    yAxisUnit: Number(item.yAxisUnit || 1),
+    xAxisStart: Number(item.xAxisStart || 0),
+    yAxisStart: Number(item.yAxisStart || 0),
+    xAxisEnd: Number(item.xAxisEnd || 10),
+    yAxisEnd: Number(item.yAxisEnd || 10),
+    xAxisMode: String(item.xAxisMode || 'number'),
+    yAxisMode: String(item.yAxisMode || 'number'),
+    showXAxisLabels: Boolean(item.showXAxisLabels !== false),
+    showYAxisLabels: Boolean(item.showYAxisLabels !== false),
+    xAxisCustomValues: Array.isArray(item.xAxisCustomValues) ? item.xAxisCustomValues.map(String) : [],
+    yAxisCustomValues: Array.isArray(item.yAxisCustomValues) ? item.yAxisCustomValues.map(String) : []
+  };
+
+  // Add sine wave specific properties if it's a sine chart
+  if (item.chartType === 'sine') {
+    return {
+      ...baseConfig,
+      frequency: Number(item.frequency || 1),
+      amplitude: Number(item.amplitude || 1),
+      periods: Number(item.periods || 1),
+      waveType: String(item.waveType || 'sine'),
+      phaseShift: Number(item.phaseShift || 0),
+      harmonics: Number(item.harmonics || 1),
+      enableModulation: Boolean(item.enableModulation),
+      modulationDepth: Number(item.modulationDepth || 0.5)
+    };
+  }
+
+  return baseConfig;
+};
+
 // Save a new board
 export const saveBoard = async (boardData, userId) => {
   try {
@@ -86,9 +126,20 @@ export const saveBoard = async (boardData, userId) => {
       itemsLength: boardData.content?.items?.length || 0
     });
 
+    // Clean and validate items, ensuring chart configurations are properly saved
+    const cleanedItems = (boardData.content?.items || []).map(item => {
+      if (item.type === 'chart') {
+        return cleanChartConfig(item);
+      }
+      return item;
+    });
+
     const data = {
       name: boardData.name,
-      content: boardData.content || {},
+      content: {
+        ...boardData.content,
+        items: cleanedItems
+      },
       userId: currentUser.uid,
       savedAt: serverTimestamp()
     };
