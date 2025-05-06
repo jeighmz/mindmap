@@ -191,53 +191,70 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
         }
 
         let settingsData;
+        const apiBaseUrl = getApiBaseUrl();
         
-        if (process.env.NODE_ENV === 'development') {
-          // In development, store the API key in base64 format
-          console.log('Development mode - Storing API key in base64 format');
-          const encodedKey = btoa(trimmedApiKey);
-          settingsData = {
-            groqApiKey: encodedKey,
-            updatedAt: new Date().toISOString()
-          };
-        } else {
-          // In production, encrypt the API key
-          const apiBaseUrl = getApiBaseUrl();
-          if (!apiBaseUrl) {
-            throw new Error('API base URL not configured');
+        try {
+          if (process.env.NODE_ENV === 'development') {
+            // In development, store the API key in base64 format
+            console.log('Development mode - Storing API key in base64 format');
+            const encodedKey = btoa(trimmedApiKey);
+            settingsData = {
+              groqApiKey: encodedKey,
+              updatedAt: new Date().toISOString()
+            };
+          } else {
+            // In production, encrypt the API key
+            console.log('Encrypting API key...');
+            console.log('Using API URL:', `${apiBaseUrl}/encryptApiKey`);
+            
+            const response = await fetch(`${apiBaseUrl}/encryptApiKey`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                userId: user.uid,
+                apiKey: trimmedApiKey
+              })
+            });
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error('Encryption failed:', {
+                status: response.status,
+                statusText: response.statusText,
+                error: errorText
+              });
+              throw new Error(`Failed to encrypt API key: ${response.statusText}`);
+            }
+
+            const { encrypted } = await response.json();
+            if (!encrypted) {
+              throw new Error('No encrypted data received from server');
+            }
+
+            settingsData = {
+              groqApiKey: encrypted,
+              updatedAt: new Date().toISOString()
+            };
           }
 
-          const response = await fetch(`${apiBaseUrl}/encryptApiKey`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              userId: user.uid,
-              apiKey: trimmedApiKey
-            })
+          // Save API key settings to Firebase
+          const settingsRef = doc(db, 'userSettings', user.uid);
+          await setDoc(settingsRef, settingsData, { merge: true });
+          setMessage({ type: 'success', text: 'Settings saved successfully' });
+        } catch (error) {
+          console.error('Error processing API key:', error);
+          setMessage({ 
+            type: 'error', 
+            text: `Failed to save API key: ${error.message}. Please try again.` 
           });
-
-          if (!response.ok) {
-            throw new Error('Failed to encrypt API key');
-          }
-
-          const { encrypted } = await response.json();
-          settingsData = {
-            groqApiKey: encrypted,
-            updatedAt: new Date().toISOString()
-          };
+          return;
         }
-
-        // Save API key settings to Firebase
-        const settingsRef = doc(db, 'userSettings', user.uid);
-        await setDoc(settingsRef, settingsData, { merge: true });
       }
-      
-      setMessage({ type: 'success', text: 'Settings saved successfully' });
     } catch (error) {
       console.error('Error saving settings:', error);
-      setMessage({ type: 'error', text: 'Failed to save settings. Please try again.' });
+      setMessage({ type: 'error', text: `Failed to save settings: ${error.message}` });
     } finally {
       setIsSaving(false);
     }

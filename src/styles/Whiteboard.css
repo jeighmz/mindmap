@@ -676,8 +676,15 @@
 
 .saved-whiteboards-menu {
   position: absolute;
-  top: calc(100% + 12px);
+  top: 100%;
+  margin-top: 8px;
   right: 0;
+  background: white;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  width: 480px;
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 .menu-toggle {
@@ -694,19 +701,6 @@
 
 .menu-toggle:hover {
   background: #f8f9fa;
-}
-
-.saved-whiteboards-menu {
-  position: absolute;
-  top: 100%;
-  margin-top: 8px;
-  right: 0;
-  background: white;
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  width: 300px;
-  max-height: 400px;
-  overflow-y: auto;
 }
 
 .save-new-board {
