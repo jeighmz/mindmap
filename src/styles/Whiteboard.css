@@ -1139,11 +1139,6 @@
 }
 
 /* Adjust positions when panels are open */
-.panel-open .whiteboard-zoom-overlay,
-.mind-map-panel-open .whiteboard-zoom-overlay {
-  right: 420px;
-}
-
 .panel-open .whiteboard-controls-overlay,
 .mind-map-panel-open .whiteboard-controls-overlay {
   left: calc(50% - 200px);
@@ -1151,8 +1146,7 @@
 
 /* For small screens, ensure controls remain accessible */
 @media (max-width: 900px) {
-  .panel-open .whiteboard-zoom-overlay,
-  .mind-map-panel-open .whiteboard-zoom-overlay {
+  .whiteboard-zoom-overlay {
     right: 20px;
     bottom: 80px;
     opacity: 0.7;
@@ -1395,15 +1389,9 @@
 }
 
 /* Adjust overlays when panels are open */
-.panel-open .whiteboard-zoom-overlay,
-.mind-map-panel-open .whiteboard-zoom-overlay {
-  right: 420px; /* 400px panel width + 20px margin */
-}
-
-.panel-open .whiteboard-menu-overlay,
-.mind-map-panel-open .whiteboard-menu-overlay {
-  left: 20px;
-  bottom: 20px;
+.panel-open .whiteboard-controls-overlay,
+.mind-map-panel-open .whiteboard-controls-overlay {
+  left: calc(50% - 200px);
 }
 
 /* Mind map panel specific styles */
@@ -1489,9 +1477,9 @@
     height: calc(95% - 50px);
   }
 
-  .panel-open .whiteboard-zoom-overlay,
-  .mind-map-panel-open .whiteboard-zoom-overlay {
-    right: 20px;
+  .panel-open .whiteboard-controls-overlay,
+  .mind-map-panel-open .whiteboard-controls-overlay {
+    left: 20px;
     bottom: 80px;
   }
 }

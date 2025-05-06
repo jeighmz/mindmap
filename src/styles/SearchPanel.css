@@ -1,18 +1,20 @@
 .search-panel {
   position: fixed;
-  right: 0;
-  top: 95px;
+  right: 80px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 400px;
-  height: calc(100vh - 95px);
+  height: calc(100vh - 250px);
   background-color: white;
-  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
-  z-index: 100;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  z-index: 2000;
   display: flex;
   flex-direction: column;
-  border-left: 1px solid #ddd;
+  border-radius: 12px;
   transition: transform 0.3s ease;
   will-change: transform;
-  overflow-y: auto;
+  overflow: hidden;
+  animation: slideInFromRight 0.3s ease;
 }
 
 .search-panel-header {
@@ -418,44 +420,56 @@
   font-style: italic;
 }
 
-@keyframes slideIn {
+@keyframes slideInFromRight {
   from {
-    transform: translateX(100%);
+    opacity: 0;
+    transform: translate(calc(100% + 80px), -50%);
   }
   to {
-    transform: translateX(0);
+    opacity: 1;
+    transform: translate(0, -50%);
   }
-}
-
-.search-panel {
-  animation: slideIn 0.3s ease;
 }
 
 /* Mobile adjustments */
 @media (max-width: 768px) {
   .search-panel {
-    top: 60px;
-    height: calc(100vh - 60px);
-    width: 100%;
-    box-shadow: -5px 0 15px rgba(0, 0, 0, 0.2);
+    right: 40px;
+    left: 40px;
+    width: auto;
+    top: 50%;
+    transform: translateY(-50%);
+    height: calc(100vh - 180px);
+    max-height: 70vh;
+  }
+
+  @keyframes slideInFromRight {
+    from {
+      opacity: 0;
+      transform: translate(calc(100% + 40px), -50%);
+    }
+    to {
+      opacity: 1;
+      transform: translate(0, -50%);
+    }
   }
 }
 
 .search-panel.chat-focused {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 95px);
+  height: calc(100vh - 250px);
+  top: 50%;
+  transform: translateY(-50%);
   background: #ffffff;
   border-left: 1px solid #e0e0e0;
 }
 
 .chat-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   padding: 16px;
   border-bottom: 1px solid #e0e0e0;
   background: #f8f9fa;
+  border-radius: 12px 12px 0 0;
 }
 
 .chat-header h3 {
@@ -915,4 +929,44 @@
 .send-button svg {
   stroke: currentColor;
   fill: none;
+}
+
+/* Remove these panel-open adjustments since they're not needed with floating panel */
+.panel-open .whiteboard-container {
+  width: 100%;
+  margin-right: 0;
+}
+
+/* Remove the zoom overlay adjustment */
+.panel-open .whiteboard-zoom-overlay {
+  right: 20px;
+}
+
+/* Update mobile styles */
+@media (max-width: 768px) {
+  .search-panel {
+    right: 10px;
+    left: 10px;
+    width: auto;
+    top: 50%;
+    transform: translateY(-50%);
+    height: calc(100vh - 180px);
+    max-height: 70vh;
+  }
+}
+
+/* Add a subtle animation for the panel */
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translate(calc(100% + 80px), -50%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
+}
+
+.search-panel {
+  animation: slideInFromRight 0.3s ease;
 } 
