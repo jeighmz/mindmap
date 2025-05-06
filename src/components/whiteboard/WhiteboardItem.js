@@ -56,7 +56,8 @@ const WhiteboardItem = ({
   onDelete,
   scale,
   onContextMenu,
-  onOrganize
+  onOrganize,
+  panOffset = { x: 0, y: 0 }
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
@@ -203,10 +204,10 @@ const WhiteboardItem = ({
     }
 
     // Snap to grid
-    newX = Math.round(newX / 20) * 20;
-    newY = Math.round(newY / 20) * 20;
-    newWidth = Math.round(newWidth / 20) * 20;
-    newHeight = Math.round(newHeight / 20) * 20;
+    newX = Math.round(newX / 10) * 10;
+    newY = Math.round(newY / 10) * 10;
+    newWidth = Math.round(newWidth / 10) * 10;
+    newHeight = Math.round(newHeight / 10) * 10;
 
     updatePosition(item.id, { x: newX, y: newY });
     updateSize(item.id, { width: newWidth, height: newHeight });
@@ -266,20 +267,25 @@ const WhiteboardItem = ({
         e.preventDefault();
         e.stopPropagation();
         
-        const dx = (e.clientX - dragStart.x) / scale;
-        const dy = (e.clientY - dragStart.y) / scale;
+        // Calculate the raw delta in screen coordinates
+        const dx = e.clientX - dragStart.x;
+        const dy = e.clientY - dragStart.y;
         
-        const newX = Math.round((dragStart.itemX + dx) / 20) * 20;
-        const newY = Math.round((dragStart.itemY + dy) / 20) * 20;
+        // Convert screen delta to canvas coordinates considering scale
+        const canvasDx = dx / scale;
+        const canvasDy = dy / scale;
+        
+        // Calculate new position with grid snapping
+        const newX = Math.round((dragStart.itemX + canvasDx) / 10) * 10;
+        const newY = Math.round((dragStart.itemY + canvasDy) / 10) * 10;
         
         // Update position for individual item movement
         updatePosition(item.id, { x: newX, y: newY });
         
         // If in group select mode, signal the parent component to move all selected items
         if (isGroupSelectMode && isSelected) {
-          // Pass movement delta to parent component
           if (typeof window.moveSelectedItems === 'function') {
-            window.moveSelectedItems(dx, dy);
+            window.moveSelectedItems(canvasDx, canvasDy);
           }
         }
       }
@@ -1074,22 +1080,28 @@ const WhiteboardItem = ({
     ));
   };
 
-  const ConnectorButton = ({ onStartConnection, scale }) => {
+  const EditButton = ({ onStartEditing, scale }) => {
+    const handleClick = (e) => {
+      e.stopPropagation();
+      if (item.type === 'chart') {
+        setIsChartEditing(true);
+      } else {
+        setIsEditing(true);
+      }
+    };
+
     return (
       <div
-        className="connector-control"
-        onClick={(e) => {
-          e.stopPropagation();
-          onStartConnection(item.id);
-        }}
+        className="edit-control"
+        onClick={handleClick}
         style={{
           position: 'absolute',
-          top: '50%',
           right: '-28px',
-          transform: `scale(${1/scale})`,
+          top: '50%',
+          transform: 'translateY(-50%)',
           width: '24px',
           height: '24px',
-          background: '#4CAF50',
+          background: '#2196F3',
           borderRadius: '50%',
           display: 'flex',
           alignItems: 'center',
@@ -1110,34 +1122,28 @@ const WhiteboardItem = ({
           strokeLinecap="round"
           strokeLinejoin="round"
         >
-          <path d="M7 17L17 7M17 7H7M17 7V17" />
+          <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
         </svg>
       </div>
     );
   };
 
-  const EditButton = ({ onStartEditing, scale }) => {
-    const handleClick = (e) => {
-      e.stopPropagation();
-      if (item.type === 'chart') {
-        setIsChartEditing(true);
-      } else {
-        setIsEditing(true);
-      }
-    };
-
+  const ConnectorButton = ({ onStartConnection, scale }) => {
     return (
       <div
-        className="edit-control"
-        onClick={handleClick}
+        className="connector-control"
+        onClick={(e) => {
+          e.stopPropagation();
+          onStartConnection(item.id);
+        }}
         style={{
           position: 'absolute',
-          top: '50%',
           right: '-28px',
-          transform: `scale(${1/scale})`,
+          top: '50%',
+          transform: 'translateY(-50%)',
           width: '24px',
           height: '24px',
-          background: '#2196F3',
+          background: '#4CAF50',
           borderRadius: '50%',
           display: 'flex',
           alignItems: 'center',
@@ -1146,7 +1152,7 @@ const WhiteboardItem = ({
           border: '2px solid white',
           boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
           zIndex: 1003,
-          marginTop: '-30px'
+          marginTop: '30px'
         }}
       >
         <svg 
@@ -1159,7 +1165,7 @@ const WhiteboardItem = ({
           strokeLinecap="round"
           strokeLinejoin="round"
         >
-          <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+          <path d="M7 17L17 7M17 7H7M17 7V17" />
         </svg>
       </div>
     );
@@ -1177,9 +1183,9 @@ const WhiteboardItem = ({
         }}
         style={{
           position: 'absolute',
-          top: '50%',
           right: '-28px',
-          transform: `scale(${1/scale})`,
+          top: '50%',
+          transform: 'translateY(-50%)',
           width: '24px',
           height: '24px',
           background: isExpanding ? '#7b1fa2' : '#9c27b0',
@@ -1191,7 +1197,7 @@ const WhiteboardItem = ({
           border: '2px solid white',
           boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
           zIndex: 1003,
-          marginTop: '30px'
+          marginTop: '-30px'
         }}
       >
         {isExpanding ? (

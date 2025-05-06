@@ -17,8 +17,8 @@ const DraggableElement = ({ element, isSelected, onClick, updatePosition, scale 
       if (dropResult) {
         const offset = monitor.getDifferenceFromInitialOffset();
         const newPosition = {
-          x: Math.round((element.position.x + offset.x / scale) / 20) * 20,
-          y: Math.round((element.position.y + offset.y / scale) / 20) * 20
+          x: Math.round((element.position.x + offset.x / scale) / 10) * 10,
+          y: Math.round((element.position.y + offset.y / scale) / 10) * 10
         };
         updatePosition(element.id, newPosition);
       }

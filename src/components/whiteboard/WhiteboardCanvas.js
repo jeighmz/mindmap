@@ -29,7 +29,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
-  const [scale, setScale] = useState(1);
+  const [scale, setScale] = useState(1.0); // Changed from 0.4 to 1.0 for 100% default zoom
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [connections, setConnections] = useState([]);
   const [connectingFrom, setConnectingFrom] = useState(null);
@@ -92,10 +92,6 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const handleMouseUp = useCallback((e) => {
     if (isPanning) {
       setIsPanning(false);
-      setPanOffset(prev => ({
-        x: e.clientX - panStart.x,
-        y: e.clientY - panStart.y
-      }));
     }
 
     if (isSelecting && selectionBox) {
@@ -118,14 +114,15 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       setSelectionBox(null);
       setSelectionStart(null);
     }
-  }, [isPanning, panStart, isSelecting, selectionBox, items]);
+  }, [isPanning, isSelecting, selectionBox, items]);
 
   const handleMouseMove = useCallback((e) => {
     if (isPanning) {
-      setPanOffset({
-        x: e.clientX - panStart.x,
-        y: e.clientY - panStart.y
-      });
+      const newPanOffset = {
+        x: Math.min(0, e.clientX - panStart.x), // Limit to left (negative) direction
+        y: Math.min(0, e.clientY - panStart.y)  // Limit to up (negative) direction
+      };
+      setPanOffset(newPanOffset);
     }
     
     const canvas = document.querySelector('.whiteboard-canvas');
@@ -177,18 +174,19 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   };
 
   useEffect(() => {
-    const handleGlobalMouseUp = (e) => {
+    const handleGlobalMouseMove = (e) => {
       if (isPanning) {
-        handleMouseUp(e);
+        const newPanOffset = {
+          x: e.clientX - panStart.x,
+          y: e.clientY - panStart.y
+        };
+        setPanOffset(newPanOffset);
       }
     };
 
-    const handleGlobalMouseMove = (e) => {
+    const handleGlobalMouseUp = () => {
       if (isPanning) {
-        setPanOffset({
-          x: e.clientX - panStart.x,
-          y: e.clientY - panStart.y
-        });
+        setIsPanning(false);
       }
     };
 
@@ -201,7 +199,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       window.removeEventListener('mousemove', handleGlobalMouseMove);
       window.removeEventListener('mouseup', handleGlobalMouseUp);
     };
-  }, [isPanning, panStart, handleMouseUp]);
+  }, [isPanning, panStart]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -244,30 +242,33 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         // Set default sizes based on item type
         switch (item.type) {
           case 'chart':
-            // Calculate dimensions as percentages of canvas size
-            width = canvasRect.width * 0.3;  // 30% of canvas width
-            height = canvasRect.height * 0.4; // 40% of canvas height
+            width = canvasRect.width * 0.2;  // Reduced from 0.3 to 0.2
+            height = canvasRect.height * 0.3; // Reduced from 0.4 to 0.3
             break;
           case 'sticky':
-            width = 200;
-            height = 200;
+            width = 150;  // Reduced from 200
+            height = 150; // Reduced from 200
             break;
           default:
-            width = 100;
-            height = 60;
+            width = 80;   // Reduced from 100
+            height = 40;   // Reduced from 60
         }
+
+        // Calculate the position accounting for scale, pan offset, and device pixel ratio
+        const dpr = window.devicePixelRatio || 1;
+        const position = {
+          x: Math.round(((offset.x - canvasRect.left - panOffset.x) / (scale * dpr) - width/2) / 10) * 10,
+          y: Math.round(((offset.y - canvasRect.top - panOffset.y) / (scale * dpr) - height/2) / 10) * 10
+        };
 
         const newItem = {
           id: Date.now(),
           type: item.type,
           chartType: item.chartType,
-          position: {
-            x: (offset.x - canvasRect.left - width/2) / scale,
-            y: (offset.y - canvasRect.top - height/2) / scale
-          },
-          text: item.type === 'sticky' ? 'New note' : '',
+          position,
           width,
           height,
+          text: item.type === 'sticky' ? 'New note' : '',
           // Add default chart configuration for better initial appearance
           ...(item.type === 'chart' && {
             xAxisTitle: 'X Axis',
@@ -296,7 +297,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       }
       return undefined;
     }
-  }), [scale]);
+  }), [scale, panOffset]);
 
   const handleWheel = useCallback((e) => {
     if (e.ctrlKey) {
@@ -304,7 +305,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
       const dpr = window.devicePixelRatio || 1;
       setScale(s => {
-        const newScale = Math.min(Math.max(0.1, s * delta), 4);
+        const newScale = Math.min(Math.max(0.1, s * delta), 2); // Changed max zoom from 4 to 2
         return newScale / dpr;
       });
     }
@@ -1930,9 +1931,9 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
     span.style.visibility = 'hidden';
     span.style.position = 'absolute';
     span.style.whiteSpace = 'pre-wrap'; // Allow text wrapping
-    span.style.maxWidth = '300px'; // Maximum width before wrapping
-    span.style.font = '14px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    span.style.padding = '10px';
+    span.style.maxWidth = '250px'; // Reduced from 300px
+    span.style.font = '12px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'; // Reduced from 14px
+    span.style.padding = '8px'; // Reduced from 10px
     span.textContent = text;
     document.body.appendChild(span);
 
@@ -1945,7 +1946,7 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
 
     // Different minimum dimensions based on node type
     if (nodeType === 'circle') {
-      const size = Math.max(width, height, 150); // Minimum size of 150px for circles
+      const size = Math.max(width, height, 120); // Reduced from 150
       return {
         width: size,
         height: size
@@ -1954,8 +1955,8 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
 
     // For rectangles and other shapes
     return {
-      width: Math.max(width + 40, 120), // minimum width of 120px
-      height: Math.max(height + 20, 40)  // minimum height of 40px
+      width: Math.max(width + 30, 100), // Reduced from width + 40, 120
+      height: Math.max(height + 16, 32)  // Reduced from height + 20, 40
     };
   };
 
@@ -1967,6 +1968,48 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
       dpr: window.devicePixelRatio
     });
   }, [scale]);
+
+  const handleResetView = useCallback(() => {
+    setScale(1.0);
+    setPanOffset({ x: 0, y: 0 });
+  }, []);
+
+  const handleZoomToFullWidth = useCallback(() => {
+    const canvas = document.querySelector('.whiteboard-canvas');
+    if (canvas) {
+      const { width } = canvas.getBoundingClientRect();
+      const newScale = width / 4000; // 4000 is the fixed canvas width
+      setScale(newScale);
+      setPanOffset({ x: 0, y: panOffset.y }); // Keep the same vertical position
+    }
+  }, [panOffset.y]);
+
+  const calculateViewportBounds = useCallback(() => {
+    const padding = 50;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    
+    if (items.length === 0) {
+      // Return default bounds if no items exist
+      return { x: 0, y: 0, width: 500, height: 300 };
+    }
+    
+    items.forEach(item => {
+      minX = Math.min(minX, item.position.x);
+      minY = Math.min(minY, item.position.y);
+      maxX = Math.max(maxX, item.position.x + item.width);
+      maxY = Math.max(maxY, item.position.y + item.height);
+    });
+    
+    return {
+      x: minX - padding,
+      y: minY - padding,
+      width: maxX - minX + (padding * 2),
+      height: maxY - minY + (padding * 2)
+    };
+  }, [items]);
 
   return (
     <div className={`whiteboard-container ${isSearchPanelOpen ? 'panel-open' : ''}`} style={{ position: 'relative', width: '100%', height: '100%' }}>
@@ -2050,6 +2093,72 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
             <button onClick={() => setScale(s => Math.min(s * 1.1, 4))}>+</button>
             <span>{Math.round(scale * 100)}%</span>
             <button onClick={() => setScale(s => Math.max(s * 0.9, 0.1))}>-</button>
+            <button 
+              className="home-button" 
+              onClick={handleResetView}
+              title="Reset view"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                <polyline points="9 22 9 12 15 12 15 22"/>
+              </svg>
+            </button>
+            <button 
+              className="full-width-button" 
+              onClick={handleZoomToFullWidth}
+              title="Zoom to full width"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 6h16M4 12h16M4 18h16"/>
+              </svg>
+            </button>
+            <div 
+              className="viewport-indicator" 
+              onClick={(e) => {
+                const viewport = e.currentTarget;
+                const rect = viewport.getBoundingClientRect();
+                const x = (e.clientX - rect.left) / rect.width;
+                const y = (e.clientY - rect.top) / rect.height;
+                
+                const canvas = document.querySelector('.whiteboard-canvas');
+                if (canvas) {
+                  const { width, height } = canvas.getBoundingClientRect();
+                  const newPanOffset = {
+                    x: -(x * 4000 - width),
+                    y: -(y * 4000 - height)
+                  };
+                  setPanOffset(newPanOffset);
+                }
+              }}
+            >
+              <div className="viewport-content" />
+              {(() => {
+                const canvas = document.querySelector('.whiteboard-canvas');
+                if (!canvas) return null;
+                
+                const { width: canvasWidth, height: canvasHeight } = canvas.getBoundingClientRect();
+                const viewportWidth = canvasWidth / scale;
+                const viewportHeight = canvasHeight / scale;
+                
+                // Calculate the viewport position relative to the fixed canvas size
+                const viewportX = (-panOffset.x / scale) / 4000;
+                const viewportY = (-panOffset.y / scale) / 4000;
+                const viewportScaleX = viewportWidth / 4000;
+                const viewportScaleY = viewportHeight / 4000;
+                
+                return (
+                  <div 
+                    className="viewport-frame"
+                    style={{
+                      width: `${viewportScaleX * 100}%`,
+                      height: `${viewportScaleY * 100}%`,
+                      left: `${viewportX * 100}%`,
+                      top: `${viewportY * 100}%`
+                    }}
+                  />
+                );
+              })()}
+            </div>
           </div>
         </div>
 
@@ -2107,8 +2216,8 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
             position: 'absolute',
             top: 0,
             left: 0,
-            width: '100%',
-            height: '100%',
+            width: '4000px',  // Fixed width instead of percentage
+            height: '4000px', // Fixed height instead of percentage
             margin: 0
           }}
         >
