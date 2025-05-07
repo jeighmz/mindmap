@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import Modal from './Modal';
 import '../styles/LoginForm.css';
 
-export default function Login({ isOpen, onClose }) {
+export default function Login({ isOpen, onClose, fromLandingPage, initialMode = 'login' }) {
   const { login, signup, signInWithGoogle } = useAuth();
-  const [isRegistering, setIsRegistering] = useState(false);
+  const navigate = useNavigate();
+  const [isRegistering, setIsRegistering] = useState(initialMode === 'register');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -13,6 +15,20 @@ export default function Login({ isOpen, onClose }) {
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [displayNameError, setDisplayNameError] = useState('');
+
+  // Reset form when modal opens/closes
+  useEffect(() => {
+    if (isOpen) {
+      setIsRegistering(initialMode === 'register');
+      setEmail('');
+      setPassword('');
+      setDisplayName('');
+      setError('');
+      setEmailError('');
+      setPasswordError('');
+      setDisplayNameError('');
+    }
+  }, [isOpen, initialMode]);
 
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -48,6 +64,13 @@ export default function Login({ isOpen, onClose }) {
     return true;
   };
 
+  const handleSuccessfulAuth = () => {
+    onClose();
+    if (fromLandingPage) {
+      navigate('/whiteboard');
+    }
+  };
+
   const handleEmailSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -66,7 +89,7 @@ export default function Login({ isOpen, onClose }) {
       } else {
         await login(email, password);
       }
-      onClose();
+      handleSuccessfulAuth();
     } catch (err) {
       console.error('Auth error:', err);
       if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
@@ -84,7 +107,7 @@ export default function Login({ isOpen, onClose }) {
   const handleGoogleSignIn = async () => {
     try {
       await signInWithGoogle();
-      onClose();
+      handleSuccessfulAuth();
     } catch (error) {
       console.error('Google sign-in error:', error);
       setError('Failed to sign in with Google. Please try again.');

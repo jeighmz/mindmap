@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../styles/LandingPage.css';
+import Login from '../components/Login';
 
 // Import SVG icons
 import { ReactComponent as ProjectPlanningIcon } from '../assets/icons/project-planning.svg';
@@ -15,13 +16,63 @@ import { ReactComponent as TeamCollaborationIcon } from '../assets/icons/team-co
 
 const LandingPage = () => {
   const navigate = useNavigate();
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+
+  const scrollToSection = (sectionId) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  const handleLoginClick = () => {
+    setIsRegistering(false);
+    setIsLoginOpen(true);
+  };
+
+  const handleSignupClick = () => {
+    setIsRegistering(true);
+    setIsLoginOpen(true);
+  };
 
   return (
     <div className="landing-page">
+      {/* Header Section */}
+      <header className="header">
+        <div className="header-content">
+          <div className="header-logo" onClick={() => navigate('/')}>
+            <img src="/logo_and_name.png" alt="Mindra" className="header-logo-img" />
+          </div>
+          <nav className="header-nav">
+            <ul className="nav-links">
+              <li><a href="#features" onClick={(e) => { e.preventDefault(); scrollToSection('features'); }}>Features</a></li>
+              <li><a href="#use-cases" onClick={(e) => { e.preventDefault(); scrollToSection('use-cases'); }}>Use Cases</a></li>
+              <li><a href="#technology" onClick={(e) => { e.preventDefault(); scrollToSection('technology'); }}>Technology</a></li>
+              <li><a href="#integrations" onClick={(e) => { e.preventDefault(); scrollToSection('integrations'); }}>Integrations</a></li>
+            </ul>
+          </nav>
+          <div className="header-actions">
+            <button className="login-button" onClick={handleLoginClick}>Log In</button>
+            <button className="signup-button" onClick={handleSignupClick}>Sign Up</button>
+          </div>
+        </div>
+      </header>
+
+      {/* Login Modal */}
+      <Login 
+        isOpen={isLoginOpen} 
+        onClose={() => setIsLoginOpen(false)}
+        fromLandingPage={true}
+        initialMode={isRegistering ? 'register' : 'login'}
+      />
+
       {/* Hero Section */}
       <section className="hero-section">
         <div className="hero-content">
-          <h1 className="hero-title">Unlock Your Ideas with MindMap</h1>
+          <h1 className="hero-title">
+            Unlock Your Ideas with <img src="/logo_and_name.png" alt="Mindra" className="hero-logo-inline" />
+          </h1>
           <p className="hero-subtitle">
             Visually organize thoughts, brainstorm concepts, and collaborate in real-time.
           </p>
@@ -39,7 +90,7 @@ const LandingPage = () => {
       </section>
 
       {/* Features Section */}
-      <section className="features-section">
+      <section id="features" className="features-section">
         <h2 className="features-heading">Key Features</h2>
         <div className="features-grid">
           {/* Feature 1: Visualize */}
@@ -59,11 +110,29 @@ const LandingPage = () => {
             <img src="/feature-ai.png" alt="AI Insights Feature Screenshot" className="feature-image" />
             <h3 className="feature-title">AI-Powered Insights</h3>
           </div>
+
+          {/* Feature 4: Export & Reporting */}
+          <div className="feature-card">
+            <img src="/feature-export.png" alt="Export & Reporting Feature Screenshot" className="feature-image" />
+            <h3 className="feature-title">Export & Reporting</h3>
+          </div>
+
+          {/* Feature 5: Concept Expansion */}
+          <div className="feature-card">
+            <img src="/feature-expand.png" alt="Concept Expansion Feature Screenshot" className="feature-image" />
+            <h3 className="feature-title">Expand Concepts</h3>
+          </div>
+
+          {/* Feature 6: LLM Chat Integration */}
+          <div className="feature-card">
+            <img src="/feature-chat.png" alt="LLM Chat Integration Feature Screenshot" className="feature-image" />
+            <h3 className="feature-title">Mind-map as input</h3>
+          </div>
         </div>
       </section>
 
       {/* Use Cases Section */}
-      <section className="use-cases-section">
+      <section id="use-cases" className="use-cases-section">
         <h2 className="use-cases-heading">Transform Your Workflow</h2>
         <p className="use-cases-description">
           From brainstorming to project planning, our AI-powered mind mapping revolutionizes how you work.
@@ -145,7 +214,7 @@ const LandingPage = () => {
       </section>
 
       {/* Technology Section */}
-      <section className="tech-section">
+      <section id="technology" className="tech-section">
         <h2 className="tech-heading">Powered by Next-Gen AI</h2>
         <p className="tech-description">
           Experience lightning-fast mind mapping powered by the world's most advanced AI technologies.
@@ -155,11 +224,12 @@ const LandingPage = () => {
             <img src="/models/groq.png" alt="Groq Logo" className="tech-logo" />
             <h3 className="tech-title">Groq LPU™ Inference</h3>
             <p className="tech-detail">
-              Ultra-fast language processing at unprecedented speeds. Generate mind maps in milliseconds with Groq's revolutionary LPU™ technology.
+              Ultra-fast language and vision processing at unprecedented speeds. Generate mind maps and analyze visual content in milliseconds with Groq's revolutionary LPU™ technology.
             </p>
             <ul className="tech-features">
               <li>Sub-second response times</li>
               <li>Real-time mind map generation</li>
+              <li>Visual content understanding</li>
               <li>Seamless thought expansion</li>
             </ul>
           </div>
@@ -175,6 +245,102 @@ const LandingPage = () => {
               <li>Contextual understanding</li>
               <li>Intelligent suggestions</li>
             </ul>
+          </div>
+        </div>
+
+        <div className="models-section">
+          <h3 className="models-heading">Available Models</h3>
+          <div className="model-companies">
+            <img src="/models/meta.png" alt="Meta" className="company-logo" />
+            <img src="/models/google.png" alt="Google" className="company-logo" />
+            <img src="/models/openai.png" alt="OpenAI" className="company-logo" />
+            <img src="/models/mistral.png" alt="Mistral" className="company-logo" />
+            <img src="/models/qwen.png" alt="Qwen" className="company-logo" />
+            <img src="/models/deepseek.png" alt="DeepSeek" className="company-logo" />
+            <img src="/models/g.png" alt="Groq" className="company-logo" />
+          </div>
+          <table className="models-table">
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>Model</th>
+                <th>Context Window</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><img src="/models/g.png" alt="Groq" className="provider-logo" /> Groq</td>
+                <td>Llama-3.3-70B-Versatile</td>
+                <td>128K + Vision</td>
+              </tr>
+              <tr>
+                <td><img src="/models/g.png" alt="Groq" className="provider-logo" /> Groq</td>
+                <td>Llama-3.1-8B-Instant</td>
+                <td>128K</td>
+              </tr>
+              <tr>
+                <td><img src="/models/g.png" alt="Groq" className="provider-logo" /> Groq</td>
+                <td>Gemma-2-9B-IT</td>
+                <td>8K</td>
+              </tr>
+              <tr>
+                <td><img src="/models/g.png" alt="Groq" className="provider-logo" /> Groq</td>
+                <td>Llama-Guard-3-8B</td>
+                <td>8K</td>
+              </tr>
+              <tr>
+                <td><img src="/models/g.png" alt="Groq" className="provider-logo" /> Groq</td>
+                <td>Whisper-Large-V3</td>
+                <td>Audio</td>
+              </tr>
+              <tr>
+                <td><img src="/models/g.png" alt="Groq" className="provider-logo" /> Groq</td>
+                <td>Mistral-Saba-24B</td>
+                <td>32K + Vision</td>
+              </tr>
+              <tr>
+                <td><img src="/models/g.png" alt="Groq" className="provider-logo" /> Groq</td>
+                <td>Qwen-QWQ-32B</td>
+                <td>128K + Vision</td>
+              </tr>
+              <tr>
+                <td><img src="/models/g.png" alt="Groq" className="provider-logo" /> Groq</td>
+                <td>DeepSeek-R1-Distill-70B</td>
+                <td>128K</td>
+              </tr>
+              <tr>
+                <td><img src="/models/g.png" alt="Groq" className="provider-logo" /> Groq</td>
+                <td>Llama-4-Maverick-17B</td>
+                <td>131K + Vision</td>
+              </tr>
+              <tr>
+                <td><img src="/models/g.png" alt="Groq" className="provider-logo" /> Groq</td>
+                <td>Compound-Beta</td>
+                <td>128K + Vision</td>
+              </tr>
+              <tr>
+                <td><img src="/models/g.png" alt="Groq" className="provider-logo" /> Groq</td>
+                <td>Compound-Beta-Mini</td>
+                <td>128K + Vision</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Integrations Section */}
+      <section id="integrations" className="integrations-section">
+        <h3 className="integrations-heading">Integrations</h3>
+        <div className="integrations-grid">
+          <div className="integration-card">
+            <img src="/integrations/notion.png" alt="Notion" className="integration-logo" />
+            <h4>Notion</h4>
+            <p>Sync your mind maps directly with Notion workspaces</p>
+          </div>
+          <div className="integration-card">
+            <img src="/integrations/figma.png" alt="Figma" className="integration-logo" />
+            <h4>Figma</h4>
+            <p>Export mind maps to Figma for design collaboration</p>
           </div>
         </div>
       </section>

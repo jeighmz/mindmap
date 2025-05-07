@@ -50,7 +50,7 @@ export const TIER_FEATURES = {
     maxMindMaps: 20,
     maxNodesPerMap: 500,
     maxCollaborators: 5,
-    allowedExportFormats: ['png', 'pdf', 'markdown', 'json', 'mm'],
+    allowedExportFormats: ['png', 'pdf', 'markdown', 'json', 'mm', 'fig', 'notion'],
     features: {
       basicTemplates: true,
       customColors: true,
@@ -69,7 +69,7 @@ export const TIER_FEATURES = {
     maxMindMaps: -1, // unlimited
     maxNodesPerMap: -1, // unlimited
     maxCollaborators: -1, // unlimited
-    allowedExportFormats: ['png', 'pdf', 'markdown', 'json', 'mm', 'svg', 'xml', 'yaml', 'docx'],
+    allowedExportFormats: ['png', 'pdf', 'markdown', 'json', 'mm', 'svg', 'xml', 'yaml', 'docx', 'fig', 'notion'],
     features: {
       basicTemplates: true,
       customColors: true,
@@ -135,7 +135,8 @@ export const EXPORT_FORMAT_DESCRIPTIONS = {
   svg: 'High-quality vector graphics',
   xml: 'Flexible system integration',
   yaml: 'Human-readable data format',
-  docx: 'Professional documentation workflows'
+  docx: 'Professional documentation workflows',
+  fig: 'Figma design integration'
 };
 
 export const getFeatureLimit = (tier, feature) => {

@@ -17,6 +17,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTierPermissions } from '../../hooks/useTierPermissions';
 import { saveBoard } from '../../services/boardService';
 import { getApiBaseUrl } from '../../utils/api';
+import { createNotionPage, writeToNotionDatabase } from './agent/tools/notion';
 
 const WhiteboardCanvas = forwardRef((props, ref) => {
   const {
@@ -1268,6 +1269,131 @@ Performance Metrics Analysis`
     }
   }, [calculateContentBounds, scale]);
 
+  const exportToNotion = useCallback(async () => {
+    if (!canExport('notion')) {
+      setIsPricingOpen(true);
+      return;
+    }
+
+    try {
+      // Get Notion API key from environment or user settings
+      const notionApiKey = process.env.REACT_APP_NOTION_API_KEY;
+      if (!notionApiKey) {
+        alert('Notion API key not configured. Please add it to your settings.');
+        return;
+      }
+
+      // Create a new page in Notion
+      const pageTitle = 'Mind Map Export';
+      const pageContent = [];
+
+      // Helper function to get item by id
+      const getItem = (id) => items.find(item => item.id === id);
+
+      // Create a map of parent-child relationships
+      const relationshipMap = new Map();
+      connections.forEach(conn => {
+        if (!relationshipMap.has(conn.from)) {
+          relationshipMap.set(conn.from, []);
+        }
+        relationshipMap.get(conn.from).push(conn.to);
+      });
+
+      // Find root nodes (nodes with no incoming connections)
+      const allTargets = new Set(connections.map(conn => conn.to));
+      const rootNodes = items.filter(item => !allTargets.has(item.id));
+
+      // Helper function to build Notion blocks for a node and its children
+      const buildNodeBlocks = (itemId, level = 0) => {
+        const item = getItem(itemId);
+        if (!item) return [];
+
+        const blocks = [];
+
+        // Add the node as a heading
+        blocks.push({
+          object: 'block',
+          type: level === 0 ? 'heading_1' : 'heading_2',
+          heading_1: level === 0 ? {
+            rich_text: [{
+              type: 'text',
+              text: { content: item.text }
+            }]
+          } : undefined,
+          heading_2: level > 0 ? {
+            rich_text: [{
+              type: 'text',
+              text: { content: item.text }
+            }]
+          } : undefined
+        });
+
+        // Add item description if exists
+        if (item.description) {
+          blocks.push({
+            object: 'block',
+            type: 'paragraph',
+            paragraph: {
+              rich_text: [{
+                type: 'text',
+                text: { content: item.description }
+              }]
+            }
+          });
+        }
+
+        // Add children
+        const children = relationshipMap.get(itemId) || [];
+        children.forEach(childId => {
+          blocks.push(...buildNodeBlocks(childId, level + 1));
+        });
+
+        return blocks;
+      };
+
+      // Build blocks for each root node
+      rootNodes.forEach(root => {
+        pageContent.push(...buildNodeBlocks(root.id));
+      });
+
+      // Create the page
+      const response = await createNotionPage(
+        notionApiKey,
+        null, // No database ID for direct page creation
+        pageTitle,
+        {
+          title: {
+            title: [{ text: { content: pageTitle } }]
+          }
+        },
+        (message) => console.log(message)
+      );
+
+      if (response) {
+        // Add the blocks to the page
+        const blocksResponse = await fetch(`${getApiBaseUrl()}/blocks/${response.id}/children`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${notionApiKey}`
+          },
+          body: JSON.stringify({
+            children: pageContent
+          })
+        });
+
+        if (blocksResponse.ok) {
+          alert('Successfully exported mind map to Notion!');
+        } else {
+          throw new Error('Failed to add blocks to Notion page');
+        }
+      }
+    } catch (err) {
+      console.error("Error exporting to Notion:", err);
+      alert("Could not export to Notion. See console for details.");
+    }
+  }, [items, connections, canExport, getApiBaseUrl]);
+
   const renderExportMenu = () => {
     const currentTier = getCurrentTier();
     
@@ -1430,6 +1556,69 @@ Performance Metrics Analysis`
           <span style={{ flex: 1 }}>Export as Mind Map (.mm)</span>
           {!canExport('mm') && <span className="upgrade-note" style={{ fontSize: '12px', color: '#666' }}>Pro tier</span>}
         </button>
+
+        <button 
+          onClick={() => { exportToFigma(); toggleExportMenu(); }}
+          className={`export-menu-item ${canExport('fig') ? '' : 'disabled'}`}
+          disabled={!canExport('fig')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            width: '100%',
+            padding: '8px 16px',
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
+            fontSize: '14px',
+            color: canExport('fig') ? '#333' : '#999',
+            ':hover': {
+              backgroundColor: canExport('fig') ? '#f5f5f5' : 'transparent'
+            }
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>
+            <path d="M12 8h4v4h-4z"/>
+            <path d="M8 12h4v4H8z"/>
+            <path d="M16 12h4v4h-4z"/>
+          </svg>
+          <span style={{ flex: 1 }}>Export as Figma (.fig)</span>
+          {!canExport('fig') && <span className="upgrade-note" style={{ fontSize: '12px', color: '#666' }}>Pro tier</span>}
+        </button>
+
+        <button 
+          onClick={() => { exportToNotion(); toggleExportMenu(); }}
+          className={`export-menu-item ${canExport('notion') ? '' : 'disabled'}`}
+          disabled={!canExport('notion')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            width: '100%',
+            padding: '8px 16px',
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
+            fontSize: '14px',
+            color: canExport('notion') ? '#333' : '#999',
+            ':hover': {
+              backgroundColor: canExport('notion') ? '#f5f5f5' : 'transparent'
+            }
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          <span style={{ flex: 1 }}>Export to Notion</span>
+          {!canExport('notion') && <span className="upgrade-note" style={{ fontSize: '12px', color: '#666' }}>Pro tier</span>}
+        </button>
       </div>
     );
   };
@@ -1569,6 +1758,135 @@ Performance Metrics Analysis`
     link.click();
     URL.revokeObjectURL(url);
   }, [items, connections, canExport]);
+
+  const exportToFigma = useCallback(async () => {
+    if (!canExport('fig')) {
+      setIsPricingOpen(true);
+      return;
+    }
+
+    try {
+      // Create a Figma-compatible JSON structure
+      const figmaData = {
+        name: "Mind Map",
+        lastModified: new Date().toISOString(),
+        schemaVersion: 0,
+        documentType: "DESIGN",
+        root: {
+          id: "0:0",
+          name: "Document",
+          type: "DOCUMENT",
+          children: []
+        }
+      };
+
+      // Convert mind map items to Figma nodes
+      const convertToFigmaNode = (item) => {
+        const node = {
+          id: item.id,
+          name: item.text,
+          type: "FRAME",
+          children: [],
+          absoluteBoundingBox: {
+            x: item.position.x,
+            y: item.position.y,
+            width: item.size.width,
+            height: item.size.height
+          },
+          fills: [{
+            type: "SOLID",
+            color: {
+              r: item.color ? parseInt(item.color.slice(1, 3), 16) / 255 : 1,
+              g: item.color ? parseInt(item.color.slice(3, 5), 16) / 255 : 1,
+              b: item.color ? parseInt(item.color.slice(5, 7), 16) / 255 : 1,
+              a: 1
+            }
+          }],
+          strokes: [{
+            type: "SOLID",
+            color: { r: 0, g: 0, b: 0, a: 1 }
+          }],
+          strokeWeight: 1,
+          cornerRadius: 4
+        };
+
+        // Add text layer
+        node.children.push({
+          id: `${item.id}_text`,
+          name: "Text",
+          type: "TEXT",
+          characters: item.text,
+          style: {
+            fontFamily: "Inter",
+            fontSize: 16,
+            fontWeight: 400,
+            lineHeightPx: 24,
+            textAlignHorizontal: "CENTER",
+            textAlignVertical: "CENTER"
+          },
+          absoluteBoundingBox: {
+            x: item.position.x,
+            y: item.position.y,
+            width: item.size.width,
+            height: item.size.height
+          }
+        });
+
+        return node;
+      };
+
+      // Add all items to the Figma document
+      items.forEach(item => {
+        figmaData.root.children.push(convertToFigmaNode(item));
+      });
+
+      // Convert connections to Figma vector paths
+      connections.forEach(connection => {
+        const startItem = items.find(item => item.id === connection.start);
+        const endItem = items.find(item => item.id === connection.end);
+        
+        if (startItem && endItem) {
+          const startX = startItem.position.x + startItem.size.width / 2;
+          const startY = startItem.position.y + startItem.size.height / 2;
+          const endX = endItem.position.x + endItem.size.width / 2;
+          const endY = endItem.position.y + endItem.size.height / 2;
+
+          figmaData.root.children.push({
+            id: connection.id,
+            name: "Connection",
+            type: "VECTOR",
+            vectorPaths: [{
+              windingRule: "NONE",
+              data: `M ${startX} ${startY} L ${endX} ${endY}`
+            }],
+            strokes: [{
+              type: "SOLID",
+              color: { r: 0, g: 0, b: 0, a: 1 }
+            }],
+            strokeWeight: 1
+          });
+        }
+      });
+
+      // Convert to .fig format (binary)
+      const jsonString = JSON.stringify(figmaData);
+      const blob = new Blob([jsonString], { type: 'application/figma' });
+      
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'mindmap.fig';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+    } catch (err) {
+      console.error("Error exporting to Figma:", err);
+      alert("Could not export to Figma. See console for details.");
+    }
+  }, [canExport, items, connections]);
 
   // Add copy/paste handlers
   const handleCopy = useCallback((e) => {

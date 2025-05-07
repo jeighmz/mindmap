@@ -229,7 +229,7 @@
   width: 90%;
   max-width: 1200px;
   margin: 2rem auto;
-  padding: 2rem;
+  padding: 0rem;
   background: var(--pricing-background);
   border-radius: 12px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);

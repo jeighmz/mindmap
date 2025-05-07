@@ -51,14 +51,22 @@ const CheckIcon = () => (
   </svg>
 );
 
+const SETTINGS_SECTIONS = {
+  PROFILE: 'profile',
+  INTEGRATIONS: 'integrations',
+  SUBSCRIPTION: 'subscription'
+};
+
 export default function Settings({ isOpen, onClose, onUpgradeClick }) {
   const { user, userTier } = useAuth();
   const [groqApiKey, setGroqApiKey] = useState('');
+  const [notionApiKey, setNotionApiKey] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [error, setError] = useState('');
+  const [activeSection, setActiveSection] = useState(SETTINGS_SECTIONS.PROFILE);
 
   const loadSettings = useCallback(async () => {
     if (!user?.uid) {
@@ -81,32 +89,23 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
       
       if (settingsSnap.exists()) {
         const data = settingsSnap.data();
-        console.log('Retrieved settings - Has API key:', !!data.groqApiKey);
+        console.log('Retrieved settings - Has API keys:', {
+          groq: !!data.groqApiKey,
+          notion: !!data.notionApiKey
+        });
+
+        // Load Groq API key
         if (data.groqApiKey) {
-          console.log('Retrieved key type:', typeof data.groqApiKey);
-          console.log('Retrieved key length:', data.groqApiKey.length);
           try {
-            // Try to decode base64 first (for development environment)
-            console.log('Attempting base64 decode...');
             const decodedKey = atob(data.groqApiKey);
-            console.log('Successfully decoded base64 API key');
-            console.log('Decoded key length:', decodedKey.length);
-            console.log('Decoded key starts with:', decodedKey.substring(0, 4));
             setGroqApiKey(decodedKey);
           } catch (e) {
-            console.log('Base64 decode failed:', e.message);
             if (process.env.NODE_ENV === 'development') {
-              // If we're in development and it's not base64, show the encrypted value
-              console.log('Development mode - Using raw key value');
               setGroqApiKey(data.groqApiKey);
             } else {
-              // In production, try to decrypt
-              console.log('Production mode - Attempting to decrypt key...');
               const response = await fetch(`${getApiBaseUrl()}/decryptApiKey`, {
                 method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   userId: user.uid,
                   encryptedData: data.groqApiKey
@@ -114,30 +113,51 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
               });
 
               if (!response.ok) {
-                console.error('Decryption failed with status:', response.status);
-                const errorText = await response.text();
-                console.error('Decryption error:', errorText);
                 throw new Error('Failed to decrypt API key');
               }
 
               const { decrypted } = await response.json();
-              console.log('Successfully decrypted key');
-              console.log('Decrypted key length:', decrypted.length);
-              console.log('Decrypted key starts with:', decrypted.substring(0, 4));
               setGroqApiKey(decrypted);
             }
           }
-        } else {
-          console.log('No API key found in settings');
-          setGroqApiKey('');
+        }
+
+        // Load Notion API key
+        if (data.notionApiKey) {
+          try {
+            const decodedKey = atob(data.notionApiKey);
+            setNotionApiKey(decodedKey);
+          } catch (e) {
+            if (process.env.NODE_ENV === 'development') {
+              setNotionApiKey(data.notionApiKey);
+            } else {
+              const response = await fetch(`${getApiBaseUrl()}/decryptApiKey`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  userId: user.uid,
+                  encryptedData: data.notionApiKey
+                })
+              });
+
+              if (!response.ok) {
+                throw new Error('Failed to decrypt API key');
+              }
+
+              const { decrypted } = await response.json();
+              setNotionApiKey(decrypted);
+            }
+          }
         }
       } else {
         console.log('No existing settings found, creating new document');
         await setDoc(settingsRef, {
           groqApiKey: '',
+          notionApiKey: '',
           updatedAt: new Date().toISOString()
         });
         setGroqApiKey('');
+        setNotionApiKey('');
       }
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -181,77 +201,74 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
         }, { merge: true });
       }
 
-      // Handle API key update
-      const trimmedApiKey = groqApiKey.trim();
-      if (trimmedApiKey) {
-        // Validate API key format
-        if (!trimmedApiKey.startsWith('gsk_')) {
-          setMessage({ type: 'error', text: 'Invalid API key format. Groq API keys should start with "gsk_"' });
+      // Handle API keys update
+      const trimmedGroqKey = groqApiKey.trim();
+      const trimmedNotionKey = notionApiKey.trim();
+      let settingsData = {};
+
+      // Process Groq API key
+      if (trimmedGroqKey) {
+        if (!trimmedGroqKey.startsWith('gsk_')) {
+          setMessage({ type: 'error', text: 'Invalid Groq API key format. Keys should start with "gsk_"' });
           return;
         }
 
-        let settingsData;
-        const apiBaseUrl = getApiBaseUrl();
-        
-        try {
-          if (process.env.NODE_ENV === 'development') {
-            // In development, store the API key in base64 format
-            console.log('Development mode - Storing API key in base64 format');
-            const encodedKey = btoa(trimmedApiKey);
-            settingsData = {
-              groqApiKey: encodedKey,
-              updatedAt: new Date().toISOString()
-            };
-          } else {
-            // In production, encrypt the API key
-            console.log('Encrypting API key...');
-            console.log('Using API URL:', `${apiBaseUrl}/encryptApiKey`);
-            
-            const response = await fetch(`${apiBaseUrl}/encryptApiKey`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                userId: user.uid,
-                apiKey: trimmedApiKey
-              })
-            });
+        if (process.env.NODE_ENV === 'development') {
+          settingsData.groqApiKey = btoa(trimmedGroqKey);
+        } else {
+          const response = await fetch(`${getApiBaseUrl()}/encryptApiKey`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: user.uid,
+              apiKey: trimmedGroqKey
+            })
+          });
 
-            if (!response.ok) {
-              const errorText = await response.text();
-              console.error('Encryption failed:', {
-                status: response.status,
-                statusText: response.statusText,
-                error: errorText
-              });
-              throw new Error(`Failed to encrypt API key: ${response.statusText}`);
-            }
-
-            const { encrypted } = await response.json();
-            if (!encrypted) {
-              throw new Error('No encrypted data received from server');
-            }
-
-            settingsData = {
-              groqApiKey: encrypted,
-              updatedAt: new Date().toISOString()
-            };
+          if (!response.ok) {
+            throw new Error('Failed to encrypt Groq API key');
           }
 
-          // Save API key settings to Firebase
-          const settingsRef = doc(db, 'userSettings', user.uid);
-          await setDoc(settingsRef, settingsData, { merge: true });
-          setMessage({ type: 'success', text: 'Settings saved successfully' });
-        } catch (error) {
-          console.error('Error processing API key:', error);
-          setMessage({ 
-            type: 'error', 
-            text: `Failed to save API key: ${error.message}. Please try again.` 
-          });
-          return;
+          const { encrypted } = await response.json();
+          settingsData.groqApiKey = encrypted;
         }
       }
+
+      // Process Notion API key
+      if (trimmedNotionKey) {
+        if (!trimmedNotionKey.startsWith('secret_')) {
+          setMessage({ type: 'error', text: 'Invalid Notion API key format. Keys should start with "secret_"' });
+          return;
+        }
+
+        if (process.env.NODE_ENV === 'development') {
+          settingsData.notionApiKey = btoa(trimmedNotionKey);
+        } else {
+          const response = await fetch(`${getApiBaseUrl()}/encryptApiKey`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: user.uid,
+              apiKey: trimmedNotionKey
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to encrypt Notion API key');
+          }
+
+          const { encrypted } = await response.json();
+          settingsData.notionApiKey = encrypted;
+        }
+      }
+
+      // Add timestamp
+      settingsData.updatedAt = new Date().toISOString();
+
+      // Save settings to Firebase
+      const settingsRef = doc(db, 'userSettings', user.uid);
+      await setDoc(settingsRef, settingsData, { merge: true });
+      setMessage({ type: 'success', text: 'Settings saved successfully' });
     } catch (error) {
       console.error('Error saving settings:', error);
       setMessage({ type: 'error', text: `Failed to save settings: ${error.message}` });
@@ -275,6 +292,104 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
     }
   };
 
+  const renderProfileSection = () => (
+    <div className="settings-section">
+      <h3>Profile Settings</h3>
+      <div className="form-group">
+        <label htmlFor="displayName">Display Name</label>
+        <input
+          type="text"
+          id="displayName"
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          placeholder="Enter your display name"
+        />
+        <small>Your name will be visible to other users</small>
+      </div>
+
+      <div className="form-group">
+        <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+          <label htmlFor="groqApiKey">GROQ API Key</label>
+          <a 
+            href="https://console.groq.com/keys" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="groq-dashboard-link"
+          >
+            Get API Key
+          </a>
+        </div>
+        <input
+          type="password"
+          id="groqApiKey"
+          value={groqApiKey}
+          onChange={(e) => setGroqApiKey(e.target.value)}
+          placeholder="Enter your GROQ API key"
+        />
+        <small>Your API key is stored securely and used for AI features</small>
+      </div>
+    </div>
+  );
+
+  const renderIntegrationsSection = () => (
+    <div className="settings-section">
+      <h3>Integrations</h3>
+      <div className="form-group">
+        <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+          <label htmlFor="notionApiKey">Notion API Key</label>
+          <a 
+            href="https://www.notion.so/my-integrations" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="notion-dashboard-link"
+          >
+            Get API Key
+          </a>
+        </div>
+        <input
+          type="password"
+          id="notionApiKey"
+          value={notionApiKey}
+          onChange={(e) => setNotionApiKey(e.target.value)}
+          placeholder="Enter your Notion API key"
+        />
+        <small>Your API key is stored securely and used for Notion integration</small>
+      </div>
+    </div>
+  );
+
+  const renderSubscriptionSection = () => (
+    <div className="settings-section">
+      <h3>Subscription</h3>
+      <div className="subscription-info">
+        <div className="tier-display">
+          <span className="current-tier">
+            <TierIcon tier={userTier} />
+            <span className="tier-name">{userTier} Plan</span>
+          </span>
+          <button type="button" className="upgrade-button" onClick={handleUpgradeClick}>
+            Upgrade Plan
+          </button>
+        </div>
+        <div className="tier-features">
+          <h4>Your Features & Limits</h4>
+          <ul>
+            <li><CheckIcon /> Up to {TIER_FEATURES[userTier].maxMindMaps} mind maps</li>
+            <li><CheckIcon /> Maximum {TIER_FEATURES[userTier].maxNodesPerMap} nodes per map</li>
+            <li><CheckIcon /> {TIER_FEATURES[userTier].maxCollaborators} collaborator{TIER_FEATURES[userTier].maxCollaborators !== 1 ? 's' : ''}</li>
+            <li><CheckIcon /> Export formats: {TIER_FEATURES[userTier].allowedExportFormats.join(', ')}</li>
+            {Object.entries(TIER_FEATURES[userTier].features)
+              .filter(([_, enabled]) => enabled)
+              .map(([feature]) => (
+                <li key={feature}><CheckIcon /> {formatFeatureName(feature)}</li>
+              ))
+            }
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+
   // Early return if no user
   if (!user) {
     return (
@@ -295,91 +410,60 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
   return (
     <Modal isOpen={isOpen} onClose={onClose}>
       <div className="settings-modal">
-        <h2>Settings</h2>
-        
-        {message.text && (
-          <div className={`message ${message.type}`}>
-            {message.text}
-          </div>
-        )}
-
-        {isLoading ? (
-          <div className="loading-message">Loading settings...</div>
-        ) : (
-          <form onSubmit={handleSave}>
-            <div className="subscription-info">
-              <div className="tier-display">
-                <span className="current-tier">
-                  <TierIcon tier={userTier} />
-                  <span className="tier-name">{userTier} Plan</span>
-                </span>
-                <button type="button" className="upgrade-button" onClick={handleUpgradeClick}>
-                  Upgrade Plan
-                </button>
-              </div>
-              <div className="tier-features">
-                <h4>Your Features & Limits</h4>
-                <ul>
-                  <li><CheckIcon /> Up to {TIER_FEATURES[userTier].maxMindMaps} mind maps</li>
-                  <li><CheckIcon /> Maximum {TIER_FEATURES[userTier].maxNodesPerMap} nodes per map</li>
-                  <li><CheckIcon /> {TIER_FEATURES[userTier].maxCollaborators} collaborator{TIER_FEATURES[userTier].maxCollaborators !== 1 ? 's' : ''}</li>
-                  <li><CheckIcon /> Export formats: {TIER_FEATURES[userTier].allowedExportFormats.join(', ')}</li>
-                  {Object.entries(TIER_FEATURES[userTier].features)
-                    .filter(([_, enabled]) => enabled)
-                    .map(([feature]) => (
-                      <li key={feature}><CheckIcon /> {formatFeatureName(feature)}</li>
-                    ))
-                  }
-                </ul>
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="displayName">Display Name</label>
-              <input
-                type="text"
-                id="displayName"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Enter your display name"
-              />
-              <small>Your name will be visible to other users</small>
-            </div>
-
-            <div className="form-group">
-              <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
-                <label htmlFor="groqApiKey">GROQ API Key</label>
-                <a 
-                  href="https://console.groq.com/keys" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="groq-dashboard-link"
-                >
-                  Get API Key
-                </a>
-              </div>
-              <input
-                type="password"
-                id="groqApiKey"
-                value={groqApiKey}
-                onChange={(e) => setGroqApiKey(e.target.value)}
-                placeholder="Enter your GROQ API key"
-                required
-              />
-              <small>Your API key is stored securely and used for AI features</small>
-            </div>
-
-            <div className="form-actions">
-              <button type="button" onClick={onClose}>Cancel</button>
-              <button 
-                type="submit" 
-                disabled={isSaving || !groqApiKey.trim()}
+        <div className="settings-container">
+          <div className="settings-sidebar">
+            <h2>Settings</h2>
+            <nav className="settings-nav">
+              <button
+                className={`nav-item ${activeSection === SETTINGS_SECTIONS.PROFILE ? 'active' : ''}`}
+                onClick={() => setActiveSection(SETTINGS_SECTIONS.PROFILE)}
               >
-                {isSaving ? 'Saving...' : 'Save'}
+                Profile
               </button>
-            </div>
-          </form>
-        )}
+              <button
+                className={`nav-item ${activeSection === SETTINGS_SECTIONS.INTEGRATIONS ? 'active' : ''}`}
+                onClick={() => setActiveSection(SETTINGS_SECTIONS.INTEGRATIONS)}
+              >
+                Integrations
+              </button>
+              <button
+                className={`nav-item ${activeSection === SETTINGS_SECTIONS.SUBSCRIPTION ? 'active' : ''}`}
+                onClick={() => setActiveSection(SETTINGS_SECTIONS.SUBSCRIPTION)}
+              >
+                Subscription
+              </button>
+            </nav>
+          </div>
+
+          <div className="settings-content">
+            <button className="modal-close" onClick={onClose}>×</button>
+            {message.text && (
+              <div className={`message ${message.type}`}>
+                {message.text}
+              </div>
+            )}
+
+            {isLoading ? (
+              <div className="loading-message">Loading settings...</div>
+            ) : (
+              <form onSubmit={handleSave}>
+                {activeSection === SETTINGS_SECTIONS.PROFILE && renderProfileSection()}
+                {activeSection === SETTINGS_SECTIONS.INTEGRATIONS && renderIntegrationsSection()}
+                {activeSection === SETTINGS_SECTIONS.SUBSCRIPTION && renderSubscriptionSection()}
+
+                <div className="form-actions">
+                  <button type="button" onClick={onClose}>Cancel</button>
+                  <button 
+                    type="submit" 
+                    disabled={isSaving || !groqApiKey.trim() || !notionApiKey.trim()}
+                  >
+                    {isSaving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
       </div>
     </Modal>
   );
