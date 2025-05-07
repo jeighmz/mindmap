@@ -35,6 +35,18 @@ const SendIcon = () => (
   </svg>
 );
 
+const RemoveIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const FullscreenIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
 const SearchPanel = ({ highlightedItems, onClose }) => {
   const { user } = useAuth();
   const [tabs, setTabs] = useState([{ id: 'default', messages: [], name: 'Chat 1' }]);
@@ -42,11 +54,13 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedModel, setSelectedModel] = useState({
     id: 'llama-3.3-70b-versatile',
     name: 'Llama 3.3 70B Versatile',
     provider: 'Meta'
   });
+  const [screenshot, setScreenshot] = useState(null);
 
   const availableModels = [
     // Production Models
@@ -58,11 +72,19 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
     
     // Preview Models
     { id: 'deepseek-r1-distill-llama-70b', name: 'DeepSeek R1 Distill 70B (128K context)', provider: 'DeepSeek' },
-    { id: 'llama-4-maverick-17b-128e-instruct', name: 'Llama 4 Maverick 17B (128K context)', provider: 'Meta' },
-    { id: 'llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout 17B (128K context)', provider: 'Meta' },
+    { id: 'meta-llama/llama-4-maverick-17b-128e-instruct', name: 'Llama 4 Maverick 17B (128K context)', provider: 'Meta' },
+    { id: 'meta-llama/llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout 17B (128K context)', provider: 'Meta' },
     { id: 'mistral-saba-24b', name: 'Mistral Saba 24B (32K context)', provider: 'Mistral' },
     { id: 'qwen-qwq-32b', name: 'Qwen QWQ 32B (128K context)', provider: 'Alibaba Cloud' }
   ];
+
+  // Vision models that support image input
+  const visionModels = [
+    'meta-llama/llama-4-maverick-17b-128e-instruct',
+    'meta-llama/llama-4-scout-17b-16e-instruct'
+  ];
+
+  const isVisionModel = visionModels.includes(selectedModel.id);
 
   // System message that guides the AI's behavior
   const systemMessage = {
@@ -116,6 +138,37 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
     }
   };
 
+  const handleScreenshot = async () => {
+    try {
+      const canvas = document.querySelector('.whiteboard-canvas');
+      if (!canvas) {
+        throw new Error('Could not find whiteboard canvas');
+      }
+
+      const html2canvas = (await import('html2canvas')).default;
+      const screenshot = await html2canvas(canvas, {
+        backgroundColor: '#f5f5f5',
+        scale: 2,
+        useCORS: true,
+        logging: true,
+        onclone: (clonedDoc) => {
+          const clonedContent = clonedDoc.querySelector('.canvas-content');
+          if (clonedContent) {
+            clonedContent.style.transform = 'none';
+            const grid = clonedContent.querySelector('.grid-background');
+            if (grid) grid.style.display = 'none';
+          }
+        }
+      });
+
+      const base64Image = screenshot.toDataURL('image/png');
+      setScreenshot(base64Image);
+    } catch (error) {
+      console.error('Error capturing screenshot:', error);
+      alert('Failed to capture screenshot. Please try again.');
+    }
+  };
+
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
 
@@ -125,7 +178,24 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
       setInputMessage('');
 
       const activeTab = tabs.find(tab => tab.id === activeTabId);
-      const newMessages = [...activeTab.messages, { role: 'user', content: userMessage }];
+      const newMessages = [...activeTab.messages];
+      
+      // If there's a screenshot, add it as a separate message first
+      if (screenshot) {
+        newMessages.push({
+          role: 'user',
+          content: '',
+          image: screenshot
+        });
+        setScreenshot(null); // Clear the screenshot after sending
+      }
+      
+      // Add the user's text message
+      newMessages.push({ 
+        role: 'user', 
+        content: userMessage
+      });
+      
       updateTabMessages(activeTabId, newMessages);
 
       // Get the context from highlighted items
@@ -136,6 +206,41 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
 
       const apiKey = await getUserApiKey();
 
+      // Prepare messages array based on whether we're using a vision model and have a screenshot
+      let messages = [systemMessage];
+      
+      if (isVisionModel && screenshot) {
+        messages.push({
+          role: 'user',
+          content: [
+            { type: 'text', text: fullPrompt },
+            {
+              type: 'image_url',
+              image_url: {
+                url: screenshot
+              }
+            }
+          ]
+        });
+      } else {
+        messages.push({ role: 'user', content: fullPrompt });
+      }
+
+      // Log the request for debugging
+      console.log('Sending request to Groq API:', {
+        model: selectedModel.id,
+        messages: messages.map(msg => ({
+          ...msg,
+          content: Array.isArray(msg.content) 
+            ? msg.content.map(c => c.type === 'image_url' 
+              ? { ...c, image_url: { url: c.image_url.url.substring(0, 100) + '...' } }
+              : c)
+            : msg.content
+        })),
+        isVisionModel,
+        hasScreenshot: !!screenshot
+      });
+
       const response = await fetch(`https://api.groq.com/openai/v1/chat/completions`, {
         method: 'POST',
         headers: {
@@ -144,18 +249,22 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
         },
         body: JSON.stringify({
           model: selectedModel.id,
-          messages: [
-            systemMessage,
-            { role: 'user', content: fullPrompt }
-          ],
+          messages: messages,
           temperature: 0.7,
           max_tokens: 1024,
-          top_p: 0.9
+          top_p: 0.9,
+          stream: false
         })
       });
 
       if (!response.ok) {
-        throw new Error('Failed to get response from AI');
+        const errorData = await response.json().catch(() => null);
+        console.error('Groq API error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData
+        });
+        throw new Error(`Failed to get response from AI: ${response.statusText}`);
       }
 
       const data = await response.json();
@@ -234,24 +343,8 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
 
   const activeTab = tabs.find(tab => tab.id === activeTabId);
 
-  return (
-    <div className="search-panel chat-focused">
-      <div className="chat-header">
-        <h3>AI Analysis Chat</h3>
-        <div className="header-actions">
-          <button 
-            className="settings-button"
-            onClick={() => setShowSettings(!showSettings)}
-            title="Chat settings"
-          >
-            <SettingsIcon />
-          </button>
-          <button className="close-button" onClick={onClose} title="Close panel">
-            <CloseIcon />
-          </button>
-        </div>
-      </div>
-
+  const renderChatContent = () => (
+    <>
       {showSettings && (
         <div className="chat-settings">
           <div className="model-selection">
@@ -261,6 +354,9 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
               onChange={(e) => {
                 const model = availableModels.find(m => m.id === e.target.value);
                 setSelectedModel(model);
+                if (!visionModels.includes(model.id)) {
+                  setScreenshot(null);
+                }
               }}
             >
               {availableModels.map(model => (
@@ -302,13 +398,26 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
         </button>
       </div>
 
-      <div className="chat-messages">
+      <div className={isFullscreen ? "modal-chat-messages" : "chat-messages"}>
         {activeTab.messages.map((message, index) => (
-          <div key={index} className={`message ${message.role}`}>
+          <div 
+            key={index} 
+            className={`message ${message.role} ${message.image && !message.content ? 'image-only' : ''}`}
+          >
             <div className="message-content">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {message.content}
-              </ReactMarkdown>
+              {message.content && (
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {message.content}
+                </ReactMarkdown>
+              )}
+              {message.image && (
+                <div className="message-screenshot">
+                  <img 
+                    src={message.image} 
+                    alt="Mindmap screenshot" 
+                  />
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -323,32 +432,131 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
         )}
       </div>
 
-      <div className="chat-input">
-        <textarea
-          value={inputMessage}
-          onChange={(e) => setInputMessage(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              handleSendMessage();
+      <div className={isFullscreen ? "modal-chat-input" : "chat-input"}>
+        {screenshot && (
+          <div className="screenshot-preview-container">
+            <img src={screenshot} alt="Screenshot preview" />
+            <button 
+              className="remove-screenshot"
+              onClick={() => setScreenshot(null)}
+              title="Remove screenshot"
+            >
+              <RemoveIcon />
+              Remove
+            </button>
+          </div>
+        )}
+        <div className="chat-input-controls">
+          <textarea
+            value={inputMessage}
+            onChange={(e) => setInputMessage(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage();
+              }
+            }}
+            placeholder={
+              highlightedItems.length > 0
+                ? "Ask me about the selected items..."
+                : "Select items on the whiteboard to analyze them"
             }
-          }}
-          placeholder={
-            highlightedItems.length > 0
-              ? "Ask me about the selected items..."
-              : "Select items on the whiteboard to analyze them"
-          }
-          disabled={highlightedItems.length === 0 || isLoading}
-        />
-        <button 
-          onClick={handleSendMessage}
-          disabled={!inputMessage.trim() || isLoading || highlightedItems.length === 0}
-          className="send-button"
-        >
-          <SendIcon />
-        </button>
+            disabled={highlightedItems.length === 0 || isLoading}
+          />
+          <button 
+            onClick={handleSendMessage}
+            disabled={!inputMessage.trim() || isLoading || highlightedItems.length === 0}
+            className="send-button"
+          >
+            <SendIcon />
+          </button>
+        </div>
       </div>
-    </div>
+    </>
+  );
+
+  return (
+    <>
+      <div className="search-panel chat-focused">
+        <div className="chat-header">
+          <h3>AI Analysis Chat</h3>
+          <div className="header-actions">
+            {isVisionModel && (
+              <button 
+                className="settings-button"
+                onClick={handleScreenshot}
+                title="Capture mindmap screenshot"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" strokeLinecap="round" strokeLinejoin="round"/>
+                  <circle cx="12" cy="13" r="4" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            )}
+            <button 
+              className="fullscreen-button"
+              onClick={() => setIsFullscreen(true)}
+              title="Switch to full screen"
+            >
+              <FullscreenIcon />
+              Full Screen
+            </button>
+            <button 
+              className="settings-button"
+              onClick={() => setShowSettings(!showSettings)}
+              title="Chat settings"
+            >
+              <SettingsIcon />
+            </button>
+            <button className="close-button" onClick={onClose} title="Close panel">
+              <CloseIcon />
+            </button>
+          </div>
+        </div>
+        {renderChatContent()}
+      </div>
+
+      {isFullscreen && (
+        <div className="chat-modal">
+          <div className="chat-modal-content">
+            <div className="modal-header">
+              <h3>AI Analysis Chat</h3>
+              <div className="header-actions">
+                {isVisionModel && (
+                  <button 
+                    className="settings-button"
+                    onClick={handleScreenshot}
+                    title="Capture mindmap screenshot"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" strokeLinecap="round" strokeLinejoin="round"/>
+                      <circle cx="12" cy="13" r="4" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                )}
+                <button 
+                  className="settings-button"
+                  onClick={() => setShowSettings(!showSettings)}
+                  title="Chat settings"
+                >
+                  <SettingsIcon />
+                </button>
+                <button 
+                  className="settings-button"
+                  onClick={() => setIsFullscreen(false)}
+                  title="Exit full screen"
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+            </div>
+            <div className="modal-body">
+              {renderChatContent()}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

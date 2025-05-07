@@ -11,16 +11,56 @@
   font-weight: 500;
   z-index: 10000;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.development-banner.hidden {
+  transform: translateY(-100%);
+  opacity: 0;
+}
+
+.banner-close-button {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: #333;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.banner-close-button:hover {
+  opacity: 1;
+  background-color: rgba(0, 0, 0, 0.05);
 }
 
 /* Adjust the whiteboard header position */
 .whiteboard-header {
-  top: 35px !important;
+  position: fixed;
+  top: 35px;
+  transition: top 0.3s ease;
+}
+
+.whiteboard-header.no-banner {
+  top: 0;
 }
 
 /* Adjust the whiteboard canvas margin */
 .whiteboard-canvas {
-  margin-top: 95px !important;
+  margin-top: 95px;
+  transition: margin-top 0.3s ease;
+}
+
+.whiteboard-canvas.no-banner {
+  margin-top: 60px;
 }
 
 /* Adjust for mobile */
@@ -31,10 +71,18 @@
   }
   
   .whiteboard-header {
-    top: 31px !important;
+    top: 31px;
+  }
+  
+  .whiteboard-header.no-banner {
+    top: 0;
   }
   
   .whiteboard-canvas {
-    margin-top: 81px !important;
+    margin-top: 81px;
+  }
+  
+  .whiteboard-canvas.no-banner {
+    margin-top: 46px;
   }
 } 
