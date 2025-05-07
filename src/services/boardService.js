@@ -70,6 +70,7 @@ const cleanChartConfig = (item) => {
 
   const baseConfig = {
     ...item,
+    title: String(item.title || ''),
     xAxisTitle: String(item.xAxisTitle || ''),
     yAxisTitle: String(item.yAxisTitle || ''),
     xAxisUnit: Number(item.xAxisUnit || 1),

@@ -95,12 +95,18 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }
 
     if (isSelecting && selectionBox) {
+      const dpr = window.devicePixelRatio || 1;
       const selectedItems = items.filter(item => {
+        const itemRight = item.position.x + item.width;
+        const itemBottom = item.position.y + item.height;
+        const boxRight = selectionBox.x + selectionBox.width;
+        const boxBottom = selectionBox.y + selectionBox.height;
+
         return (
-          item.position.x < selectionBox.x + selectionBox.width &&
-          item.position.x + item.width > selectionBox.x &&
-          item.position.y < selectionBox.y + selectionBox.height &&
-          item.position.y + item.height > selectionBox.y
+          item.position.x < boxRight &&
+          itemRight > selectionBox.x &&
+          item.position.y < boxBottom &&
+          itemBottom > selectionBox.y
         );
       });
 
@@ -128,8 +134,9 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     const canvas = document.querySelector('.whiteboard-canvas');
     if (canvas) {
       const rect = canvas.getBoundingClientRect();
-      const x = (e.clientX - rect.left - panOffset.x) / scale;
-      const y = (e.clientY - rect.top - panOffset.y) / scale;
+      const dpr = window.devicePixelRatio || 1;
+      const x = (e.clientX - rect.left - panOffset.x) / (scale * dpr);
+      const y = (e.clientY - rect.top - panOffset.y) / (scale * dpr);
       setMousePosition({ x, y });
 
       if (isSelecting && selectionStart) {
@@ -158,8 +165,9 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       const canvas = document.querySelector('.whiteboard-canvas');
       if (canvas) {
         const rect = canvas.getBoundingClientRect();
-        const x = (e.clientX - rect.left - panOffset.x) / scale;
-        const y = (e.clientY - rect.top - panOffset.y) / scale;
+        const dpr = window.devicePixelRatio || 1;
+        const x = (e.clientX - rect.left - panOffset.x) / (scale * dpr);
+        const y = (e.clientY - rect.top - panOffset.y) / (scale * dpr);
         
         setIsSelecting(true);
         setSelectionStart({ x, y });
@@ -271,6 +279,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           text: item.type === 'sticky' ? 'New note' : '',
           // Add default chart configuration for better initial appearance
           ...(item.type === 'chart' && {
+            title: 'New Chart',
             xAxisTitle: 'X Axis',
             yAxisTitle: 'Y Axis',
             showXAxisLabels: true,
@@ -1075,44 +1084,75 @@ Performance Metrics Analysis`
 
     // Calculate bounds including padding
     const bounds = calculateContentBounds();
-    const exportPadding = 20; // Add some padding around the content
+    const exportPadding = 20;
 
     html2canvas(contentElement, {
-      backgroundColor: '#f5f5f5', // Match canvas background or set to null for transparent
-      // Use the calculated bounds to capture only the relevant area
-      x: bounds.x - exportPadding, 
+      backgroundColor: '#f5f5f5',
+      x: bounds.x - exportPadding,
       y: bounds.y - exportPadding,
       width: bounds.width + exportPadding * 2,
       height: bounds.height + exportPadding * 2,
-      // Apply the current scale to the capture
-      scale: scale, 
-      // Ensure foreign objects (like SVGs for connectors) are rendered
-      useCORS: true, 
-      logging: true, // Enable logging for debugging
+      scale: 2,
+      useCORS: true,
+      logging: true,
       onclone: (clonedDoc) => {
-        // Optional: Make adjustments to the cloned document before rendering
-        // For example, ensure connector SVGs are correctly styled/positioned if needed
         const clonedContent = clonedDoc.querySelector('.canvas-content');
         if (clonedContent) {
-          // Reset transform on the cloned content div as html2canvas handles positioning via x, y
-          clonedContent.style.transform = 'none'; 
-          // Ensure grid background is removed if you don't want it in export
+          clonedContent.style.transform = 'none';
           const grid = clonedContent.querySelector('.grid-background');
-          if (grid) grid.style.display = 'none'; 
+          if (grid) grid.style.display = 'none';
         }
       }
     }).then(canvas => {
-      // Create a link to download the generated canvas image
-      const link = document.createElement('a');
-      link.download = 'mindmap.png';
-      link.href = canvas.toDataURL('image/png');
-      link.click();
+      // Create a new canvas with the logo
+      const finalCanvas = document.createElement('canvas');
+      finalCanvas.width = canvas.width;
+      finalCanvas.height = canvas.height;
+      const ctx = finalCanvas.getContext('2d');
+
+      // Draw the original canvas
+      ctx.drawImage(canvas, 0, 0);
+
+      // Load and draw the logo
+      const logo = new Image();
+      logo.crossOrigin = 'anonymous';
+      logo.src = '/logo_and_name.png';
+      
+      logo.onload = () => {
+        // Calculate logo dimensions (40px height, maintain aspect ratio)
+        const logoHeight = 40 * 2; // Multiply by 2 because of canvas scale
+        const logoWidth = (logo.width * logoHeight) / logo.height;
+        
+        // Draw logo with semi-transparency
+        ctx.globalAlpha = 0.8;
+        ctx.drawImage(
+          logo,
+          finalCanvas.width - logoWidth - 40, // 40px padding from right
+          finalCanvas.height - logoHeight - 40, // 40px padding from bottom
+          logoWidth,
+          logoHeight
+        );
+        ctx.globalAlpha = 1.0;
+
+        // Download the final image
+        const link = document.createElement('a');
+        link.download = 'mindmap.png';
+        link.href = finalCanvas.toDataURL('image/png', 1.0);
+        link.click();
+      };
+
+      logo.onerror = () => {
+        // If logo fails to load, just download the original canvas
+        const link = document.createElement('a');
+        link.download = 'mindmap.png';
+        link.href = canvas.toDataURL('image/png', 1.0);
+        link.click();
+      };
     }).catch(err => {
       console.error("Error exporting to PNG:", err);
       alert("Could not export to PNG. See console for details.");
     });
-
-  }, [calculateContentBounds, scale]);
+  }, [calculateContentBounds]);
 
   const exportToJSON = useCallback(() => {
     const data = {
@@ -2015,6 +2055,16 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
     <div className={`whiteboard-container ${isSearchPanelOpen ? 'panel-open' : ''}`} style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div className="whiteboard-header">
         <div className="header-left-controls">
+          <img 
+            src="/logo_and_name.png" 
+            alt="MindMap Logo" 
+            style={{
+              height: '32px',
+              marginRight: '16px',
+              cursor: 'pointer'
+            }}
+            onClick={() => navigate('/')}
+          />
           <SavedWhiteboardsMenu
             isOpen={isSavedBoardsMenuOpen}
             onToggle={toggleSavedBoardsMenu}
@@ -2284,10 +2334,10 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
             className="selection-box"
             style={{
               position: 'absolute',
-              left: selectionBox.x * scale + panOffset.x,
-              top: selectionBox.y * scale + panOffset.y,
-              width: selectionBox.width * scale,
-              height: selectionBox.height * scale,
+              left: selectionBox.x * scale * (window.devicePixelRatio || 1) + panOffset.x,
+              top: selectionBox.y * scale * (window.devicePixelRatio || 1) + panOffset.y,
+              width: selectionBox.width * scale * (window.devicePixelRatio || 1),
+              height: selectionBox.height * scale * (window.devicePixelRatio || 1),
               border: '2px solid #007bff',
               backgroundColor: 'rgba(0, 123, 255, 0.1)',
               pointerEvents: 'none',

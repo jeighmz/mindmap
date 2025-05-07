@@ -69,6 +69,7 @@ const WhiteboardItem = ({
 
   // Initialize chart config from saved item data or defaults
   const getInitialChartConfig = () => ({
+    title: item.title || '',
     xAxisTitle: item.xAxisTitle || '',
     yAxisTitle: item.yAxisTitle || '',
     xAxisUnit: item.xAxisUnit || 1,
@@ -109,6 +110,7 @@ const WhiteboardItem = ({
     // Update the item with new configuration
     const updatedItem = {
       ...item,
+      title: newConfig.title,
       xAxisTitle: newConfig.xAxisTitle,
       yAxisTitle: newConfig.yAxisTitle,
       xAxisUnit: newConfig.xAxisUnit,
@@ -497,6 +499,22 @@ const WhiteboardItem = ({
             viewBox={`0 0 ${width} ${height}`}
             preserveAspectRatio="xMidYMid meet"
           >
+            {/* Chart Title */}
+            {item.type === 'chart' && item.title && (
+              <text
+                x={width / 2}
+                y={effectivePadding - 10}
+                fontSize={Math.min(width, height) * 0.05}
+                fill="#1a1a1a"
+                textAnchor="middle"
+                fontWeight="600"
+                letterSpacing="0.5px"
+                fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+                style={{ userSelect: 'none' }}
+              >
+                {item.title}
+              </text>
+            )}
             {item.chartType === 'xy' && (
               <>
                 {/* Background grid */}
@@ -1253,6 +1271,25 @@ const WhiteboardItem = ({
     >
       {renderContent()}
       {renderResizeHandles()}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: '-20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          color: 'white',
+          padding: '2px 6px',
+          borderRadius: '4px',
+          fontSize: '10px',
+          fontFamily: 'monospace',
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+          zIndex: 1001
+        }}
+      >
+        ({item.position.x}, {item.position.y})
+      </div>
       {isSelected && !isEditing && !isChartEditing && (
         <>
           {/* Show connect button for all items except charts */}

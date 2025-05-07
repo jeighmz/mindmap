@@ -66,6 +66,7 @@ const SavedWhiteboardsMenu = ({
       width: Number(item.width || 400),
       height: Number(item.height || 300),
       text: String(item.text || ''),
+      title: String(item.title || ''),
       xAxisTitle: String(item.xAxisTitle || ''),
       yAxisTitle: String(item.yAxisTitle || ''),
       xAxisUnit: Number(item.xAxisUnit || 1),
@@ -146,7 +147,8 @@ const SavedWhiteboardsMenu = ({
       },
       width: Number(item.width || 200),
       height: Number(item.height || 200),
-      text: String(item.text || '')
+      text: String(item.text || ''),
+      title: String(item.title || ''),
     };
   };
 

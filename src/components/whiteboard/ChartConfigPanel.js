@@ -8,6 +8,7 @@ const ChartConfigPanel = React.memo(({
 }) => {
   // Initialize form data with a callback to prevent unnecessary recalculations
   const [formData, setFormData] = useState(() => ({
+    title: initialConfig.title || '',
     xAxisTitle: initialConfig.xAxisTitle || '',
     yAxisTitle: initialConfig.yAxisTitle || '',
     xAxisUnit: initialConfig.xAxisUnit || 1,
@@ -689,6 +690,17 @@ const ChartConfigPanel = React.memo(({
         {initialConfig.chartType === 'sine' && renderChartSection()}
 
         {/* Regular chart configuration */}
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ display: 'block', marginBottom: '5px' }}>Chart Title:</label>
+          <input
+            type="text"
+            name="title"
+            value={formData.title}
+            onChange={handleChange}
+            style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+          />
+        </div>
+
         <div style={{ marginBottom: '15px' }}>
           <label style={{ display: 'block', marginBottom: '5px' }}>X-Axis Title:</label>
           <input
