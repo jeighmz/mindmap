@@ -52,6 +52,7 @@ const CheckIcon = () => (
 );
 
 const SETTINGS_SECTIONS = {
+  GENERAL: 'general',
   PROFILE: 'profile',
   INTEGRATIONS: 'integrations',
   SUBSCRIPTION: 'subscription'
@@ -66,7 +67,11 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [error, setError] = useState('');
-  const [activeSection, setActiveSection] = useState(SETTINGS_SECTIONS.PROFILE);
+  const [activeSection, setActiveSection] = useState(SETTINGS_SECTIONS.GENERAL);
+  const [showCoordinates, setShowCoordinates] = useState(() => {
+    const stored = localStorage.getItem('showCoordinates');
+    return stored === null ? true : stored === 'true';
+  });
 
   const loadSettings = useCallback(async () => {
     if (!user?.uid) {
@@ -390,17 +395,43 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
     </div>
   );
 
+  // General section for toggling coordinates
+  const renderGeneralSection = () => (
+    <div className="settings-section">
+      <h3>General</h3>
+      <div className="form-group">
+        <label htmlFor="showCoordinates" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <input
+            type="checkbox"
+            id="showCoordinates"
+            checked={showCoordinates}
+            onChange={e => {
+              setShowCoordinates(e.target.checked);
+              localStorage.setItem('showCoordinates', e.target.checked);
+            }}
+          />
+          Show coordinates under each object
+        </label>
+        <small>Toggle the display of (x, y) coordinates below each whiteboard item.</small>
+      </div>
+    </div>
+  );
+
   // Early return if no user
   if (!user) {
     return (
       <Modal isOpen={isOpen} onClose={onClose}>
-        <div className="settings-modal">
-          <h2>Settings</h2>
-          <div className="message error">
-            Please sign in to access settings
+        <div className="settings-container">
+          <div className="settings-sidebar">
+            <h2>Settings</h2>
           </div>
-          <div className="form-actions">
-            <button type="button" onClick={onClose}>Close</button>
+          <div className="settings-content">
+            <div className="message error">
+              Please sign in to access settings
+            </div>
+            <div className="form-actions">
+              <button type="button" onClick={onClose}>Close</button>
+            </div>
           </div>
         </div>
       </Modal>
@@ -409,60 +440,64 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
 
   return (
     <Modal isOpen={isOpen} onClose={onClose}>
-      <div className="settings-modal">
-        <div className="settings-container">
-          <div className="settings-sidebar">
-            <h2>Settings</h2>
-            <nav className="settings-nav">
-              <button
-                className={`nav-item ${activeSection === SETTINGS_SECTIONS.PROFILE ? 'active' : ''}`}
-                onClick={() => setActiveSection(SETTINGS_SECTIONS.PROFILE)}
-              >
-                Profile
-              </button>
-              <button
-                className={`nav-item ${activeSection === SETTINGS_SECTIONS.INTEGRATIONS ? 'active' : ''}`}
-                onClick={() => setActiveSection(SETTINGS_SECTIONS.INTEGRATIONS)}
-              >
-                Integrations
-              </button>
-              <button
-                className={`nav-item ${activeSection === SETTINGS_SECTIONS.SUBSCRIPTION ? 'active' : ''}`}
-                onClick={() => setActiveSection(SETTINGS_SECTIONS.SUBSCRIPTION)}
-              >
-                Subscription
-              </button>
-            </nav>
-          </div>
+      <div className="settings-container">
+        <div className="settings-sidebar">
+          <h2>Settings</h2>
+          <nav className="settings-nav">
+            <button
+              className={`nav-item ${activeSection === SETTINGS_SECTIONS.GENERAL ? 'active' : ''}`}
+              onClick={() => setActiveSection(SETTINGS_SECTIONS.GENERAL)}
+            >
+              General
+            </button>
+            <button
+              className={`nav-item ${activeSection === SETTINGS_SECTIONS.PROFILE ? 'active' : ''}`}
+              onClick={() => setActiveSection(SETTINGS_SECTIONS.PROFILE)}
+            >
+              Profile
+            </button>
+            <button
+              className={`nav-item ${activeSection === SETTINGS_SECTIONS.INTEGRATIONS ? 'active' : ''}`}
+              onClick={() => setActiveSection(SETTINGS_SECTIONS.INTEGRATIONS)}
+            >
+              Integrations
+            </button>
+            <button
+              className={`nav-item ${activeSection === SETTINGS_SECTIONS.SUBSCRIPTION ? 'active' : ''}`}
+              onClick={() => setActiveSection(SETTINGS_SECTIONS.SUBSCRIPTION)}
+            >
+              Subscription
+            </button>
+          </nav>
+        </div>
 
-          <div className="settings-content">
-            <button className="modal-close" onClick={onClose}>×</button>
-            {message.text && (
-              <div className={`message ${message.type}`}>
-                {message.text}
+        <div className="settings-content">
+          {message.text && (
+            <div className={`message ${message.type}`}>
+              {message.text}
+            </div>
+          )}
+
+          {isLoading ? (
+            <div className="loading-message">Loading settings...</div>
+          ) : (
+            <form onSubmit={handleSave}>
+              {activeSection === SETTINGS_SECTIONS.GENERAL && renderGeneralSection()}
+              {activeSection === SETTINGS_SECTIONS.PROFILE && renderProfileSection()}
+              {activeSection === SETTINGS_SECTIONS.INTEGRATIONS && renderIntegrationsSection()}
+              {activeSection === SETTINGS_SECTIONS.SUBSCRIPTION && renderSubscriptionSection()}
+
+              <div className="form-actions">
+                <button type="button" onClick={onClose}>Cancel</button>
+                <button 
+                  type="submit" 
+                  disabled={isSaving}
+                >
+                  {isSaving ? 'Saving...' : 'Save'}
+                </button>
               </div>
-            )}
-
-            {isLoading ? (
-              <div className="loading-message">Loading settings...</div>
-            ) : (
-              <form onSubmit={handleSave}>
-                {activeSection === SETTINGS_SECTIONS.PROFILE && renderProfileSection()}
-                {activeSection === SETTINGS_SECTIONS.INTEGRATIONS && renderIntegrationsSection()}
-                {activeSection === SETTINGS_SECTIONS.SUBSCRIPTION && renderSubscriptionSection()}
-
-                <div className="form-actions">
-                  <button type="button" onClick={onClose}>Cancel</button>
-                  <button 
-                    type="submit" 
-                    disabled={isSaving || !groqApiKey.trim() || !notionApiKey.trim()}
-                  >
-                    {isSaving ? 'Saving...' : 'Save'}
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
+            </form>
+          )}
         </div>
       </div>
     </Modal>

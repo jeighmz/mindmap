@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import '../../styles/ChartConfigPanel.css';
 
 const ChartConfigPanel = React.memo(({ 
   initialConfig, 
@@ -57,8 +58,6 @@ const ChartConfigPanel = React.memo(({
   }, [onClose]);
 
   const handleChange = useCallback((e) => {
-    e.preventDefault();
-    e.stopPropagation();
     const { name, value, type, checked } = e.target;
     
     // For checkboxes, ensure we're setting a strict boolean value
@@ -95,6 +94,9 @@ const ChartConfigPanel = React.memo(({
     const processedData = {
       ...initialConfig, // Preserve any existing config
       ...formData,
+      title: formData.title || '',
+      xAxisTitle: formData.xAxisTitle || '',
+      yAxisTitle: formData.yAxisTitle || '',
       xAxisUnit: parseFloat(formData.xAxisUnit),
       yAxisUnit: parseFloat(formData.yAxisUnit),
       // Explicitly set visibility flags
@@ -141,6 +143,9 @@ const ChartConfigPanel = React.memo(({
 
     // Log the processed data to verify the visibility settings
     console.log('Chart config update:', {
+      title: processedData.title,
+      xAxisTitle: processedData.xAxisTitle,
+      yAxisTitle: processedData.yAxisTitle,
       showXAxisLabels: processedData.showXAxisLabels,
       showYAxisLabels: processedData.showYAxisLabels
     });
@@ -153,64 +158,22 @@ const ChartConfigPanel = React.memo(({
     e.stopPropagation();
   }, []);
 
-  const getPositionStyle = () => {
-    const baseStyle = {
-      position: 'absolute',
-      top: '50%',
-      transform: 'translateY(-50%)',
-      backgroundColor: 'white',
-      padding: '15px',
-      borderRadius: '8px',
-      boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-      zIndex: 1000,
-      width: '300px',
-      maxHeight: '80vh',
-      overflowY: 'auto'
-    };
-
-    if (position === 'right') {
-      return {
-        ...baseStyle,
-        left: '100%',
-        marginLeft: '20px'
-      };
-    } else {
-      return {
-        ...baseStyle,
-        right: '100%',
-        marginRight: '20px'
-      };
-    }
+  const getPositionClass = () => {
+    return `chart-config-panel ${position}`;
   };
 
   const renderXAxisInputs = () => {
     return (
       <>
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: '10px', 
-          marginBottom: '15px',
-          padding: '8px',
-          backgroundColor: '#f5f5f5',
-          borderRadius: '4px'
-        }}>
+        <div className="checkbox-section">
           <input
             type="checkbox"
             id="showXAxisLabels"
             name="showXAxisLabels"
             checked={Boolean(formData.showXAxisLabels)}
             onChange={handleChange}
-            style={{ margin: 0 }}
           />
-          <label 
-            htmlFor="showXAxisLabels"
-            style={{ 
-              margin: 0,
-              userSelect: 'none',
-              cursor: 'pointer'
-            }}
-          >
+          <label htmlFor="showXAxisLabels">
             Show X-Axis Labels
           </label>
         </div>
@@ -219,32 +182,30 @@ const ChartConfigPanel = React.memo(({
           <>
             {formData.xAxisMode === 'number' && (
               <>
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', marginBottom: '5px' }}>X Start:</label>
+                <div className="input-group">
+                  <div>
+                    <label>X Start:</label>
                     <input
                       type="number"
                       name="xAxisStart"
                       value={formData.xAxisStart}
                       onChange={handleChange}
                       step="1"
-                      style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
                     />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', marginBottom: '5px' }}>X End:</label>
+                  <div>
+                    <label>X End:</label>
                     <input
                       type="number"
                       name="xAxisEnd"
                       value={formData.xAxisEnd}
                       onChange={handleChange}
                       step="1"
-                      style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
                     />
                   </div>
                 </div>
-                <div style={{ marginBottom: '15px' }}>
-                  <label style={{ display: 'block', marginBottom: '5px' }}>X Unit Step:</label>
+                <div className="input-container">
+                  <label>X Unit Step:</label>
                   <input
                     type="number"
                     name="xAxisUnit"
@@ -252,54 +213,44 @@ const ChartConfigPanel = React.memo(({
                     onChange={handleChange}
                     min="0.1"
                     step="0.1"
-                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
                   />
                 </div>
               </>
             )}
             {formData.xAxisMode === 'date' && (
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', marginBottom: '5px' }}>Start Date:</label>
+              <div className="input-group">
+                <div>
+                  <label>Start Date:</label>
                   <input
                     type="date"
                     name="xAxisStartDate"
                     value={formData.xAxisStartDate}
                     onChange={handleChange}
-                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
                   />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', marginBottom: '5px' }}>End Date:</label>
+                <div>
+                  <label>End Date:</label>
                   <input
                     type="date"
                     name="xAxisEndDate"
                     value={formData.xAxisEndDate}
                     onChange={handleChange}
-                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
                   />
                 </div>
               </div>
             )}
             {formData.xAxisMode === 'custom' && (
-              <div style={{ marginBottom: '15px' }}>
-                <label style={{ display: 'block', marginBottom: '5px' }}>Custom Values (comma-separated):</label>
+              <div className="input-container">
+                <label>Custom Values:</label>
                 <textarea
                   name="xAxisCustomValues"
                   value={formData.xAxisCustomValues}
                   onChange={handleChange}
-                  placeholder="e.g., Low, Medium, High"
-                  rows={3}
-                  style={{ 
-                    width: '100%', 
-                    padding: '8px', 
-                    borderRadius: '4px', 
-                    border: '1px solid #ddd',
-                    resize: 'vertical'
-                  }}
+                  placeholder="Low, Medium, High"
+                  rows={2}
                 />
-                <small style={{ display: 'block', marginTop: '5px', color: '#666' }}>
-                  Enter values separated by commas
+                <small className="help-text">
+                  Comma-separated values
                 </small>
               </div>
             )}
@@ -312,30 +263,16 @@ const ChartConfigPanel = React.memo(({
   const renderYAxisInputs = () => {
     return (
       <>
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: '10px', 
-          marginBottom: '15px',
-          padding: '8px',
-          backgroundColor: '#f5f5f5',
-          borderRadius: '4px'
-        }}>
+        <div className="y-axis-checkbox-section">
           <input
             type="checkbox"
             id="showYAxisLabels"
             name="showYAxisLabels"
             checked={Boolean(formData.showYAxisLabels)}
             onChange={handleChange}
-            style={{ margin: 0 }}
           />
           <label 
             htmlFor="showYAxisLabels"
-            style={{ 
-              margin: 0,
-              userSelect: 'none',
-              cursor: 'pointer'
-            }}
           >
             Show Y-Axis Labels
           </label>
@@ -345,32 +282,30 @@ const ChartConfigPanel = React.memo(({
           <>
             {formData.yAxisMode === 'number' && (
               <>
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', marginBottom: '5px' }}>Y Start:</label>
+                <div className="input-group">
+                  <div>
+                    <label>Y Start:</label>
                     <input
                       type="number"
                       name="yAxisStart"
                       value={formData.yAxisStart}
                       onChange={handleChange}
                       step="1"
-                      style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
                     />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', marginBottom: '5px' }}>Y End:</label>
+                  <div>
+                    <label>Y End:</label>
                     <input
                       type="number"
                       name="yAxisEnd"
                       value={formData.yAxisEnd}
                       onChange={handleChange}
                       step="1"
-                      style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
                     />
                   </div>
                 </div>
-                <div style={{ marginBottom: '15px' }}>
-                  <label style={{ display: 'block', marginBottom: '5px' }}>Y Unit Step:</label>
+                <div className="input-container">
+                  <label>Y Unit Step:</label>
                   <input
                     type="number"
                     name="yAxisUnit"
@@ -378,54 +313,44 @@ const ChartConfigPanel = React.memo(({
                     onChange={handleChange}
                     min="0.1"
                     step="0.1"
-                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
                   />
                 </div>
               </>
             )}
             {formData.yAxisMode === 'date' && (
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', marginBottom: '5px' }}>Start Date:</label>
+              <div className="input-group">
+                <div>
+                  <label>Start Date:</label>
                   <input
                     type="date"
                     name="yAxisStartDate"
                     value={formData.yAxisStartDate}
                     onChange={handleChange}
-                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
                   />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', marginBottom: '5px' }}>End Date:</label>
+                <div>
+                  <label>End Date:</label>
                   <input
                     type="date"
                     name="yAxisEndDate"
                     value={formData.yAxisEndDate}
                     onChange={handleChange}
-                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
                   />
                 </div>
               </div>
             )}
             {formData.yAxisMode === 'custom' && (
-              <div style={{ marginBottom: '15px' }}>
-                <label style={{ display: 'block', marginBottom: '5px' }}>Custom Values (comma-separated):</label>
+              <div className="input-container">
+                <label>Custom Values:</label>
                 <textarea
                   name="yAxisCustomValues"
                   value={formData.yAxisCustomValues}
                   onChange={handleChange}
-                  placeholder="e.g., Poor, Fair, Good, Excellent"
-                  rows={3}
-                  style={{ 
-                    width: '100%', 
-                    padding: '8px', 
-                    borderRadius: '4px', 
-                    border: '1px solid #ddd',
-                    resize: 'vertical'
-                  }}
+                  placeholder="Poor, Fair, Good, Excellent"
+                  rows={2}
                 />
-                <small style={{ display: 'block', marginTop: '5px', color: '#666' }}>
-                  Enter values separated by commas
+                <small className="help-text">
+                  Comma-separated values
                 </small>
               </div>
             )}
@@ -439,137 +364,59 @@ const ChartConfigPanel = React.memo(({
     const isExpanded = formData.expandedSection === 'chart';
     
     return (
-      <div style={{ 
-        marginBottom: '15px',
-        position: 'relative'
-      }}>
+      <div className="chart-config-section">
         <div 
+          className="chart-settings-header"
           onClick={() => setFormData(prev => ({ ...prev, expandedSection: isExpanded ? null : 'chart' }))}
-          style={{
-            padding: '8px',
-            backgroundColor: '#f5f5f5',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            border: '1px solid #ddd',
-            transition: 'background-color 0.2s ease',
-            ':hover': {
-              backgroundColor: '#e0e0e0'
-            }
-          }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontWeight: '500', fontSize: '14px' }}>Chart Settings</span>
-            <span style={{ color: '#666', fontSize: '12px' }}>
+          <div className="chart-settings-title">
+            <span>Chart Settings</span>
+            <span>
               {formData.waveType === 'sine' ? 'sin(x)' : 
                formData.waveType === 'cosine' ? 'cos(x)' : 'tan(x)'}
             </span>
           </div>
           <svg 
-            width="16" 
-            height="16" 
+            className={`chart-settings-arrow ${isExpanded ? 'expanded' : ''}`}
             viewBox="0 0 24 24" 
             fill="none" 
             stroke="currentColor" 
             strokeWidth="2"
-            style={{
-              transform: `rotate(${isExpanded ? '-90deg' : '90deg'})`,
-              transition: 'transform 0.2s ease'
-            }}
           >
             <path d="M6 9l6 6 6-6"/>
           </svg>
         </div>
 
         {isExpanded && (
-          <div style={{
-            position: 'absolute',
-            left: '100%',
-            top: 0,
-            marginLeft: '20px',
-            backgroundColor: 'white',
-            padding: '15px',
-            borderRadius: '8px',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-            width: '300px',
-            zIndex: 1001,
-            border: '1px solid #ddd',
-            fontSize: '14px',
-            transform: 'translateY(-16px)',
-            maxHeight: '80vh',
-            overflowY: 'auto'
-          }}>
+          <div className="chart-settings-nested">
             {/* Wave type selector */}
-            <div style={{ 
-              display: 'flex', 
-              gap: '4px', 
-              marginBottom: '15px',
-              backgroundColor: '#f5f5f5',
-              padding: '8px',
-              borderRadius: '4px',
-              position: 'sticky',
-              top: 0,
-              zIndex: 1,
-              backgroundColor: 'white'
-            }}>
+            <div className="wave-type-selector">
               <button
                 type="button"
+                className={`wave-type-button ${formData.waveType === 'sine' ? 'active' : ''}`}
                 onClick={() => setFormData(prev => ({ ...prev, waveType: 'sine' }))}
-                style={{
-                  flex: 1,
-                  padding: '6px',
-                  border: 'none',
-                  borderRadius: '4px',
-                  backgroundColor: formData.waveType === 'sine' ? '#2196F3' : '#e0e0e0',
-                  color: formData.waveType === 'sine' ? 'white' : '#333',
-                  cursor: 'pointer',
-                  fontWeight: formData.waveType === 'sine' ? '600' : '400',
-                  fontSize: '13px'
-                }}
               >
                 sin(x)
               </button>
               <button
                 type="button"
+                className={`wave-type-button ${formData.waveType === 'cosine' ? 'active' : ''}`}
                 onClick={() => setFormData(prev => ({ ...prev, waveType: 'cosine' }))}
-                style={{
-                  flex: 1,
-                  padding: '6px',
-                  border: 'none',
-                  borderRadius: '4px',
-                  backgroundColor: formData.waveType === 'cosine' ? '#2196F3' : '#e0e0e0',
-                  color: formData.waveType === 'cosine' ? 'white' : '#333',
-                  cursor: 'pointer',
-                  fontWeight: formData.waveType === 'cosine' ? '600' : '400',
-                  fontSize: '13px'
-                }}
               >
                 cos(x)
               </button>
               <button
                 type="button"
+                className={`wave-type-button ${formData.waveType === 'tangent' ? 'active' : ''}`}
                 onClick={() => setFormData(prev => ({ ...prev, waveType: 'tangent' }))}
-                style={{
-                  flex: 1,
-                  padding: '6px',
-                  border: 'none',
-                  borderRadius: '4px',
-                  backgroundColor: formData.waveType === 'tangent' ? '#2196F3' : '#e0e0e0',
-                  color: formData.waveType === 'tangent' ? 'white' : '#333',
-                  cursor: 'pointer',
-                  fontWeight: formData.waveType === 'tangent' ? '600' : '400',
-                  fontSize: '13px'
-                }}
               >
                 tan(x)
               </button>
             </div>
 
             {/* Frequency settings */}
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#444' }}>Base Frequency (Hz)</label>
+            <div className="chart-config-section">
+              <label>Frequency (Hz)</label>
               <input
                 type="number"
                 name="frequency"
@@ -577,47 +424,44 @@ const ChartConfigPanel = React.memo(({
                 onChange={handleChange}
                 min="0.1"
                 step="0.1"
-                style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '13px' }}
               />
             </div>
 
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#444' }}>Phase Shift (radians)</label>
+            <div className="chart-config-section">
+              <label>Phase Shift</label>
               <input
                 type="number"
                 name="phaseShift"
                 value={formData.phaseShift || 0}
                 onChange={handleChange}
                 step="0.1"
-                style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '13px' }}
               />
             </div>
 
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#444' }}>Harmonics</label>
+            <div className="chart-config-section">
+              <label>Harmonics</label>
               <select
                 name="harmonics"
                 value={formData.harmonics || 1}
                 onChange={handleChange}
-                style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '13px' }}
               >
                 <option value={1}>Fundamental</option>
-                <option value={2}>Second Harmonic</option>
-                <option value={3}>Third Harmonic</option>
-                <option value={4}>Fourth Harmonic</option>
+                <option value={2}>Second</option>
+                <option value={3}>Third</option>
+                <option value={4}>Fourth</option>
               </select>
             </div>
 
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#444' }}>Modulation</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+            <div className="chart-config-section">
+              <label>Modulation</label>
+              <div className="checkbox-section">
                 <input
                   type="checkbox"
                   name="enableModulation"
                   checked={formData.enableModulation || false}
                   onChange={handleChange}
                 />
-                <span>Enable Frequency Modulation</span>
+                <label>Enable FM</label>
               </div>
               {formData.enableModulation && (
                 <input
@@ -628,21 +472,13 @@ const ChartConfigPanel = React.memo(({
                   min="0"
                   max="1"
                   step="0.1"
-                  style={{ 
-                    width: '100%', 
-                    padding: '6px', 
-                    borderRadius: '4px', 
-                    border: '1px solid #ddd',
-                    marginTop: '8px',
-                    fontSize: '13px'
-                  }}
-                  placeholder="Modulation Depth (0-1)"
+                  placeholder="Depth (0-1)"
                 />
               )}
             </div>
 
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#444' }}>Amplitude:</label>
+            <div className="chart-config-section">
+              <label>Amplitude:</label>
               <input
                 type="number"
                 name="amplitude"
@@ -650,15 +486,14 @@ const ChartConfigPanel = React.memo(({
                 onChange={handleChange}
                 min="0.1"
                 step="0.1"
-                style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '13px' }}
               />
-              <small style={{ display: 'block', marginTop: '4px', color: '#666', fontSize: '12px' }}>
-                Controls the height of the wave
+              <small className="help-text">
+                Wave height
               </small>
             </div>
 
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#444' }}>Periods:</label>
+            <div className="chart-config-section">
+              <label>Periods:</label>
               <input
                 type="number"
                 name="periods"
@@ -666,10 +501,9 @@ const ChartConfigPanel = React.memo(({
                 onChange={handleChange}
                 min="0.5"
                 step="0.5"
-                style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '13px' }}
               />
-              <small style={{ display: 'block', marginTop: '4px', color: '#666', fontSize: '12px' }}>
-                Number of complete cycles to show
+              <small className="help-text">
+                Number of cycles
               </small>
             </div>
           </div>
@@ -681,8 +515,7 @@ const ChartConfigPanel = React.memo(({
   return (
     <div
       ref={configPanelRef}
-      className="chart-config-panel"
-      style={getPositionStyle()}
+      className={getPositionClass()}
       onClick={handleContainerClick}
     >
       <form onSubmit={handleSubmit}>
@@ -690,46 +523,42 @@ const ChartConfigPanel = React.memo(({
         {initialConfig.chartType === 'sine' && renderChartSection()}
 
         {/* Regular chart configuration */}
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px' }}>Chart Title:</label>
+        <div className="chart-config-section">
+          <label>Chart Title:</label>
           <input
             type="text"
             name="title"
             value={formData.title}
             onChange={handleChange}
-            style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
           />
         </div>
 
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px' }}>X-Axis Title:</label>
+        <div className="chart-config-section">
+          <label>X-Axis Title:</label>
           <input
             type="text"
             name="xAxisTitle"
             value={formData.xAxisTitle}
             onChange={handleChange}
-            style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
           />
         </div>
 
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px' }}>Y-Axis Title:</label>
+        <div className="chart-config-section">
+          <label>Y-Axis Title:</label>
           <input
             type="text"
             name="yAxisTitle"
             value={formData.yAxisTitle}
             onChange={handleChange}
-            style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
           />
         </div>
 
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px' }}>X-Axis Type:</label>
+        <div className="chart-config-section">
+          <label>X-Axis Type:</label>
           <select
             name="xAxisMode"
             value={formData.xAxisMode}
             onChange={handleChange}
-            style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
           >
             <option value="number">Number</option>
             <option value="date">Date</option>
@@ -739,13 +568,12 @@ const ChartConfigPanel = React.memo(({
 
         {renderXAxisInputs()}
 
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px' }}>Y-Axis Type:</label>
+        <div className="chart-config-section">
+          <label>Y-Axis Type:</label>
           <select
             name="yAxisMode"
             value={formData.yAxisMode}
             onChange={handleChange}
-            style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
           >
             <option value="number">Number</option>
             <option value="date">Date</option>
@@ -755,35 +583,17 @@ const ChartConfigPanel = React.memo(({
 
         {renderYAxisInputs()}
 
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div className="button-group">
           <button
             type="submit"
-            style={{
-              flex: 1,
-              padding: '10px',
-              backgroundColor: '#2196F3',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: '600'
-            }}
+            className="button-apply"
           >
             Apply
           </button>
           <button
             type="button"
             onClick={onClose}
-            style={{
-              flex: 1,
-              padding: '10px',
-              backgroundColor: '#666',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: '600'
-            }}
+            className="button-cancel"
           >
             Cancel
           </button>

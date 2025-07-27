@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import ChartConfigPanel from './ChartConfigPanel';
+
 
 const formatDateLabel = (timestamp) => {
   const date = new Date(timestamp);
@@ -57,6 +57,8 @@ const WhiteboardItem = ({
   scale,
   onContextMenu,
   onOrganize,
+  onChartEdit,
+  isChartEditing,
   panOffset = { x: 0, y: 0 }
 }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -64,8 +66,6 @@ const WhiteboardItem = ({
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState(null);
-  const [isChartEditing, setIsChartEditing] = useState(false);
-  const [showControls, setShowControls] = useState(false);
 
   // Initialize chart config from saved item data or defaults
   const getInitialChartConfig = () => ({
@@ -103,44 +103,37 @@ const WhiteboardItem = ({
   // Update chart config when item changes
   useEffect(() => {
     setChartConfig(getInitialChartConfig());
-  }, [item.id]); // Only update when item id changes to avoid unnecessary updates
-
-  const updateChartConfig = useCallback((newConfig) => {
-    setChartConfig(newConfig);
-    // Update the item with new configuration
-    const updatedItem = {
-      ...item,
-      title: newConfig.title,
-      xAxisTitle: newConfig.xAxisTitle,
-      yAxisTitle: newConfig.yAxisTitle,
-      xAxisUnit: newConfig.xAxisUnit,
-      yAxisUnit: newConfig.yAxisUnit,
-      xAxisStart: newConfig.xAxisStart,
-      yAxisStart: newConfig.yAxisStart,
-      xAxisEnd: newConfig.xAxisEnd,
-      yAxisEnd: newConfig.yAxisEnd,
-      xAxisMode: newConfig.xAxisMode,
-      yAxisMode: newConfig.yAxisMode,
-      xAxisStartDate: newConfig.xAxisStartDate,
-      xAxisEndDate: newConfig.xAxisEndDate,
-      yAxisStartDate: newConfig.yAxisStartDate,
-      yAxisEndDate: newConfig.yAxisEndDate,
-      xAxisCustomValues: newConfig.xAxisCustomValues,
-      yAxisCustomValues: newConfig.yAxisCustomValues,
-      showXAxisLabels: newConfig.showXAxisLabels,
-      showYAxisLabels: newConfig.showYAxisLabels,
-      periods: newConfig.periods,
-      frequency: newConfig.frequency,
-      amplitude: newConfig.amplitude,
-      waveType: newConfig.waveType,
-      phaseShift: newConfig.phaseShift,
-      harmonics: newConfig.harmonics,
-      enableModulation: newConfig.enableModulation,
-      modulationDepth: newConfig.modulationDepth
-    };
-    // Call updateText with the entire updated item
-    updateText(item.id, updatedItem.text || '', updatedItem);
-  }, [item, updateText]);
+  }, [
+    item.id,
+    item.title,
+    item.xAxisTitle,
+    item.yAxisTitle,
+    item.xAxisUnit,
+    item.yAxisUnit,
+    item.xAxisStart,
+    item.yAxisStart,
+    item.xAxisEnd,
+    item.yAxisEnd,
+    item.xAxisMode,
+    item.yAxisMode,
+    item.xAxisStartDate,
+    item.xAxisEndDate,
+    item.yAxisStartDate,
+    item.yAxisEndDate,
+    item.xAxisCustomValues,
+    item.yAxisCustomValues,
+    item.showXAxisLabels,
+    item.showYAxisLabels,
+    item.frequency,
+    item.amplitude,
+    item.periods,
+    item.waveType,
+    item.phaseShift,
+    item.harmonics,
+    item.enableModulation,
+    item.modulationDepth,
+    item.chartType
+  ]);
 
   const itemRef = useRef(null);
 
@@ -338,17 +331,11 @@ const WhiteboardItem = ({
     };
   }, [isSelected, isEditing, item.id, onDelete]);
 
-  const handleMouseEnter = () => {
-    setShowControls(true);
-  };
 
-  const handleMouseLeave = () => {
-    setShowControls(false);
-  };
 
   const renderContent = () => {
     const stickyStyle = item.type === 'sticky' ? {
-      backgroundColor: '#fff740',
+      backgroundColor: item.backgroundColor || '#fff740',
       width: '100%',
       height: '100%',
       padding: '16px',
@@ -356,18 +343,23 @@ const WhiteboardItem = ({
       alignItems: 'center',
       justifyContent: 'center',
       overflow: 'hidden',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      fontSize: '14px',
-      color: '#000',
+      fontFamily: item.fontFamily || '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      fontSize: `${item.fontSize || 14}px`,
+      color: item.textColor || '#000',
       borderRadius: '2px'
     } : {
+      backgroundColor: item.backgroundColor,
       width: '100%',
       height: '100%',
       padding: '8px',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      overflow: 'hidden'
+      overflow: 'hidden',
+      fontFamily: item.fontFamily || '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      fontSize: `${item.fontSize || 14}px`,
+      color: item.textColor || '#000',
+      border: item.borderColor ? `2px solid ${item.borderColor}` : '1px solid #ccc'
     };
 
     if (item.type === 'image') {
@@ -451,8 +443,8 @@ const WhiteboardItem = ({
     }
 
     if (item.type === 'chart') {
-      const basePadding = 50;
-      const yAxisLabelPadding = 35;
+      const basePadding = 30;
+      const yAxisLabelPadding = 20;
       const padding = basePadding + yAxisLabelPadding;
       const tickLength = 5; // Length of tick marks
       
@@ -480,8 +472,7 @@ const WhiteboardItem = ({
         chartConfig.yAxisCustomValues
       );
 
-      const xScaleCount = xScale.length;
-      const yScaleCount = yScale.length;
+
 
       return (
         <div style={{
@@ -531,20 +522,22 @@ const WhiteboardItem = ({
                         strokeDasharray="4,4"
                         opacity="0.1"
                       />
-                      <text 
-                        x={x}
-                        y={height - padding + 20}
-                        fontSize={Math.min(width, height) * 0.028}
-                        fill="#404040"
-                        textAnchor="middle"
-                        fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-                        style={{ userSelect: 'none' }}
-                        transform={chartConfig.xAxisMode === 'date' || chartConfig.xAxisMode === 'custom' 
-                          ? `rotate(-45, ${x}, ${height - padding + 20})` 
-                          : undefined}
-                      >
-                        {formatAxisLabel(value, chartConfig.xAxisMode)}
-                      </text>
+                      {chartConfig.showXAxisLabels && (
+                        <text 
+                          x={x}
+                          y={height - padding + 20}
+                          fontSize={Math.min(width, height) * 0.028}
+                          fill="#404040"
+                          textAnchor="middle"
+                          fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+                          style={{ userSelect: 'none' }}
+                          transform={chartConfig.xAxisMode === 'date' || chartConfig.xAxisMode === 'custom' 
+                            ? `rotate(-45, ${x}, ${height - padding + 20})` 
+                            : undefined}
+                        >
+                          {formatAxisLabel(value, chartConfig.xAxisMode)}
+                        </text>
+                      )}
                     </g>
                   );
                 })}
@@ -561,18 +554,20 @@ const WhiteboardItem = ({
                         strokeDasharray="4,4"
                         opacity="0.1"
                       />
-                      <text 
-                        x={padding - 15}
-                        y={y}
-                        fontSize={Math.min(width, height) * 0.028}
-                        fill="#404040"
-                        textAnchor="end"
-                        dominantBaseline="middle"
-                        fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-                        style={{ userSelect: 'none' }}
-                      >
-                        {formatAxisLabel(value, chartConfig.yAxisMode)}
-                      </text>
+                      {chartConfig.showYAxisLabels && (
+                        <text 
+                          x={padding - 15}
+                          y={y}
+                          fontSize={Math.min(width, height) * 0.028}
+                          fill="#404040"
+                          textAnchor="end"
+                          dominantBaseline="middle"
+                          fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+                          style={{ userSelect: 'none' }}
+                        >
+                          {formatAxisLabel(value, chartConfig.yAxisMode)}
+                        </text>
+                      )}
                     </g>
                   );
                 })}
@@ -1017,17 +1012,6 @@ const WhiteboardItem = ({
               </>
             )}
           </svg>
-          {isChartEditing && (
-            <ChartConfigPanel
-              initialConfig={{
-                ...chartConfig,
-                chartType: item.chartType
-              }}
-              onConfigUpdate={updateChartConfig}
-              onClose={() => setIsChartEditing(false)}
-              position="right"
-            />
-          )}
         </div>
       );
     }
@@ -1065,7 +1049,7 @@ const WhiteboardItem = ({
         style={stickyStyle}
         onDoubleClick={() => setIsEditing(true)}
       >
-        {item.text || 'Double click to add text'}
+        {item.text}
       </div>
     );
   };
@@ -1101,11 +1085,7 @@ const WhiteboardItem = ({
   const EditButton = ({ onStartEditing, scale }) => {
     const handleClick = (e) => {
       e.stopPropagation();
-      if (item.type === 'chart') {
-        setIsChartEditing(true);
-      } else {
-        setIsEditing(true);
-      }
+      onStartEditing();
     };
 
     return (
@@ -1265,31 +1245,31 @@ const WhiteboardItem = ({
       }}
       onClick={handleClick}
       onMouseDown={handleMouseDown}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
       onContextMenu={(e) => onContextMenu && onContextMenu(e)}
     >
       {renderContent()}
       {renderResizeHandles()}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: '-20px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
-          color: 'white',
-          padding: '2px 6px',
-          borderRadius: '4px',
-          fontSize: '10px',
-          fontFamily: 'monospace',
-          whiteSpace: 'nowrap',
-          pointerEvents: 'none',
-          zIndex: 1001
-        }}
-      >
-        ({item.position.x}, {item.position.y})
-      </div>
+      {localStorage.getItem('showCoordinates') !== 'false' && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '-20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            color: 'white',
+            padding: '2px 6px',
+            borderRadius: '4px',
+            fontSize: '10px',
+            fontFamily: 'monospace',
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+            zIndex: 1001
+          }}
+        >
+          ({item.position.x}, {item.position.y})
+        </div>
+      )}
       {isSelected && !isEditing && !isChartEditing && (
         <>
           {/* Show connect button for all items except charts */}
@@ -1325,7 +1305,7 @@ const WhiteboardItem = ({
           {item.type === 'chart' && (
             <EditButton 
               onStartEditing={() => {
-                setIsChartEditing(true);
+                onChartEdit && onChartEdit(item.id);
               }}
               scale={scale}
             />

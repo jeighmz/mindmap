@@ -42,26 +42,8 @@
   background-color: rgba(0, 0, 0, 0.05);
 }
 
-/* Adjust the whiteboard header position */
-.whiteboard-header {
-  position: fixed;
-  top: 35px;
-  transition: top 0.3s ease;
-}
-
-.whiteboard-header.no-banner {
-  top: 0;
-}
-
-/* Adjust the whiteboard canvas margin */
-.whiteboard-canvas {
-  margin-top: 95px;
-  transition: margin-top 0.3s ease;
-}
-
-.whiteboard-canvas.no-banner {
-  margin-top: 60px;
-}
+/* Remove any header/canvas pushdown logic */
+/* .whiteboard-header, .whiteboard-header.no-banner, .whiteboard-canvas, .whiteboard-canvas.no-banner */
 
 /* Adjust for mobile */
 @media (max-width: 768px) {

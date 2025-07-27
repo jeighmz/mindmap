@@ -127,6 +127,34 @@
   color: #212529;
 }
 
+/* Sleek, compact layout for the General section's form group */
+.settings-section:first-child .form-group {
+  width: auto;
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+  text-align: left;
+}
+.settings-section:first-child .form-group label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1rem;
+  margin: 0;
+  width: auto;
+  justify-content: flex-start;
+}
+.settings-section:first-child .form-group input[type="checkbox"] {
+  margin-left: 0;
+  transform: scale(1.1);
+  width: 5%;
+}
+
+.settings-section:first-child .form-group small {
+  margin-left: 0;
+  text-align: left;
+}
+
 .form-group {
   margin-bottom: 20px;
 }

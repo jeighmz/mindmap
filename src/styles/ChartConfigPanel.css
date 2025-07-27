@@ -1,0 +1,316 @@
+/* Chart Config Panel Styles */
+.chart-config-panel {
+  position: fixed !important;
+  z-index: 2000 !important;
+  background: white !important;
+  border: 1px solid #ddd !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 8px;
+  border-radius: 6px;
+  width: 240px;
+  max-height: 70vh;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.chart-config-panel.right {
+  right: 20px;
+}
+
+.chart-config-panel.left {
+  left: 20px;
+}
+
+/* Form elements */
+.chart-config-panel input,
+.chart-config-panel select,
+.chart-config-panel textarea {
+  font-family: inherit;
+  font-size: 11px;
+  width: 100%;
+  padding: 3px;
+  border-radius: 3px;
+  border: 1px solid #ddd;
+  box-sizing: border-box;
+}
+
+.chart-config-panel input:focus,
+.chart-config-panel select:focus,
+.chart-config-panel textarea:focus {
+  outline: none;
+  border-color: #2196F3;
+}
+
+.chart-config-panel label {
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 2px;
+  display: block;
+  font-size: 11px;
+}
+
+.chart-config-panel button {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Form sections */
+.chart-config-section {
+  margin-bottom: 8px;
+}
+
+.chart-config-section:last-child {
+  margin-bottom: 0;
+}
+
+/* Input groups for side-by-side inputs */
+.input-group {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.input-group > div {
+  flex: 1;
+}
+
+.input-group label {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+}
+
+.input-group input {
+  width: 100%;
+  padding: 3px;
+  border-radius: 3px;
+  border: 1px solid #ddd;
+  font-size: 11px;
+}
+
+/* Single input containers */
+.input-container {
+  margin-bottom: 8px;
+}
+
+.input-container label {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+}
+
+.input-container input {
+  width: 100%;
+  padding: 3px;
+  border-radius: 3px;
+  border: 1px solid #ddd;
+  font-size: 11px;
+}
+
+/* Textarea specific styles */
+.chart-config-panel textarea {
+  resize: vertical;
+}
+
+/* Help text */
+.help-text {
+  display: block;
+  margin-top: 2px;
+  color: #666;
+  font-size: 9px;
+}
+
+/* Chart settings expandable section */
+.chart-settings-header {
+  padding: 6px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #ddd;
+  transition: background-color 0.2s ease;
+  margin-bottom: 8px;
+}
+
+.chart-settings-header:hover {
+  background-color: #e0e0e0;
+}
+
+.chart-settings-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-settings-title span:first-child {
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.chart-settings-title span:last-child {
+  color: #666;
+  font-size: 10px;
+}
+
+.chart-settings-arrow {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.2s ease;
+}
+
+.chart-settings-arrow.expanded {
+  transform: rotate(-90deg);
+}
+
+/* Nested chart settings panel */
+.chart-settings-nested {
+  position: fixed;
+  right: 280px;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: white;
+  padding: 8px;
+  border-radius: 6px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  width: 240px;
+  z-index: 2001;
+  border: 1px solid #ddd;
+  font-size: 12px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+/* Wave type selector */
+.wave-type-selector {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 8px;
+  background-color: #f5f5f5;
+  padding: 4px;
+  border-radius: 4px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background-color: white;
+}
+
+.wave-type-button {
+  flex: 1;
+  padding: 4px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: 400;
+  font-size: 11px;
+  background-color: #e0e0e0;
+  color: #333;
+}
+
+.wave-type-button.active {
+  background-color: #2196F3;
+  color: white;
+  font-weight: 600;
+}
+
+/* Checkbox sections */
+.checkbox-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  border: 1px solid #e0e0e0;
+}
+
+.checkbox-section input[type="checkbox"] {
+  margin: 0;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.checkbox-section label {
+  margin: 0;
+  user-select: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  flex: 1;
+  color: #333;
+}
+
+/* Y-axis checkbox section with different styling */
+.y-axis-checkbox-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  border: 1px solid #e0e0e0;
+}
+
+.y-axis-checkbox-section input[type="checkbox"] {
+  margin: 0;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.y-axis-checkbox-section label {
+  margin: 0;
+  user-select: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  flex: 1;
+  color: #333;
+}
+
+/* Button group for form actions */
+.button-group {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.button-group button {
+  flex: 1;
+  padding: 6px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.button-apply {
+  background-color: #2196F3;
+  color: white;
+}
+
+.button-cancel {
+  background-color: #666;
+  color: white;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .chart-config-panel {
+    width: 200px;
+    right: 10px;
+  }
+  
+  .chart-settings-nested {
+    width: 200px;
+    right: 220px;
+  }
+} 

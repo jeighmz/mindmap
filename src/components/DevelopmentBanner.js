@@ -5,12 +5,19 @@ const DevelopmentBanner = () => {
   const [isVisible, setIsVisible] = useState(true);
   const [isHidden, setIsHidden] = useState(false);
 
+  // Helper to check if we're on the whiteboard page
+  const isWhiteboardPage = () => {
+    // Check for whiteboard-specific elements
+    return document.querySelector('.whiteboard-header') && document.querySelector('.whiteboard-canvas');
+  };
+
   const handleClose = () => {
     setIsHidden(true);
-    // Add classes to adjust layout
-    document.querySelector('.whiteboard-header')?.classList.add('no-banner');
-    document.querySelector('.whiteboard-canvas')?.classList.add('no-banner');
-    
+    // Only adjust layout if on whiteboard page
+    if (isWhiteboardPage()) {
+      document.querySelector('.whiteboard-header')?.classList.add('no-banner');
+      document.querySelector('.whiteboard-canvas')?.classList.add('no-banner');
+    }
     // Remove banner after transition
     setTimeout(() => {
       setIsVisible(false);
@@ -18,8 +25,8 @@ const DevelopmentBanner = () => {
   };
 
   useEffect(() => {
-    // Remove classes when banner is shown
-    if (isVisible) {
+    // Only adjust layout if on whiteboard page
+    if (isVisible && isWhiteboardPage()) {
       document.querySelector('.whiteboard-header')?.classList.remove('no-banner');
       document.querySelector('.whiteboard-canvas')?.classList.remove('no-banner');
     }

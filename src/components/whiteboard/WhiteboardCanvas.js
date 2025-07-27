@@ -5,6 +5,7 @@ import WhiteboardItem from './WhiteboardItem';
 import Connector from './Connector';
 import SavedWhiteboardsMenu from './SavedWhiteboardsMenu';
 import SearchPanel from './SearchPanel';
+import ChartConfigPanel from './ChartConfigPanel';
 // import PublishModal from './PublishModal';  // Temporarily removed
 import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref as storageRef, uploadString, getDownloadURL, getStorage, uploadBytes, getMetadata } from 'firebase/storage';
@@ -18,6 +19,7 @@ import { useTierPermissions } from '../../hooks/useTierPermissions';
 import { saveBoard } from '../../services/boardService';
 import { getApiBaseUrl } from '../../utils/api';
 import { createNotionPage, writeToNotionDatabase } from './agent/tools/notion';
+import { ChromePicker } from 'react-color';
 
 const WhiteboardCanvas = forwardRef((props, ref) => {
   const {
@@ -58,6 +60,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [currentBoardId, setCurrentBoardId] = useState(null);
   const { user } = useAuth();
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [editingChartId, setEditingChartId] = useState(null);
   const [isSavedBoardsMenuOpen, setIsSavedBoardsMenuOpen] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
@@ -72,6 +75,19 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     height: window.innerHeight
   });
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  // Add state for color picker
+  const [colorPicker, setColorPicker] = useState({
+    background: '#fff740',
+    border: '#000',
+  });
+  // Add state for text styling
+  const [textStyling, setTextStyling] = useState({
+    fontSize: 14,
+    textColor: '#000',
+    fontFamily: 'Arial',
+  });
+  // Add state for color picker section
+  const [activeColorSection, setActiveColorSection] = useState('background');
 
   // Sync with external state if provided
   useEffect(() => {
@@ -374,6 +390,32 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         conn.from !== itemId && conn.to !== itemId
       )
     );
+    // Close chart editing if the deleted item was being edited
+    if (editingChartId === itemId) {
+      setEditingChartId(null);
+    }
+  };
+
+  const handleChartEdit = (chartId) => {
+    setEditingChartId(chartId);
+  };
+
+  const handleChartEditClose = () => {
+    setEditingChartId(null);
+  };
+
+  const handleResetBoard = () => {
+    if (window.confirm('Are you sure you want to clear the entire whiteboard? This action cannot be undone.')) {
+      setItems([]);
+      setConnections([]);
+      setSelectedItems(new Set());
+      setConnectingFrom(null);
+      setEditingChartId(null);
+      setExpandingItemId(null);
+      setContextMenu({ visible: false, x: 0, y: 0 });
+      setPanOffset({ x: 0, y: 0 });
+      setScale(1.0);
+    }
   };
 
   const handleDeleteConnection = (connectionId) => {
@@ -2369,8 +2411,397 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
     };
   }, [items]);
 
+  // Find the single selected item
+  const selectedItem = items.find(item => selectedItems.size === 1 && selectedItems.has(item.id));
+
+  // Sync colorPicker state to selected item's colors
+  useEffect(() => {
+    if (selectedItem && selectedItem.type !== 'chart') {
+      setColorPicker({
+        background: selectedItem.backgroundColor || '#fff740',
+        border: selectedItem.borderColor || '#000',
+      });
+      setTextStyling({
+        fontSize: selectedItem.fontSize || 14,
+        textColor: selectedItem.textColor || '#000',
+        fontFamily: selectedItem.fontFamily || 'Arial',
+      });
+    }
+  }, [selectedItem]);
+
+  // Handler for color change
+  const handleColorChange = (color) => {
+    if (!selectedItem || selectedItem.type === 'chart') return;
+    // Update the selected item's backgroundColor live
+    setItems(prevItems => prevItems.map(item =>
+      item.id === selectedItem.id
+        ? { ...item, backgroundColor: color.hex }
+        : item
+    ));
+    setColorPicker(prev => ({ ...prev, background: color.hex }));
+  };
+
+  const handleBorderColorChange = (color) => {
+    if (!selectedItem || selectedItem.type === 'chart') return;
+    setItems(prevItems => prevItems.map(item =>
+      item.id === selectedItem.id
+        ? { ...item, borderColor: color.hex }
+        : item
+    ));
+    setColorPicker(prev => ({ ...prev, border: color.hex }));
+  };
+
+  // Preselect primary colors
+  const preselectColors = [
+    '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#000000', '#FFFFFF', 'transparent'
+  ];
+  const handleSwatchClick = (color) => {
+    if (!selectedItem || selectedItem.type === 'chart') return;
+    setItems(prevItems => prevItems.map(item =>
+      item.id === selectedItem.id
+        ? { ...item, backgroundColor: color }
+        : item
+    ));
+    setColorPicker(prev => ({ ...prev, background: color }));
+  };
+
+  // Handler for text color change
+  const handleTextColorChange = (color) => {
+    if (!selectedItem || selectedItem.type === 'chart') return;
+    setItems(prevItems => prevItems.map(item =>
+      item.id === selectedItem.id
+        ? { ...item, textColor: color.hex }
+        : item
+    ));
+    setTextStyling(prev => ({ ...prev, textColor: color.hex }));
+  };
+
+  // Handler for font size change
+  const handleFontSizeChange = (size) => {
+    if (!selectedItem || selectedItem.type === 'chart') return;
+    setItems(prevItems => prevItems.map(item =>
+      item.id === selectedItem.id
+        ? { ...item, fontSize: parseInt(size) }
+        : item
+    ));
+    setTextStyling(prev => ({ ...prev, fontSize: parseInt(size) }));
+  };
+
+  // Handler for font family change
+  const handleFontFamilyChange = (fontFamily) => {
+    if (!selectedItem || selectedItem.type === 'chart') return;
+    setItems(prevItems => prevItems.map(item =>
+      item.id === selectedItem.id
+        ? { ...item, fontFamily: fontFamily }
+        : item
+    ));
+    setTextStyling(prev => ({ ...prev, fontFamily: fontFamily }));
+  };
+
   return (
     <div className={`whiteboard-container ${isSearchPanelOpen ? 'panel-open' : ''}`} style={{ position: 'relative', width: '100%', height: '100%' }}>
+      {/* Color Wheel at top right */}
+      {selectedItem && selectedItem.type !== 'chart' && (
+        <div style={{
+          position: 'fixed',
+          top: 70,
+          right: 20,
+          zIndex: 2000,
+          background: 'white',
+          borderRadius: '12px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          padding: '10px',
+          minWidth: 220,
+        }}>
+          {/* Section Dropdown */}
+          <div style={{ marginBottom: '10px' }}>
+            <select
+              value={activeColorSection}
+              onChange={(e) => setActiveColorSection(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '6px 8px',
+                borderRadius: '6px',
+                border: '1px solid #ddd',
+                fontSize: '12px',
+                background: 'white',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="background">Background Color</option>
+              <option value="border">Border Color</option>
+              <option value="text">Text Styling</option>
+            </select>
+          </div>
+
+          {/* Background Color Section */}
+          {activeColorSection === 'background' && (
+            <>
+              <div style={{ fontSize: 13, marginBottom: 6 }}>Background Color</div>
+              <div style={{
+                display: 'flex',
+                gap: '4px',
+                marginBottom: '10px',
+                flexWrap: 'nowrap',
+                width: '100%',
+                justifyContent: 'center',
+                overflowX: 'hidden',
+                alignItems: 'center',
+                marginLeft: 'auto',
+                marginRight: 'auto',
+                height: '30px',
+                padding: '2px',
+                paddingRight: '2px',
+              }}>
+                {preselectColors.map(color => (
+                  <div
+                    key={color}
+                    onClick={() => handleSwatchClick(color)}
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: '50%',
+                      background: color === 'transparent'
+                        ? 'repeating-conic-gradient(#ccc 0% 25%, #fff 0% 50%) 50% / 8px 8px'
+                        : color,
+                      border: '2px solid #eee',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+                      outline: colorPicker.background === color ? '2px solid #2196F3' : 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                    }}
+                  >
+                    {color === 'transparent' && (
+                      <span style={{
+                        color: '#888',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        pointerEvents: 'none',
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        top: 0,
+                        bottom: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>⨉</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <ChromePicker
+                color={selectedItem.backgroundColor || colorPicker.background}
+                onChange={handleColorChange}
+                disableAlpha
+              />
+            </>
+          )}
+
+          {/* Border Color Section */}
+          {activeColorSection === 'border' && (
+            <>
+              <div style={{ fontSize: 13, marginBottom: 6 }}>Border Color</div>
+              <div style={{
+                display: 'flex',
+                gap: '4px',
+                marginBottom: '10px',
+                flexWrap: 'nowrap',
+                width: '100%',
+                justifyContent: 'center',
+                overflowX: 'hidden',
+                alignItems: 'center',
+                marginLeft: 'auto',
+                marginRight: 'auto',
+                height: '30px',
+                padding: '2px',
+                paddingRight: '2px',
+              }}>
+                {preselectColors.map(color => (
+                  <div
+                    key={color + '-border'}
+                    onClick={() => {
+                      if (!selectedItem) return;
+                      setItems(prevItems => prevItems.map(item =>
+                        item.id === selectedItem.id
+                          ? { ...item, borderColor: color }
+                          : item
+                      ));
+                      setColorPicker(prev => ({ ...prev, border: color }));
+                    }}
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: '50%',
+                      background: color === 'transparent'
+                        ? 'repeating-conic-gradient(#ccc 0% 25%, #fff 0% 50%) 50% / 8px 8px'
+                        : color,
+                      border: '2px solid #eee',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+                      outline: colorPicker.border === color ? '2px solid #2196F3' : 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                    }}
+                  >
+                    {color === 'transparent' && (
+                      <span style={{
+                        color: '#888',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        pointerEvents: 'none',
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        top: 0,
+                        bottom: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>⨉</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <ChromePicker
+                color={selectedItem.borderColor || colorPicker.border}
+                onChange={handleBorderColorChange}
+                disableAlpha
+              />
+            </>
+          )}
+
+          {/* Text Styling Section */}
+          {activeColorSection === 'text' && (
+            <>
+              <div style={{ fontSize: 13, marginBottom: 6 }}>Text Styling</div>
+              
+              {/* Font Family Control */}
+              <div style={{ marginBottom: '10px' }}>
+                <div style={{ fontSize: 11, marginBottom: 4 }}>Font Family</div>
+                <select
+                  value={textStyling.fontFamily}
+                  onChange={(e) => handleFontFamilyChange(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid #ddd',
+                    fontSize: '12px',
+                    background: 'white',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="Arial" style={{ fontFamily: 'Arial' }}>Arial</option>
+                  <option value="Helvetica" style={{ fontFamily: 'Helvetica' }}>Helvetica</option>
+                  <option value="Times New Roman" style={{ fontFamily: 'Times New Roman' }}>Times New Roman</option>
+                  <option value="Georgia" style={{ fontFamily: 'Georgia' }}>Georgia</option>
+                  <option value="Verdana" style={{ fontFamily: 'Verdana' }}>Verdana</option>
+                  <option value="Courier New" style={{ fontFamily: 'Courier New' }}>Courier New</option>
+                  <option value="Impact" style={{ fontFamily: 'Impact' }}>Impact</option>
+                  <option value="Comic Sans MS" style={{ fontFamily: 'Comic Sans MS' }}>Comic Sans MS</option>
+                  <option value="Trebuchet MS" style={{ fontFamily: 'Trebuchet MS' }}>Trebuchet MS</option>
+                  <option value="Lucida Console" style={{ fontFamily: 'Lucida Console' }}>Lucida Console</option>
+                </select>
+              </div>
+              
+              {/* Font Size Control */}
+              <div style={{ marginBottom: '10px' }}>
+                <div style={{ fontSize: 11, marginBottom: 4 }}>Font Size: {textStyling.fontSize}px</div>
+                <input
+                  type="range"
+                  min="8"
+                  max="48"
+                  value={textStyling.fontSize}
+                  onChange={(e) => handleFontSizeChange(e.target.value)}
+                  style={{
+                    width: '100%',
+                    height: '4px',
+                    borderRadius: '2px',
+                    background: '#ddd',
+                    outline: 'none',
+                    cursor: 'pointer',
+                  }}
+                />
+              </div>
+              
+              {/* Text Color Swatches */}
+              <div style={{ fontSize: 11, marginBottom: 4 }}>Text Color</div>
+              <div style={{
+                display: 'flex',
+                gap: '4px',
+                marginBottom: '10px',
+                flexWrap: 'nowrap',
+                width: '100%',
+                justifyContent: 'center',
+                overflowX: 'hidden',
+                alignItems: 'center',
+                marginLeft: 'auto',
+                marginRight: 'auto',
+                height: '30px',
+                padding: '2px',
+                paddingRight: '2px',
+              }}>
+                {preselectColors.map(color => (
+                  <div
+                    key={color + '-text'}
+                    onClick={() => {
+                      if (!selectedItem || selectedItem.type === 'chart') return;
+                      setItems(prevItems => prevItems.map(item =>
+                        item.id === selectedItem.id
+                          ? { ...item, textColor: color }
+                          : item
+                      ));
+                      setTextStyling(prev => ({ ...prev, textColor: color }));
+                    }}
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: '50%',
+                      background: color === 'transparent'
+                        ? 'repeating-conic-gradient(#ccc 0% 25%, #fff 0% 50%) 50% / 8px 8px'
+                        : color,
+                      border: '2px solid #eee',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+                      outline: textStyling.textColor === color ? '2px solid #2196F3' : 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                    }}
+                  >
+                    {color === 'transparent' && (
+                      <span style={{
+                        color: '#888',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        pointerEvents: 'none',
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        top: 0,
+                        bottom: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>⨉</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
       <div className="whiteboard-header">
         <div className="header-left-controls">
           <img 
@@ -2411,6 +2842,20 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
             </button>
             {isExportMenuOpen && renderExportMenu()}
           </div>
+          <button 
+            className="header-button"
+            onClick={handleResetBoard}
+            title="Clear whiteboard"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              <line x1="10" y1="11" x2="10" y2="17"/>
+              <line x1="14" y1="11" x2="14" y2="17"/>
+            </svg>
+            Reset
+          </button>
           <button 
             className="header-button"
             onClick={() => setIsPricingOpen(true)}
@@ -2620,6 +3065,8 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
                 scale={scale}
                 onContextMenu={(e) => handleContextMenu(e, item.id)}
                 onOrganize={organizeNodes}
+                onChartEdit={handleChartEdit}
+                isChartEditing={editingChartId === item.id}
               />
             ))}
           {/* Render non-chart items after (in front) */}
@@ -2698,6 +3145,56 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
           onClose={handleCloseSearchPanel}
         />
       )}
+
+      {/* Chart Config Panel */}
+      {editingChartId && (() => {
+        const editingChart = items.find(item => item.id === editingChartId);
+        if (!editingChart || editingChart.type !== 'chart') return null;
+        
+        return (
+          <ChartConfigPanel
+            initialConfig={{
+              title: editingChart.title || '',
+              xAxisTitle: editingChart.xAxisTitle || '',
+              yAxisTitle: editingChart.yAxisTitle || '',
+              xAxisUnit: editingChart.xAxisUnit || 1,
+              yAxisUnit: editingChart.yAxisUnit || 1,
+              xAxisStart: editingChart.xAxisStart || 0,
+              yAxisStart: editingChart.yAxisStart || 0,
+              xAxisEnd: editingChart.xAxisEnd || 10,
+              yAxisEnd: editingChart.yAxisEnd || 10,
+              xAxisMode: editingChart.xAxisMode || 'number',
+              yAxisMode: editingChart.yAxisMode || 'number',
+              xAxisStartDate: editingChart.xAxisStartDate || new Date().toISOString().split('T')[0],
+              xAxisEndDate: editingChart.xAxisEndDate || new Date().toISOString().split('T')[0],
+              yAxisStartDate: editingChart.yAxisStartDate || new Date().toISOString().split('T')[0],
+              yAxisEndDate: editingChart.yAxisEndDate || new Date().toISOString().split('T')[0],
+              xAxisCustomValues: editingChart.xAxisCustomValues || [],
+              yAxisCustomValues: editingChart.yAxisCustomValues || [],
+              showXAxisLabels: editingChart.showXAxisLabels !== false,
+              showYAxisLabels: editingChart.showYAxisLabels !== false,
+              frequency: editingChart.frequency || 1,
+              amplitude: editingChart.amplitude || 1,
+              periods: editingChart.periods || 1,
+              waveType: editingChart.waveType || 'sine',
+              phaseShift: editingChart.phaseShift || 0,
+              harmonics: editingChart.harmonics || 1,
+              enableModulation: editingChart.enableModulation || false,
+              modulationDepth: editingChart.modulationDepth || 0.5,
+              chartType: editingChart.chartType
+            }}
+            onConfigUpdate={(newConfig) => {
+              const updatedItem = {
+                ...editingChart,
+                ...newConfig
+              };
+              updateItemText(editingChartId, editingChart.text || '', updatedItem);
+            }}
+            onClose={handleChartEditClose}
+            position="right"
+          />
+        );
+      })()}
 
       {isMindMapPanelOpen && (
         <div className="mind-map-modal-overlay" onClick={handleCloseMindMapPanel}>
