@@ -1388,6 +1388,12 @@
   background-color: #e6f0ff;
 }
 
+.context-menu-divider {
+  height: 1px;
+  background-color: #e0e0e0;
+  margin: 4px 0;
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;

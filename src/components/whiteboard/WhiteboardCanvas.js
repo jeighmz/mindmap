@@ -367,6 +367,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           y: Math.round(((offset.y - canvasRect.top - panOffset.y) / (scale * dpr) - height/2) / 10) * 10
         };
 
+        const maxOrder = items.length > 0 ? Math.max(...items.map((i, idx) => i.order !== undefined ? i.order : idx)) : -1;
         const newItem = {
           id: Date.now(),
           type: item.type,
@@ -375,6 +376,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           width,
           height,
           text: item.type === 'sticky' ? 'New note' : '',
+          order: maxOrder + 1,
           // Add default chart configuration for better initial appearance
           ...(item.type === 'chart' && {
             title: 'New Chart',
@@ -1224,12 +1226,16 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   // Add image item event listener
   useEffect(() => {
     const handleAddImageItem = (e) => {
-      const newItem = {
-        ...e.detail,
-        id: Date.now()
-      };
-      setItems(prevItems => [...prevItems, newItem]);
-      setSelectedItems(new Set([newItem.id]));
+      const newItemId = Date.now();
+      setItems(prevItems => {
+        const newItem = {
+          ...e.detail,
+          id: newItemId,
+          order: prevItems.length > 0 ? Math.max(...prevItems.map((i, idx) => i.order !== undefined ? i.order : idx)) + 1 : 0
+        };
+        return [...prevItems, newItem];
+      });
+      setSelectedItems(new Set([newItemId]));
     };
 
     window.addEventListener('addImageItem', handleAddImageItem);
@@ -1322,6 +1328,74 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
               }
             }, 3000);
           });
+        }
+        break;
+      case 'bringForward':
+      case 'pushBackward':
+      case 'bringToFront':
+      case 'pushToBack':
+        if (selectedItems.size === 1) {
+          const itemId = Array.from(selectedItems)[0];
+          const currentItem = items.find(item => item.id === itemId);
+          if (!currentItem) break;
+          
+          // Initialize order if not present (use index as fallback)
+          const itemsWithOrder = items.map((item, index) => ({
+            ...item,
+            order: item.order !== undefined ? item.order : index
+          }));
+          
+          // Sort items by order to determine layering
+          const sortedItems = [...itemsWithOrder].sort((a, b) => a.order - b.order);
+          const currentIndex = sortedItems.findIndex(item => item.id === itemId);
+          
+          if (currentIndex === -1) break;
+          
+          let newOrder;
+          switch (action) {
+            case 'bringForward':
+              // Swap with the item directly in front (if exists)
+              if (currentIndex < sortedItems.length - 1) {
+                const nextItem = sortedItems[currentIndex + 1];
+                newOrder = nextItem.order;
+                // Swap orders: move next item back
+                setItems(itemsWithOrder.map(item => 
+                  item.id === nextItem.id ? { ...item, order: sortedItems[currentIndex].order } :
+                  item.id === itemId ? { ...item, order: newOrder } : item
+                ));
+              }
+              break;
+            case 'pushBackward':
+              // Swap with the item directly behind (if exists)
+              if (currentIndex > 0) {
+                const prevItem = sortedItems[currentIndex - 1];
+                newOrder = prevItem.order;
+                // Swap orders: move prev item forward
+                setItems(itemsWithOrder.map(item => 
+                  item.id === prevItem.id ? { ...item, order: sortedItems[currentIndex].order } :
+                  item.id === itemId ? { ...item, order: newOrder } : item
+                ));
+              }
+              break;
+            case 'bringToFront':
+              // Move to the highest order
+              const maxOrder = Math.max(...itemsWithOrder.map(item => item.order));
+              newOrder = maxOrder + 1;
+              setItems(itemsWithOrder.map(item => 
+                item.id === itemId ? { ...item, order: newOrder } : item
+              ));
+              break;
+            case 'pushToBack':
+              // Move to the lowest order
+              const minOrder = Math.min(...itemsWithOrder.map(item => item.order));
+              newOrder = minOrder - 1;
+              setItems(itemsWithOrder.map(item => 
+                item.id === itemId ? { ...item, order: newOrder } : item
+              ));
+              break;
+            default:
+              break;
+          }
         }
         break;
       default:
@@ -1666,6 +1740,7 @@ Performance Metrics Analysis`
         const newItems = [];
         const newConnections = [];
 
+        const baseOrder = items.length > 0 ? Math.max(...items.map((i, idx) => i.order !== undefined ? i.order : idx)) : -1;
         concepts.forEach((concept, i) => {
           const angle = i * angleStep;
           const dimensions = calculateTextDimensions(concept, 'rectangle');
@@ -1678,7 +1753,8 @@ Performance Metrics Analysis`
               y: sourceItem.position.y + radius * Math.sin(angle)
             },
             width: dimensions.width,
-            height: dimensions.height
+            height: dimensions.height,
+            order: baseOrder + 1 + i
           };
 
           newItems.push(newItem);
@@ -4593,9 +4669,14 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
               mousePosition={mousePosition}
             />
           )}
-          {/* Render chart items first (in the back) */}
+          {/* Render chart items first (in the back), sorted by order */}
           {items
             .filter(item => item.type === 'chart')
+            .sort((a, b) => {
+              const orderA = a.order !== undefined ? a.order : items.indexOf(a);
+              const orderB = b.order !== undefined ? b.order : items.indexOf(b);
+              return orderA - orderB;
+            })
             .map(item => (
               <WhiteboardItem
                 key={item.id}
@@ -4620,9 +4701,14 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
                 onResizeEnd={saveState}
               />
             ))}
-          {/* Render non-chart items after (in front) */}
+          {/* Render non-chart items after (in front), sorted by order */}
           {items
             .filter(item => item.type !== 'chart')
+            .sort((a, b) => {
+              const orderA = a.order !== undefined ? a.order : items.indexOf(a);
+              const orderB = b.order !== undefined ? b.order : items.indexOf(b);
+              return orderA - orderB;
+            })
             .map(item => (
               <WhiteboardItem
                 key={item.id}
@@ -4683,6 +4769,23 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
             zIndex: 2000
           }}
         >
+          {selectedItems.size === 1 && (
+            <>
+              <div className="context-menu-option" onClick={() => handleContextMenuAction('bringToFront')}>
+                ⬆️ Bring to Front
+              </div>
+              <div className="context-menu-option" onClick={() => handleContextMenuAction('bringForward')}>
+                ⬆ Bring Forward
+              </div>
+              <div className="context-menu-option" onClick={() => handleContextMenuAction('pushBackward')}>
+                ⬇ Push Backward
+              </div>
+              <div className="context-menu-option" onClick={() => handleContextMenuAction('pushToBack')}>
+                ⬇️ Push to Back
+              </div>
+              <div className="context-menu-divider"></div>
+            </>
+          )}
           <div className="context-menu-option" onClick={() => handleContextMenuAction('delete')}>
             🗑️ Delete Selected ({selectedItems.size})
           </div>
