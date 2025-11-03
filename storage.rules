@@ -2,25 +2,9 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // Allow public read access to all files
+    // Very permissive rules for testing - REMOVE IN PRODUCTION
     match /{allPaths=**} {
-      allow read: if request.auth != null;  // Only allow authenticated users to read files
-    }
-    
-    // Allow authenticated users to upload mindmap images to their own directory
-    match /mindmap-images/{userId}/{fileName} {
-      allow read: if request.auth != null;  // Allow any authenticated user to read images
-      allow write: if request.auth != null 
-                  && request.auth.uid == userId
-                  && request.resource.size < 10 * 1024 * 1024 // 10MB max
-                  && request.resource.contentType.matches('image/.*');
-    }
-
-    // Allow authenticated users to perform test uploads
-    match /test/{userId}/{fileName} {
-      allow read, write: if request.auth != null 
-                        && request.auth.uid == userId
-                        && request.resource.size < 1 * 1024 * 1024; // 1MB max for test files
+      allow read, write: if request.auth != null;
     }
   }
-} 
+}

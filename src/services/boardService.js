@@ -7,7 +7,8 @@ import {
   query, 
   where,
   orderBy,
-  serverTimestamp
+  serverTimestamp,
+  updateDoc
 } from 'firebase/firestore';
 import { auth, db } from '../firebase-config';
 
@@ -21,6 +22,30 @@ const checkAuth = () => {
   return auth.currentUser;
 };
 
+// Safely convert savedAt to Date object
+const convertSavedAtToDate = (savedAt) => {
+  if (!savedAt) {
+    return new Date();
+  }
+  
+  if (typeof savedAt.toDate === 'function') {
+    // Firestore Timestamp
+    return savedAt.toDate();
+  } else if (savedAt instanceof Date) {
+    // Already a Date object
+    return savedAt;
+  } else if (typeof savedAt === 'string') {
+    // ISO string
+    return new Date(savedAt);
+  } else if (typeof savedAt === 'number') {
+    // Timestamp number
+    return new Date(savedAt);
+  }
+  
+  // Fallback
+  return new Date();
+};
+
 // Get all boards for a specific user
 export const getUserBoards = async (userId) => {
   try {
@@ -30,7 +55,6 @@ export const getUserBoards = async (userId) => {
       throw new Error('Unauthorized access');
     }
 
-    console.log('Fetching boards for user:', userId);
     const boardsRef = collection(db, BOARDS_COLLECTION);
     const q = query(
       boardsRef,
@@ -39,29 +63,39 @@ export const getUserBoards = async (userId) => {
     );
     
     const querySnapshot = await getDocs(q);
-    const boards = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      savedAt: doc.data().savedAt?.toDate() || new Date()
-    }));
-    
-    console.log(`Retrieved ${boards.length} boards from Firestore:`, boards);
-    
-    // Check if content has the right structure
-    for (const board of boards) {
-      console.log(`Board ${board.id} content structure:`, {
-        hasContent: !!board.content,
-        contentType: typeof board.content,
-        hasItems: Array.isArray(board.content?.items),
-        itemsLength: board.content?.items?.length || 0
-      });
-    }
+    const boards = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        savedAt: convertSavedAtToDate(data.savedAt)
+      };
+    });
     
     return boards;
   } catch (error) {
-    console.error('Error fetching user boards:', error);
     throw error;
   }
+};
+
+// Remove undefined values from object (Firestore doesn't accept undefined)
+const removeUndefined = (obj) => {
+  if (obj === null || obj === undefined) {
+    return null;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(removeUndefined).filter(item => item !== undefined);
+  }
+  if (typeof obj === 'object') {
+    const cleaned = {};
+    for (const key in obj) {
+      if (obj[key] !== undefined) {
+        cleaned[key] = removeUndefined(obj[key]);
+      }
+    }
+    return cleaned;
+  }
+  return obj;
 };
 
 // Clean chart configuration
@@ -105,7 +139,7 @@ const cleanChartConfig = (item) => {
   return baseConfig;
 };
 
-// Save a new board
+// Save a new board or update an existing one
 export const saveBoard = async (boardData, userId) => {
   try {
     // Verify the requesting user matches the userId
@@ -118,14 +152,6 @@ export const saveBoard = async (boardData, userId) => {
     if (!boardData.name) {
       throw new Error('Board name is required');
     }
-
-    console.log('Saving board data to Firestore:', boardData);
-    console.log('Board content structure check:', {
-      hasContent: !!boardData.content,
-      contentType: typeof boardData.content,
-      hasItems: Array.isArray(boardData.content?.items),
-      itemsLength: boardData.content?.items?.length || 0
-    });
 
     // Clean and validate items, ensuring chart configurations are properly saved
     const cleanedItems = (boardData.content?.items || []).map(item => {
@@ -145,8 +171,24 @@ export const saveBoard = async (boardData, userId) => {
       savedAt: serverTimestamp()
     };
 
+    // Remove all undefined values before saving to Firestore
+    const cleanedData = removeUndefined(data);
+
+    // If boardData has an id, update existing board
+    if (boardData.id) {
+      const boardRef = doc(db, BOARDS_COLLECTION, boardData.id);
+      await updateDoc(boardRef, cleanedData);
+      
+      return {
+        id: boardData.id,
+        ...data,
+        savedAt: new Date()
+      };
+    }
+
+    // Otherwise, create new board
     const boardsRef = collection(db, BOARDS_COLLECTION);
-    const docRef = await addDoc(boardsRef, data);
+    const docRef = await addDoc(boardsRef, cleanedData);
     
     const savedBoard = {
       id: docRef.id,
@@ -154,11 +196,8 @@ export const saveBoard = async (boardData, userId) => {
       savedAt: new Date()
     };
     
-    console.log('Board saved successfully with ID:', docRef.id);
-    
     return savedBoard;
   } catch (error) {
-    console.error('Error saving board:', error);
     throw error;
   }
 };
@@ -173,11 +212,8 @@ export const deleteBoard = async (boardId) => {
     // You might want to add a check here to verify ownership
     // by first fetching the document and checking userId
     
-    console.log('Deleting board with ID:', boardId);
     await deleteDoc(boardRef);
-    console.log('Board deleted successfully');
   } catch (error) {
-    console.error('Error deleting board:', error);
     throw error;
   }
 };
@@ -192,17 +228,17 @@ export const getDemoBoards = async () => {
     );
     
     const querySnapshot = await getDocs(q);
-    const boards = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      savedAt: doc.data().savedAt?.toDate() || new Date()
-    }));
-    
-    console.log(`Retrieved ${boards.length} demo boards from Firestore`);
+    const boards = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        savedAt: convertSavedAtToDate(data.savedAt)
+      };
+    });
     
     return boards;
   } catch (error) {
-    console.error('Error fetching demo boards:', error);
     throw error;
   }
 }; 

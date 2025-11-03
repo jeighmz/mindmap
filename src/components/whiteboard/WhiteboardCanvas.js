@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
 import { useDrop } from 'react-dnd';
 import html2canvas from 'html2canvas';
 import WhiteboardItem from './WhiteboardItem';
@@ -13,7 +13,6 @@ import { db, storage } from '../../firebase-config';
 /* eslint-disable-next-line no-unused-vars */
 import { useAuth } from '../../contexts/AuthContext';
 import UserMenu from '../UserMenu';
-import PricingTable from '../Pricing';
 import { useNavigate } from 'react-router-dom';
 import { useTierPermissions } from '../../hooks/useTierPermissions';
 import { saveBoard } from '../../services/boardService';
@@ -36,6 +35,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [connections, setConnections] = useState([]);
   const [connectingFrom, setConnectingFrom] = useState(null);
+  const [selectedConnection, setSelectedConnection] = useState(null);
+  const connectionSettingsMenuRef = useRef(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [selectionBox, setSelectionBox] = useState(null);
@@ -58,12 +59,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [isExpandingConcept, setIsExpandingConcept] = useState(false);
   const [savedWhiteboards, setSavedWhiteboards] = useState([]);
   const [currentBoardId, setCurrentBoardId] = useState(null);
+  const [currentBoardName, setCurrentBoardName] = useState(null);
   const { user } = useAuth();
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [editingChartId, setEditingChartId] = useState(null);
   const [isSavedBoardsMenuOpen, setIsSavedBoardsMenuOpen] = useState(false);
-  const [isPricingOpen, setIsPricingOpen] = useState(false);
-  const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
   const [isInstructionsCollapsed, setIsInstructionsCollapsed] = useState(false);
   const navigate = useNavigate();
   const { userTier } = useAuth();
@@ -74,7 +74,12 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     width: window.innerWidth,
     height: window.innerHeight
   });
+  const [canvasViewSize, setCanvasViewSize] = useState({ width: 0, height: 0 });
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [isAutoSaving, setIsAutoSaving] = useState(false);
+  const [lastSaveTime, setLastSaveTime] = useState(null);
+  const autoSaveTimeoutRef = useRef(null);
+  const isInitialLoadRef = useRef(true);
   // Add state for color picker
   const [colorPicker, setColorPicker] = useState({
     background: '#fff740',
@@ -88,6 +93,13 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   });
   // Add state for color picker section
   const [activeColorSection, setActiveColorSection] = useState('background');
+  
+  // Add undo functionality
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+  
+  // Add scalar slider for mind map branch distance
+  const [branchDistance, setBranchDistance] = useState(0.8); // Default multiplier - more compact
 
   // Sync with external state if provided
   useEffect(() => {
@@ -171,6 +183,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   }, [isPanning, panStart, scale, panOffset, isSelecting, selectionStart]);
 
   const handleMouseDown = useCallback((e) => {
+    // Don't interfere with control buttons
+    if (e.target.closest('.edit-control, .connector-control, .expand-control')) {
+      return;
+    }
+    
     if (e.button === 1 || (e.button === 0 && isSpacePressed) || (e.button === 0 && e.altKey)) {
       setIsPanning(true);
       setPanStart({
@@ -178,7 +195,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         y: e.clientY - panOffset.y
       });
       e.preventDefault();
-    } else if (e.button === 0 && !isSpacePressed && !e.altKey && !e.target.closest('.whiteboard-item')) {
+    } else if (e.button === 0 && !isSpacePressed && !e.altKey && !e.target.closest('.whiteboard-item') && !e.target.closest('.zoom-controls')) {
       const canvas = document.querySelector('.whiteboard-canvas');
       if (canvas) {
         const rect = canvas.getBoundingClientRect();
@@ -226,6 +243,59 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     };
   }, [isPanning, panStart]);
 
+  // Undo functionality
+  const saveState = useCallback(() => {
+    const currentState = {
+      items: [...items],
+      connections: [...connections],
+      scale: scale,
+      panOffset: { ...panOffset },
+      timestamp: Date.now()
+    };
+    setUndoStack(prev => [...prev, currentState].slice(-20)); // Keep last 20 states
+    setRedoStack([]); // Clear redo stack when new action is performed
+  }, [items, connections, scale, panOffset]);
+
+  const handleUndo = useCallback(() => {
+    if (undoStack.length > 0) {
+      const currentState = {
+        items: [...items],
+        connections: [...connections],
+        scale: scale,
+        panOffset: { ...panOffset },
+        timestamp: Date.now()
+      };
+      const previousState = undoStack[undoStack.length - 1];
+      
+      setRedoStack(prev => [...prev, currentState]);
+      setUndoStack(prev => prev.slice(0, -1));
+      setItems(previousState.items);
+      setConnections(previousState.connections);
+      setScale(previousState.scale || 1.0);
+      setPanOffset(previousState.panOffset || { x: 0, y: 0 });
+    }
+  }, [undoStack, items, connections, scale, panOffset]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length > 0) {
+      const currentState = {
+        items: [...items],
+        connections: [...connections],
+        scale: scale,
+        panOffset: { ...panOffset },
+        timestamp: Date.now()
+      };
+      const nextState = redoStack[redoStack.length - 1];
+      
+      setUndoStack(prev => [...prev, currentState]);
+      setRedoStack(prev => prev.slice(0, -1));
+      setItems(nextState.items);
+      setConnections(nextState.connections);
+      setScale(nextState.scale || 1.0);
+      setPanOffset(nextState.panOffset || { x: 0, y: 0 });
+    }
+  }, [redoStack, items, connections, scale, panOffset]);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.code === 'Space' && !e.repeat && 
@@ -235,6 +305,14 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       } else if (e.code === 'AltLeft' || e.code === 'AltRight') {
         setIsAltPressed(true);
         e.preventDefault();
+      } else if (e.ctrlKey && e.key === 'z' && !e.shiftKey && 
+          !(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+        e.preventDefault();
+        handleUndo();
+      } else if (e.ctrlKey && e.key === 'y' && 
+          !(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+        e.preventDefault();
+        handleRedo();
       }
     };
 
@@ -253,7 +331,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [handleUndo, handleRedo]);
 
   const [, drop] = useDrop(() => ({
     accept: 'WHITEBOARD_ITEM',
@@ -319,6 +397,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
             })
           })
         };
+        saveState();
         setItems(prevItems => [...prevItems, newItem]);
       }
       return undefined;
@@ -326,40 +405,39 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   }), [scale, panOffset]);
 
   const handleWheel = useCallback((e) => {
-    if (e.ctrlKey) {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const dpr = window.devicePixelRatio || 1;
-      setScale(s => {
-        const newScale = Math.min(Math.max(0.1, s * delta), 2); // Changed max zoom from 4 to 2
-        return newScale / dpr;
-      });
-    }
+    // Enable scroll zoom without requiring Ctrl key
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1; // Scroll down = zoom out (0.9), scroll up = zoom in (1.1)
+    setScale(s => {
+      const newScale = Math.min(Math.max(0.1, s * delta), 4); // Restored max zoom to 4 for better zoom range
+      return newScale;
+    });
   }, []);
 
-  const updateItemPosition = (id, position) => {
+  const updateItemPosition = useCallback((id, position) => {
     setItems(items.map(item => 
       item.id === id 
         ? { ...item, position } 
         : item
     ));
-  };
+  }, [items]);
 
-  const updateItemSize = (id, size) => {
+  const updateItemSize = useCallback((id, size) => {
     setItems(items.map(item =>
       item.id === id
         ? { ...item, ...size }
         : item
     ));
-  };
+  }, [items]);
 
-  const updateItemText = (id, text, updatedItem) => {
+  const updateItemText = useCallback((id, text, updatedItem) => {
+    saveState(); // Save state before text change
     setItems(items.map(item =>
       item.id === id
         ? updatedItem || { ...item, text }  // Use updatedItem if provided, otherwise just update text
         : item
     ));
-  };
+  }, [items, saveState]);
 
   const handleConnectionStart = (itemId) => {
     setConnectingFrom(itemId);
@@ -367,22 +445,55 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   };
 
   const handleItemClick = (itemId, e) => {
+    // Close connection settings menu when clicking on an item
+    if (selectedConnection) {
+      // Don't close if clicking inside the menu or on color picker
+      if (connectionSettingsMenuRef.current && 
+          !connectionSettingsMenuRef.current.contains(e.target)) {
+        const chromePickerElement = document.querySelector('.chrome-picker');
+        if (!chromePickerElement || !chromePickerElement.contains(e.target)) {
+          setSelectedConnection(null);
+        }
+      }
+    }
+    
     if (connectingFrom) {
       if (connectingFrom !== itemId) {
+        saveState(); // Save state before creating connection
+        const defaults = getDefaultConnectionSettings();
         const newConnection = {
           id: `connection-${Date.now()}`,
           from: connectingFrom,
-          to: itemId
+          to: itemId,
+          color: defaults.color,
+          strokeWidth: defaults.strokeWidth,
+          lineType: defaults.lineType,
+          lineDesign: defaults.lineDesign || 'curved',
+          arrowDirection: defaults.arrowDirection,
+          arrowHeadStyle: defaults.arrowHeadStyle
         };
         setConnections(prev => [...prev, newConnection]);
         setConnectingFrom(null);
       }
     } else {
-      setSelectedItems(new Set([itemId]));
+      setSelectedItems(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(itemId)) {
+          newSet.delete(itemId);
+        } else {
+          if (!e?.shiftKey) {
+            newSet.clear();
+          }
+          newSet.add(itemId);
+        }
+        return newSet;
+      });
+      setSelectedConnection(null); // Deselect connection when selecting item
     }
   };
 
   const handleDeleteItem = (itemId) => {
+    saveState();
     setItems(prevItems => prevItems.filter(item => item.id !== itemId));
     setSelectedItems(new Set());
     setConnections(prevConnections => 
@@ -406,6 +517,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
   const handleResetBoard = () => {
     if (window.confirm('Are you sure you want to clear the entire whiteboard? This action cannot be undone.')) {
+      saveState(); // Save state before reset
       setItems([]);
       setConnections([]);
       setSelectedItems(new Set());
@@ -415,12 +527,40 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       setContextMenu({ visible: false, x: 0, y: 0 });
       setPanOffset({ x: 0, y: 0 });
       setScale(1.0);
+      setCurrentBoardName(null);
     }
   };
 
-  const handleDeleteConnection = (connectionId) => {
-    setConnections(connections.filter(conn => conn.id !== connectionId));
+  const handleNewCanvas = () => {
+    // Clear everything and reset to a fresh canvas
+      setItems([]);
+      setConnections([]);
+      setSelectedItems(new Set());
+      setConnectingFrom(null);
+      setEditingChartId(null);
+      setExpandingItemId(null);
+      setContextMenu({ visible: false, x: 0, y: 0 });
+      setPanOffset({ x: 0, y: 0 });
+      setScale(1.0);
+      setCurrentBoardId(null);
+      setCurrentBoardName(null);
+      setIsAutoSaving(false);
+      setLastSaveTime(null);
+      isInitialLoadRef.current = true;
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+      // Clear undo/redo stacks
+      setUndoStack([]);
+      setRedoStack([]);
+      // Navigate to a fresh whiteboard URL (without boardId)
+      navigate('/whiteboard');
   };
+
+  const handleDeleteConnection = useCallback((connectionId) => {
+    saveState(); // Save state before deletion
+    setConnections(prev => prev.filter(conn => conn.id !== connectionId));
+  }, [saveState]);
 
   const organizeNodes = (parentId) => {
     // Find all direct child nodes connected to the parent
@@ -459,26 +599,121 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       }
     });
     
+    saveState(); // Save state before organizing
     setItems(newItems);
   };
 
-  const renderConnections = () => {
-    return connections.map(connection => {
-      const startItem = items.find(item => item.id === connection.from);
-      const endItem = items.find(item => item.id === connection.to);
-      
-      if (!startItem || !endItem) return null;
+  // Get default connection settings from localStorage
+  const getDefaultConnectionSettings = useCallback(() => {
+    try {
+      const saved = localStorage.getItem('defaultConnectionSettings');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      // Ignore parsing errors, use defaults
+    }
+    // Return defaults if nothing saved
+    return {
+      color: '#2196F3',
+      strokeWidth: 2,
+      lineType: 'straight',
+      lineDesign: 'curved',
+      arrowDirection: '->',
+      arrowHeadStyle: 'medium'
+    };
+  }, []);
 
+  // Save default connection settings to localStorage
+  const saveDefaultConnectionSettings = useCallback((settings) => {
+    try {
+      localStorage.setItem('defaultConnectionSettings', JSON.stringify(settings));
+    } catch (e) {
+      // Ignore saving errors
+    }
+  }, []);
+
+  const handleConnectionClick = useCallback((connectionId, e) => {
+    e?.stopPropagation();
+    setSelectedConnection(connectionId);
+    setSelectedItems(new Set()); // Deselect items when selecting connection
+  }, []);
+
+  const handleUpdateConnection = useCallback((connectionId, updates) => {
+    // Check if this is the first update for this connection in the current operation
+    const connection = connections.find(c => c.id === connectionId);
+    if (!connection) return;
+    
+    // Save state only if this is a significant change (not just color/stroke changes that might be rapid)
+    // For now, save state on all updates - we can optimize later if needed
+    saveState();
+    
+    setConnections(prev => {
+      const updated = prev.map(conn => {
+        if (conn.id === connectionId) {
+          const newConn = { ...conn };
+          // Apply updates
+          if (updates.strokeWidth !== undefined) {
+            newConn.strokeWidth = Number(updates.strokeWidth);
+          }
+          if (updates.color !== undefined) {
+            newConn.color = updates.color;
+          }
+          if (updates.lineType !== undefined) {
+            newConn.lineType = updates.lineType;
+          }
+          if (updates.lineDesign !== undefined) {
+            newConn.lineDesign = updates.lineDesign;
+          }
+          if (updates.arrowDirection !== undefined) {
+            newConn.arrowDirection = updates.arrowDirection;
+          }
+          if (updates.arrowHeadStyle !== undefined) {
+            newConn.arrowHeadStyle = updates.arrowHeadStyle;
+          }
+          return newConn;
+        }
+        return conn;
+      });
+      return updated;
+    });
+  }, [connections, saveState]);
+
+  const renderConnections = useCallback(() => {
+    return connections.map(connection => {
+      // Use loose comparison to handle string/number ID mismatches
+      const startItem = items.find(item => String(item.id) === String(connection.from));
+      const endItem = items.find(item => String(item.id) === String(connection.to));
+      
+      if (!startItem || !endItem) {
+        return null;
+      }
+
+      // Create a fresh connection object to ensure React detects changes
+      const connectionProps = {
+        ...connection,
+        strokeWidth: Number(connection.strokeWidth) || 2,
+        color: connection.color || '#2196F3',
+        lineType: connection.lineType || 'straight',
+        lineDesign: connection.lineDesign || 'curved',
+        arrowDirection: connection.arrowDirection || '->',
+        arrowHeadStyle: connection.arrowHeadStyle || 'medium'
+      };
+      
+      // Use connection properties in key to force re-render when they change
       return (
         <Connector
-          key={connection.id}
+          key={`conn-${connection.id}-${connectionProps.strokeWidth}-${connectionProps.color}-${connectionProps.lineType}-${connectionProps.lineDesign}-${connectionProps.arrowDirection}-${connectionProps.arrowHeadStyle}`}
           startItem={startItem}
           endItem={endItem}
+          connection={connectionProps}
+          isSelected={selectedConnection === connection.id}
+          onSelect={(e) => handleConnectionClick(connection.id, e)}
           onDelete={() => handleDeleteConnection(connection.id)}
         />
       );
     });
-  };
+  }, [connections, items, selectedConnection]);
 
   useEffect(() => {
     const saved = localStorage.getItem('savedWhiteboards');
@@ -487,80 +722,146 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }
   }, []);
 
+  // Close connection settings menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (selectedConnection && connectionSettingsMenuRef.current) {
+        // Check if click is inside the menu
+        if (connectionSettingsMenuRef.current.contains(event.target)) {
+          return; // Don't close if clicking inside menu
+        }
+        
+        // Check if clicking on ChromePicker (react-color creates a portal outside the menu)
+        const chromePickerElement = document.querySelector('.chrome-picker');
+        if (chromePickerElement && chromePickerElement.contains(event.target)) {
+          return; // Don't close if clicking on color picker
+        }
+        
+        // Check if clicking on the connection line itself (should not close)
+        const clickedElement = event.target;
+        if (clickedElement.closest('.connector') || 
+            clickedElement.closest('path') || 
+            clickedElement.tagName === 'svg' ||
+            clickedElement.closest('svg')) {
+          return; // Don't close if clicking on connection
+        }
+        
+        // Close for all other clicks (canvas, items, etc.)
+        setSelectedConnection(null);
+      }
+    };
+
+    if (selectedConnection) {
+      // Use both mousedown and click events to catch all interactions
+      // Use a slight delay to avoid immediate closing when opening the menu
+      const timeoutId = setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside, true);
+        document.addEventListener('click', handleClickOutside, true);
+      }, 100);
+      
+      return () => {
+        clearTimeout(timeoutId);
+        document.removeEventListener('mousedown', handleClickOutside, true);
+        document.removeEventListener('click', handleClickOutside, true);
+      };
+    }
+  }, [selectedConnection]);
+
   const handleSaveWhiteboard = async (name) => {
     try {
       if (!user) {
         throw new Error('Please sign in to save whiteboards');
       }
-
-      console.log('🔄 Starting save process...');
       
-      // First, verify storage is initialized
-      const storage = getStorage();
-      if (!storage) {
-        throw new Error('Storage is not initialized');
-      }
+      // Helper function to remove undefined values from objects
+      const removeUndefinedFromObject = (obj) => {
+        if (obj === null || obj === undefined) return null;
+        if (Array.isArray(obj)) {
+          return obj.map(removeUndefinedFromObject);
+        }
+        if (typeof obj === 'object') {
+          const cleaned = {};
+          for (const key in obj) {
+            if (obj[key] !== undefined) {
+              cleaned[key] = removeUndefinedFromObject(obj[key]);
+            }
+          }
+          return cleaned;
+        }
+        return obj;
+      };
 
       // Process all items, with special handling for images
-      console.log('📦 STORAGE: Processing items for save...');
-      const processedItems = await Promise.all(items.map(async (item) => {
-        const cleanedItem = { ...item };
-        
-        if (item.type === 'image') {
-          // All images should already be uploaded and have a storageRef
-          if (!item.storageRef) {
-            console.error('📦 STORAGE ERROR: Image item missing storage reference:', item.id);
-            throw new Error('Invalid image item state: missing storage reference');
+      let processedItems = [];
+      if (items.length > 0) {
+        // Only verify storage if there are items
+        const storage = getStorage();
+        if (!storage) {
+          throw new Error('Storage is not initialized');
+        }
+
+        processedItems = await Promise.all(items.map(async (item) => {
+          let cleanedItem = { ...item };
+          
+          if (item.type === 'image') {
+            // All images should already be uploaded and have a storageRef
+            if (!item.storageRef) {
+              // If image URL exists but no storageRef, keep the imageUrl
+              if (!item.imageUrl) {
+                throw new Error('Invalid image item: missing both storage reference and image URL');
+              }
+              // Continue with just the imageUrl if available
+            } else {
+              // Verify the existing image is still accessible
+              try {
+                const storage = getStorage();
+                const imageRef = storageRef(storage, item.storageRef);
+                const downloadUrl = await getDownloadURL(imageRef);
+                
+                // Update the URL in case it has changed
+                cleanedItem.imageUrl = downloadUrl;
+              } catch (error) {
+                // If imageUrl exists, use it as fallback
+                if (item.imageUrl) {
+                  cleanedItem.imageUrl = item.imageUrl;
+                } else {
+                  throw new Error(`Failed to verify existing image: ${error.message}`);
+                }
+              }
+            }
           }
           
-          // Verify the existing image is still accessible
-          try {
-            const storage = getStorage();
-            const imageRef = storageRef(storage, item.storageRef);
-            const downloadUrl = await getDownloadURL(imageRef);
-            
-            // Update the URL in case it has changed
-            cleanedItem.imageUrl = downloadUrl;
-            
-            console.log('📦 STORAGE: Verified existing image:', {
-              id: item.id,
-              storageRef: item.storageRef
-            });
-          } catch (error) {
-            console.error('📦 STORAGE ERROR: Failed to verify existing image:', {
-              id: item.id,
-              storageRef: item.storageRef,
-              error: error.message
-            });
-            throw new Error(`Failed to verify existing image: ${error.message}`);
-          }
-        }
-        return cleanedItem;
-      }));
-
-      // Verify all images were processed
-      const invalidImages = processedItems.filter(
-        item => item.type === 'image' && (!item.storageRef || !item.imageUrl)
-      );
-
-      if (invalidImages.length > 0) {
-        console.error('📦 STORAGE ERROR: Some images are in invalid state:', invalidImages);
-        throw new Error('Some images could not be processed');
+          // Remove undefined values from the item
+          cleanedItem = removeUndefinedFromObject(cleanedItem);
+          return cleanedItem;
+        }));
       }
 
       // Prepare data for Firestore
-      console.log('🔥 FIRESTORE: Preparing board data...');
+      // Clean connections and preserve customization properties
+      const cleanedConnections = (connections || []).map(conn => {
+        const cleaned = {
+          id: String(conn.id || `connection-${Date.now()}`),
+          from: String(conn.from),
+          to: String(conn.to),
+          // Always save customization properties (use defaults if not set)
+          color: String(conn.color || '#2196F3'),
+          strokeWidth: Number(conn.strokeWidth || 2),
+          lineType: String(conn.lineType || 'straight'),
+          lineDesign: String(conn.lineDesign || 'curved'),
+          arrowDirection: String(conn.arrowDirection || '->'),
+          arrowHeadStyle: String(conn.arrowHeadStyle || 'medium')
+        };
+        return cleaned;
+      });
+
       const boardData = {
-        name,
+        name: name || currentBoardName || 'Untitled Board',
         userId: user.uid,
         savedAt: serverTimestamp(),
         content: {
           items: processedItems,
-          connections: connections.map(conn => ({
-            id: String(conn.id || `connection-${Date.now()}`),
-            from: String(conn.from),
-            to: String(conn.to)
-          })),
+          connections: cleanedConnections,
           scale: Number(scale || 1),
           panOffset: {
             x: Number(panOffset?.x || 0),
@@ -569,23 +870,22 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         }
       };
 
+      // Include board ID if updating existing board
+      if (currentBoardId) {
+        boardData.id = currentBoardId;
+      }
+
       // Save to Firestore
-      console.log('🔥 FIRESTORE: Saving board data...');
       const savedBoard = await saveBoard(boardData, user.uid);
       
       // Update state only after everything is saved
       setItems(processedItems);
       setCurrentBoardId(savedBoard.id);
+      setCurrentBoardName(savedBoard.name);
       setShowSaveDialog(false);
-
-      console.log('✅ Save process completed successfully:', {
-        boardId: savedBoard.id,
-        totalItems: processedItems.length,
-        imageItems: processedItems.filter(item => item.type === 'image').length
-      });
       
+      return savedBoard;
     } catch (error) {
-      console.error('❌ Error during save process:', error);
       throw error; // Re-throw to be handled by the caller
     }
   };
@@ -595,8 +895,6 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       if (!user) {
         throw new Error('Please sign in to load whiteboards');
       }
-
-      console.log('🔄 Starting load process...', { boardId });
 
       const boardDoc = await getDoc(doc(db, 'boards', boardId));
       
@@ -611,11 +909,9 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       }
 
       // Process items to restore image URLs
-      console.log('📦 STORAGE: Processing items for load...');
       const processedItems = await Promise.all(boardData.content.items.map(async (item) => {
         if (item.type === 'image') {
           if (!item.storageRef) {
-            console.error('📦 STORAGE ERROR: Image missing storage reference:', item.id);
             return {
               ...item,
               loadError: 'Missing storage reference',
@@ -629,11 +925,6 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
           for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-              console.log(`📦 STORAGE: Loading image (attempt ${attempt}/${maxRetries}):`, {
-                itemId: item.id,
-                storageRef: item.storageRef
-              });
-
               const storage = getStorage();
               const imageRef = storageRef(storage, item.storageRef);
               
@@ -660,12 +951,6 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
                 img.src = imageUrl;
               });
 
-              console.log('📦 STORAGE: Image loaded successfully:', {
-                itemId: item.id,
-                attempt,
-                urlLength: imageUrl.length
-              });
-
               return {
                 ...item,
                 imageUrl,
@@ -675,11 +960,6 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
             } catch (error) {
               lastError = error;
-              console.error(`📦 STORAGE ERROR: Failed to load image (attempt ${attempt}/${maxRetries}):`, {
-                itemId: item.id,
-                storageRef: item.storageRef,
-                error: error.message
-              });
 
               // If this was the last attempt, mark the item as failed
               if (attempt === maxRetries) {
@@ -708,29 +988,174 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       const failedImages = processedItems.filter(item => 
         item.type === 'image' && item.loadError
       );
-      
-      if (failedImages.length > 0) {
-        console.warn('📦 STORAGE WARNING: Some images failed to load:', failedImages);
-      }
 
       // Update state with loaded data
-      console.log('✅ Load process completed:', {
-        totalItems: processedItems.length,
-        imageItems: processedItems.filter(item => item.type === 'image').length,
-        failedImages: failedImages.length
-      });
-
       setItems(processedItems);
-      setConnections(boardData.content.connections || []);
+      
+      // Load connections with all properties properly converted
+      // Note: Item IDs might be numbers or strings, so we need to match them properly
+      const loadedConnections = (boardData.content.connections || []).map(conn => {
+        // Convert from/to to match item ID type (items might have number or string IDs)
+        const fromId = conn.from;
+        const toId = conn.to;
+        
+        // Find the actual item IDs to match against
+        const fromItem = processedItems.find(item => String(item.id) === String(fromId));
+        const toItem = processedItems.find(item => String(item.id) === String(toId));
+        
+        // Use the actual item ID (preserving type) if item exists, otherwise use the connection value
+        const cleaned = {
+          id: String(conn.id || `connection-${Date.now()}`),
+          from: fromItem ? fromItem.id : (typeof fromId === 'number' ? fromId : Number(fromId) || fromId),
+          to: toItem ? toItem.id : (typeof toId === 'number' ? toId : Number(toId) || toId),
+          color: String(conn.color || '#2196F3'),
+          strokeWidth: Number(conn.strokeWidth || 2),
+          lineType: String(conn.lineType || 'straight'),
+          lineDesign: String(conn.lineDesign || 'curved'),
+          arrowDirection: String(conn.arrowDirection || '->'),
+          arrowHeadStyle: String(conn.arrowHeadStyle || 'medium')
+        };
+        return cleaned;
+      });
+      setConnections(loadedConnections);
       setScale(boardData.content.scale || 1);
       setPanOffset(boardData.content.panOffset || { x: 0, y: 0 });
       setCurrentBoardId(boardId);
+      setCurrentBoardName(boardData.name || null);
+      
+      // Mark that we just loaded, so we don't auto-save immediately
+      isInitialLoadRef.current = true;
+      setTimeout(() => {
+        isInitialLoadRef.current = false;
+      }, 2000); // Wait 2 seconds after load before allowing auto-save
 
     } catch (error) {
-      console.error('❌ Error during load process:', error);
       throw error; // Re-throw to be handled by the caller
     }
   };
+
+  // Auto-save function for existing boards
+  const autoSave = useCallback(async () => {
+    if (!user || !currentBoardId || !currentBoardName || isInitialLoadRef.current) {
+      return;
+    }
+
+    try {
+      setIsAutoSaving(true);
+      
+      // Helper function to remove undefined values from objects
+      const removeUndefinedFromObject = (obj) => {
+        if (obj === null || obj === undefined) return null;
+        if (Array.isArray(obj)) {
+          return obj.map(removeUndefinedFromObject);
+        }
+        if (typeof obj === 'object') {
+          const cleaned = {};
+          for (const key in obj) {
+            if (obj[key] !== undefined) {
+              cleaned[key] = removeUndefinedFromObject(obj[key]);
+            }
+          }
+          return cleaned;
+        }
+        return obj;
+      };
+
+      // Process all items, with special handling for images
+      let processedItems = [];
+      if (items.length > 0) {
+        const storage = getStorage();
+        if (!storage) {
+          return;
+        }
+
+        processedItems = await Promise.all(items.map(async (item) => {
+          let cleanedItem = { ...item };
+          
+          if (item.type === 'image') {
+            if (!item.storageRef) {
+              if (!item.imageUrl) {
+                return cleanedItem; // Skip invalid images during auto-save
+              }
+            } else {
+              try {
+                const storage = getStorage();
+                const imageRef = storageRef(storage, item.storageRef);
+                const downloadUrl = await getDownloadURL(imageRef);
+                cleanedItem.imageUrl = downloadUrl;
+              } catch (error) {
+                if (item.imageUrl) {
+                  cleanedItem.imageUrl = item.imageUrl;
+                }
+              }
+            }
+          }
+          
+          cleanedItem = removeUndefinedFromObject(cleanedItem);
+          return cleanedItem;
+        }));
+      }
+
+      // Clean connections
+      const cleanedConnections = (connections || []).map(conn => {
+        return {
+          id: String(conn.id || `connection-${Date.now()}`),
+          from: String(conn.from),
+          to: String(conn.to),
+          color: String(conn.color || '#2196F3'),
+          strokeWidth: Number(conn.strokeWidth || 2),
+          lineType: String(conn.lineType || 'straight'),
+          lineDesign: String(conn.lineDesign || 'curved'),
+          arrowDirection: String(conn.arrowDirection || '->'),
+          arrowHeadStyle: String(conn.arrowHeadStyle || 'medium')
+        };
+      });
+
+      // Don't save viewport (scale, panOffset) in auto-save to avoid saving on every view change
+      const boardData = {
+        id: currentBoardId,
+        name: currentBoardName,
+        userId: user.uid,
+        savedAt: serverTimestamp(),
+        content: {
+          items: processedItems,
+          connections: cleanedConnections,
+          // Viewport changes are not auto-saved - they're only saved on manual save
+        }
+      };
+
+      await saveBoard(boardData, user.uid);
+      setLastSaveTime(new Date());
+    } catch (error) {
+      // Silently fail for auto-save - don't interrupt user workflow
+    } finally {
+      setIsAutoSaving(false);
+    }
+  }, [user, currentBoardId, currentBoardName, items, connections]);
+
+  // Auto-save effect - debounced (only for items and connections, not viewport changes)
+  useEffect(() => {
+    if (!currentBoardId || isInitialLoadRef.current) {
+      return;
+    }
+
+    // Clear existing timeout
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    // Set new timeout for auto-save (2 seconds after last change)
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      autoSave();
+    }, 2000);
+
+    // Cleanup
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [items, connections, currentBoardId, autoSave]);
 
   const handleDeleteSavedWhiteboard = (boardId) => {
     const updatedBoards = savedWhiteboards.filter(b => b.id !== boardId);
@@ -738,18 +1163,23 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     localStorage.setItem('savedWhiteboards', JSON.stringify(updatedBoards));
     if (currentBoardId === boardId) {
       setCurrentBoardId(null);
+      setCurrentBoardName(null);
     }
   };
 
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Cancel connection on Escape
       if (e.key === 'Escape' && connectingFrom) {
+        e.preventDefault();
+        e.stopPropagation();
         setConnectingFrom(null);
+        setSelectedItems(new Set());
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true); // Use capture phase
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [connectingFrom]);
 
   // Add image item event listener
@@ -768,8 +1198,27 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   }, []);
 
   const handleCanvasClick = (e) => {
-    if (e.target === e.currentTarget) {
+    // Close connection settings menu if clicking on canvas (but not on menu or color picker)
+    if (selectedConnection && connectionSettingsMenuRef.current) {
+      if (!connectionSettingsMenuRef.current.contains(e.target)) {
+        const chromePickerElement = document.querySelector('.chrome-picker');
+        if (!chromePickerElement || !chromePickerElement.contains(e.target)) {
+          setSelectedConnection(null);
+        }
+      }
+    }
+    
+    // Don't clear connection if clicking on control buttons or connector paths
+    if (e.target.closest('.edit-control, .connector-control, .expand-control, .resize-handle')) {
+      return;
+    }
+    // Don't clear if clicking on a connector path
+    if (e.target.tagName === 'path' && e.target.closest('.connector')) {
+      return;
+    }
+    if (e.target === e.currentTarget && !e.target.closest('.zoom-controls')) {
       setSelectedItems(new Set());
+      setSelectedConnection(null);
       setConnectingFrom(null);
       setContextMenu({ visible: false, x: 0, y: 0 });
     }
@@ -904,14 +1353,52 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           setContextMenu({ visible: false, x: 0, y: 0 });
         }
         if (connectingFrom) {
+          e.preventDefault();
+          e.stopPropagation();
           setConnectingFrom(null);
+          setSelectedItems(new Set());
+        }
+      }
+      
+      // Handle Delete/Backspace for group selection
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedItems.size > 0) {
+        // Check if target is an input, textarea, or if the search panel is open
+        const isEditingText = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
+        const isInSearchPanel = document.querySelector('.search-panel') && 
+                                document.querySelector('.search-panel').contains(e.target);
+        const isInAgentChat = document.querySelector('.agent-chat') && 
+                              document.querySelector('.agent-chat').contains(e.target);
+        
+        // Only delete if not editing text and not in search panel or agent chat
+        if (!isEditingText && !isInSearchPanel && !isInAgentChat) {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          // Delete all selected items
+          saveState();
+          const updatedItems = items.filter(item => !selectedItems.has(item.id));
+          setItems(updatedItems);
+          
+          // Also delete connections involving selected items
+          const updatedConnections = connections.filter(conn => 
+            !selectedItems.has(conn.from) && !selectedItems.has(conn.to)
+          );
+          setConnections(updatedConnections);
+          
+          // Close chart editing if a deleted item was being edited
+          if (editingChartId && selectedItems.has(editingChartId)) {
+            setEditingChartId(null);
+          }
+          
+          // Clear selection
+          setSelectedItems(new Set());
         }
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [connectingFrom, contextMenu.visible]);
+    window.addEventListener('keydown', handleKeyDown, true); // Use capture phase for priority
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [connectingFrom, contextMenu.visible, selectedItems, items, connections, saveState, editingChartId]);
 
   // Set up global function for moving selected items
   useEffect(() => {
@@ -1058,10 +1545,17 @@ Performance Metrics Analysis`
           };
 
           newItems.push(newItem);
+          const defaults = getDefaultConnectionSettings();
           newConnections.push({
             id: `connection-${Date.now()}-${i}`,
             from: itemId,
-            to: newItem.id
+            to: newItem.id,
+            color: defaults.color,
+            strokeWidth: defaults.strokeWidth,
+            lineType: defaults.lineType,
+            lineDesign: defaults.lineDesign || 'curved',
+            arrowDirection: defaults.arrowDirection,
+            arrowHeadStyle: defaults.arrowHeadStyle
           });
         });
 
@@ -1070,7 +1564,6 @@ Performance Metrics Analysis`
         setConnections(prevConnections => [...prevConnections, ...newConnections]);
 
       } catch (error) {
-        console.error('Error expanding concept:', error);
         alert(error.message || 'Failed to expand concept. Please try again.');
       } finally {
         setExpandingItemId(null);
@@ -1192,8 +1685,7 @@ Performance Metrics Analysis`
         link.click();
       };
     }).catch(err => {
-      console.error("Error exporting to PNG:", err);
-      alert("Could not export to PNG. See console for details.");
+      alert("Could not export to PNG.");
     });
   }, [calculateContentBounds]);
 
@@ -1306,14 +1798,13 @@ Performance Metrics Analysis`
 
       return canvas.toDataURL('image/png');
     } catch (err) {
-      console.error("Error capturing canvas:", err);
       return null;
     }
   }, [calculateContentBounds, scale]);
 
   const exportToNotion = useCallback(async () => {
     if (!canExport('notion')) {
-      setIsPricingOpen(true);
+      navigate('/pricing');
       return;
     }
 
@@ -1404,12 +1895,11 @@ Performance Metrics Analysis`
         null, // No database ID for direct page creation
         pageTitle,
         {
-          title: {
-            title: [{ text: { content: pageTitle } }]
+            title: {
+              title: [{ text: { content: pageTitle } }]
+            }
           }
-        },
-        (message) => console.log(message)
-      );
+        );
 
       if (response) {
         // Add the blocks to the page
@@ -1431,8 +1921,7 @@ Performance Metrics Analysis`
         }
       }
     } catch (err) {
-      console.error("Error exporting to Notion:", err);
-      alert("Could not export to Notion. See console for details.");
+      alert("Could not export to Notion.");
     }
   }, [items, connections, canExport, getApiBaseUrl]);
 
@@ -1668,7 +2157,7 @@ Performance Metrics Analysis`
   // Add new export functions
   const exportToPDF = useCallback(async () => {
     if (!canExport('pdf')) {
-      setIsPricingOpen(true);
+      navigate('/pricing');
       return;
     }
 
@@ -1724,14 +2213,13 @@ Performance Metrics Analysis`
       // Save the PDF
       pdf.save('mindmap.pdf');
     } catch (err) {
-      console.error("Error exporting to PDF:", err);
-      alert("Could not export to PDF. See console for details.");
+      alert("Could not export to PDF.");
     }
   }, [canExport, captureCanvasAsBase64]);
 
   const exportToMM = useCallback(() => {
     if (!canExport('mm')) {
-      setIsPricingOpen(true);
+      navigate('/pricing');
       return;
     }
 
@@ -1803,7 +2291,7 @@ Performance Metrics Analysis`
 
   const exportToFigma = useCallback(async () => {
     if (!canExport('fig')) {
-      setIsPricingOpen(true);
+      navigate('/pricing');
       return;
     }
 
@@ -1925,8 +2413,7 @@ Performance Metrics Analysis`
       URL.revokeObjectURL(url);
 
     } catch (err) {
-      console.error("Error exporting to Figma:", err);
-      alert("Could not export to Figma. See console for details.");
+      alert("Could not export to Figma.");
     }
   }, [canExport, items, connections]);
 
@@ -2067,6 +2554,224 @@ Performance Metrics Analysis`
     };
   }, [handleCopy, handlePaste]);
 
+  // Enhanced collision detection function with better overlap verification
+  const checkCollision = (pos1, dim1, item2, margin = 10) => {
+    const pos2 = item2.position;
+    const dim2 = { width: item2.width, height: item2.height };
+    
+    // Calculate bounding boxes with margins
+    const box1 = {
+      left: pos1.x - margin,
+      right: pos1.x + dim1.width + margin,
+      top: pos1.y - margin,
+      bottom: pos1.y + dim1.height + margin
+    };
+    
+    const box2 = {
+      left: pos2.x,
+      right: pos2.x + dim2.width,
+      top: pos2.y,
+      bottom: pos2.y + dim2.height
+    };
+    
+    // Check for overlap with more precise calculation
+    const horizontalOverlap = !(box1.right < box2.left || box1.left > box2.right);
+    const verticalOverlap = !(box1.bottom < box2.top || box1.top > box2.bottom);
+    
+    return horizontalOverlap && verticalOverlap;
+  };
+
+  // Function to regenerate mind map with new branch distance
+  const regenerateMindMapWithNewDistance = (centralNode, mindMapItems, newDistance) => {
+    // Find all items connected to the central node (main branches)
+    const mainBranches = items.filter(item => 
+      item.id !== centralNode.id && 
+      connections.some(conn => 
+        (conn.from === centralNode.id && conn.to === item.id) ||
+        (conn.to === centralNode.id && conn.from === item.id)
+      )
+    );
+    
+    if (mainBranches.length === 0) {
+      return;
+    }
+    
+    // Find all sub-branches (items connected to main branches)
+    const subBranches = items.filter(item => 
+      item.id !== centralNode.id && 
+      !mainBranches.some(main => main.id === item.id) &&
+      connections.some(conn => 
+        mainBranches.some(main => 
+          (conn.from === main.id && conn.to === item.id) ||
+          (conn.to === main.id && conn.from === item.id)
+        )
+      )
+    );
+    
+    // Remove all connected items and their connections
+    const allConnectedItems = [...mainBranches, ...subBranches];
+    const connectedItemIds = allConnectedItems.map(item => item.id);
+    
+    setItems(prevItems => prevItems.filter(item => !connectedItemIds.includes(item.id)));
+    setConnections(prevConnections => 
+      prevConnections.filter(conn => 
+        !connectedItemIds.includes(conn.from) && !connectedItemIds.includes(conn.to)
+      )
+    );
+    
+    // Regenerate with new distance
+    setTimeout(() => {
+      // Calculate new positions with updated distance (using viewport-relative sizing)
+      const canvasEl2 = document.querySelector('.whiteboard-canvas');
+      const canvasBounds2 = canvasEl2.getBoundingClientRect();
+      const viewportWidth = canvasBounds2.width;
+      const viewportHeight = canvasBounds2.height;
+      
+      const baseRadius = Math.min(viewportWidth, viewportHeight) * 0.12; // 12% of viewport for better user experience
+      const radius = Math.max(baseRadius, 200) * newDistance; // Reduced minimum for better viewport fit
+      const angleStep = (2 * Math.PI) / mainBranches.length;
+      
+      const newItems = [];
+      const newConnections = [];
+      
+      // Reposition main branches
+      mainBranches.forEach((branch, index) => {
+        const angle = index * angleStep;
+        const dimensions = calculateTextDimensions(branch.text, 'rectangle');
+        
+        let currentRadius = radius;
+        let position = {
+          x: centralNode.position.x + currentRadius * Math.cos(angle) - dimensions.width / 2,
+          y: centralNode.position.y + currentRadius * Math.sin(angle) - dimensions.height / 2
+        };
+        
+        // Enhanced collision detection with better spacing and symmetry
+        const minSpacing = 50;
+        let attempts = 0;
+        const maxAttempts = 10;
+        
+        while (attempts < maxAttempts) {
+          let hasCollision = false;
+          
+          for (const existingItem of newItems) {
+            if (checkCollision(position, dimensions, existingItem, minSpacing)) {
+              hasCollision = true;
+              break;
+            }
+          }
+          
+          if (!hasCollision) break;
+          
+          const radiusIncrement = 40 + (attempts * 15);
+          currentRadius += radiusIncrement;
+          position = {
+            x: centralNode.position.x + currentRadius * Math.cos(angle) - dimensions.width / 2,
+            y: centralNode.position.y + currentRadius * Math.sin(angle) - dimensions.height / 2
+          };
+          attempts++;
+        }
+        
+        const mainBranchNode = {
+          ...branch,
+          position,
+          width: dimensions.width,
+          height: dimensions.height
+        };
+        
+        newItems.push(mainBranchNode);
+        const defaults = getDefaultConnectionSettings();
+        newConnections.push({
+          from: centralNode.id,
+          to: mainBranchNode.id,
+          id: `connection-${centralNode.id}-${mainBranchNode.id}`,
+          color: defaults.color,
+          strokeWidth: defaults.strokeWidth,
+          lineType: defaults.lineType,
+          lineDesign: defaults.lineDesign || 'curved',
+          arrowDirection: defaults.arrowDirection,
+          arrowHeadStyle: defaults.arrowHeadStyle
+        });
+        
+        // Now reposition sub-branches for this main branch
+        const subBranchesForThisMain = subBranches.filter(subBranch => 
+          connections.some(conn => 
+            (conn.from === branch.id && conn.to === subBranch.id) ||
+            (conn.to === branch.id && conn.from === subBranch.id)
+          )
+        );
+        
+        if (subBranchesForThisMain.length > 0) {
+          const subRadius = radius * 0.6; // Sub-branches are closer to main branches
+          const subAngleOffset = 0.3; // Angle offset for sub-branches
+          const subAngleStep = (2 * Math.PI) / subBranchesForThisMain.length;
+          
+          subBranchesForThisMain.forEach((subBranch, subIndex) => {
+            const subAngle = angle + (subIndex * subAngleStep - Math.PI / 2) * subAngleOffset;
+            const subDimensions = calculateTextDimensions(subBranch.text, 'rectangle');
+            
+            let subCurrentRadius = subRadius;
+            let subPosition = {
+              x: mainBranchNode.position.x + subCurrentRadius * Math.cos(subAngle) - subDimensions.width / 2,
+              y: mainBranchNode.position.y + subCurrentRadius * Math.sin(subAngle) - subDimensions.height / 2
+            };
+            
+            // Enhanced collision detection for sub-branches
+            const subMinSpacing = 35;
+            let subAttempts = 0;
+            const subMaxAttempts = 8;
+            
+            while (subAttempts < subMaxAttempts) {
+              let hasCollision = false;
+              
+              for (const existingItem of newItems) {
+                if (checkCollision(subPosition, subDimensions, existingItem, subMinSpacing)) {
+                  hasCollision = true;
+                  break;
+                }
+              }
+              
+              if (!hasCollision) break;
+              
+              const subRadiusIncrement = 25 + (subAttempts * 8);
+              subCurrentRadius += subRadiusIncrement;
+              subPosition = {
+                x: mainBranchNode.position.x + subCurrentRadius * Math.cos(subAngle) - subDimensions.width / 2,
+                y: mainBranchNode.position.y + subCurrentRadius * Math.sin(subAngle) - subDimensions.height / 2
+              };
+              subAttempts++;
+            }
+            
+            const subBranchNode = {
+              ...subBranch,
+              position: subPosition,
+              width: subDimensions.width,
+              height: subDimensions.height
+            };
+            
+            newItems.push(subBranchNode);
+            const subDefaults = getDefaultConnectionSettings();
+            newConnections.push({
+              from: mainBranchNode.id,
+              to: subBranchNode.id,
+              id: `connection-${mainBranchNode.id}-${subBranchNode.id}`,
+              color: subDefaults.color,
+              strokeWidth: subDefaults.strokeWidth,
+              lineType: subDefaults.lineType,
+              lineDesign: subDefaults.lineDesign || 'curved',
+              arrowDirection: subDefaults.arrowDirection,
+              arrowHeadStyle: subDefaults.arrowHeadStyle
+            });
+          });
+        }
+      });
+      
+      
+      // Add new items and connections
+      setItems(prevItems => [...prevItems, ...newItems]);
+      setConnections(prevConnections => [...prevConnections, ...newConnections]);
+    }, 100);
+  };
+
   const handleGenerateMindMap = async () => {
     setIsGeneratingMindMap(true);
     try {
@@ -2078,30 +2783,19 @@ Performance Metrics Analysis`
       const settingsRef = doc(db, 'userSettings', user.uid);
       const settingsSnap = await getDoc(settingsRef);
       
-      console.log('Settings document exists:', settingsSnap.exists());
-      
       if (!settingsSnap.exists() || !settingsSnap.data().groqApiKey) {
         throw new Error('Please set your Groq API key in Settings first');
       }
 
       // Get the API key and decrypt it
       const encryptedApiKey = settingsSnap.data().groqApiKey;
-      console.log('Retrieved encrypted key type:', typeof encryptedApiKey);
-      console.log('Retrieved encrypted key length:', encryptedApiKey.length);
-      console.log('Retrieved encrypted key starts with:', encryptedApiKey.substring(0, 10));
       
       let groqApiKey;
 
       try {
         // Try to decode base64 first (for development environment)
-        console.log('Attempting base64 decode...');
         groqApiKey = atob(encryptedApiKey);
-        console.log('Successfully decoded base64 API key');
-        console.log('Decoded key length:', groqApiKey.length);
-        console.log('Decoded key starts with:', groqApiKey.substring(0, 4));
       } catch (e) {
-        console.log('Base64 decode failed:', e.message);
-        console.log('Attempting to decrypt using Netlify function...');
         // If base64 decode fails, try the decryption endpoint
         const decryptResponse = await fetch(`${getApiBaseUrl()}/decryptApiKey`, {
           method: 'POST',
@@ -2113,37 +2807,34 @@ Performance Metrics Analysis`
         });
 
         if (!decryptResponse.ok) {
-          console.error('Decryption failed with status:', decryptResponse.status);
-          const errorText = await decryptResponse.text();
-          console.error('Decryption error:', errorText);
           throw new Error('Failed to decrypt API key');
         }
 
         const { decrypted } = await decryptResponse.json();
         groqApiKey = decrypted;
-        console.log('Successfully decrypted API key');
-        console.log('Decrypted key length:', groqApiKey.length);
-        console.log('Decrypted key starts with:', groqApiKey.substring(0, 4));
       }
 
       if (!groqApiKey?.trim()) {
-        console.error('API key is empty or only whitespace after decryption');
         throw new Error('Invalid API key format');
       }
 
       if (!groqApiKey.startsWith('gsk_')) {
-        console.error('API key does not start with gsk_');
         throw new Error('Invalid API key format. API key should start with "gsk_"');
       }
 
-      // Create a central node as a circle
+      // Create a central node at the user's current viewport center (user-friendly positioning)
+      const canvasEl = document.querySelector('.whiteboard-canvas');
+      const canvasBounds = canvasEl.getBoundingClientRect();
+      const viewportCenterX = (canvasBounds.width / 2 - panOffset.x) / scale;
+      const viewportCenterY = (canvasBounds.height / 2 - panOffset.y) / scale;
+      
       const centralNode = {
         id: Date.now(),
         type: 'circle',
         text: mindMapPrompt,
         position: { 
-          x: windowDimensions.width/2 - 75, 
-          y: windowDimensions.height/2 - 75 
+          x: viewportCenterX - 75, // Center of current viewport minus half width
+          y: viewportCenterY - 75  // Center of current viewport minus half height
         },
         width: 150,
         height: 150
@@ -2154,15 +2845,6 @@ Performance Metrics Analysis`
       
       // Model configuration
       const MODEL_ID = 'llama-3.3-70b-versatile';
-      console.log('Using Groq model:', MODEL_ID);
-      console.log('Model capabilities:', {
-        contextWindow: '128K tokens',
-        maxCompletionTokens: '32,768 tokens',
-        type: 'Production model'
-      });
-      
-      console.log('Making API request with key starting with:', groqApiKey.substring(0, 4));
-      console.log('API key length for request:', groqApiKey.length);
       
       // Call Groq API to generate branches
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -2218,16 +2900,10 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('API Error Response:', errorData);
-        console.error('API Error Status:', response.status);
-        console.error('API Error Status Text:', response.statusText);
         throw new Error(errorData.error?.message || 'Failed to generate mind map branches');
       }
 
       const data = await response.json();
-      console.log('Successfully received API response');
-      console.log('Model used in response:', data.model);
-      console.log('Usage statistics:', data.usage);
       
       const branches = data.choices[0].message.content
         .split('\n')
@@ -2237,11 +2913,21 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
           return { type, text: text.trim() };
         });
 
-      console.log('Generated branches count:', branches.length);
-
-      // Calculate positions for branches in a circular layout
+      // Calculate positions for branches using full canvas space (4000x4000)
       const mainBranches = branches.filter(b => b.type === 'MAIN');
-      const radius = Math.min(windowDimensions.width, windowDimensions.height) * 0.2; // 20% of the smaller dimension
+      
+      // Use full canvas dimensions for better mind map distribution
+      const canvasWidth = 4000; // Full canvas width
+      const canvasHeight = 4000; // Full canvas height
+      
+        // User-friendly viewport-relative layout
+        const canvasEl3 = document.querySelector('.whiteboard-canvas');
+        const canvasBounds3 = canvasEl3.getBoundingClientRect();
+        const viewportWidth = canvasBounds3.width;
+        const viewportHeight = canvasBounds3.height;
+        
+        const baseRadius = Math.min(viewportWidth, viewportHeight) * 0.12; // 12% of viewport for better user experience
+        const radius = Math.max(baseRadius, 200) * branchDistance; // Apply scalar multiplier with viewport-relative minimum
       const angleStep = (2 * Math.PI) / mainBranches.length;
 
       // Add branches and connections
@@ -2249,52 +2935,137 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
       const newConnections = [];
 
       mainBranches.forEach((branch, index) => {
-        const angle = index * angleStep;
+        const angle = index * angleStep - Math.PI / 2; // Start from top (-π/2)
         const dimensions = calculateTextDimensions(branch.text, 'rectangle');
+        
+        // Calculate optimal position with smart spacing
+        let currentRadius = radius;
+        let position = {
+          x: centralNode.position.x + currentRadius * Math.cos(angle) - dimensions.width / 2,
+          y: centralNode.position.y + currentRadius * Math.sin(angle) - dimensions.height / 2
+        };
+        
+        // Enhanced collision detection with better spacing and symmetry
+        const minSpacing = 50; // Increased minimum spacing for better separation
+        let attempts = 0;
+        const maxAttempts = 10;
+        
+        while (attempts < maxAttempts) {
+          let hasCollision = false;
+          
+          // Check collision with all existing items using enhanced detection
+          for (const existingItem of newItems) {
+            if (checkCollision(position, dimensions, existingItem, minSpacing)) {
+              hasCollision = true;
+              break;
+            }
+          }
+          
+          if (!hasCollision) break;
+          
+          // Increase radius with better progression to maintain symmetry
+          const radiusIncrement = 40 + (attempts * 15); // More aggressive radius increase
+          currentRadius += radiusIncrement;
+          position = {
+            x: centralNode.position.x + currentRadius * Math.cos(angle) - dimensions.width / 2,
+            y: centralNode.position.y + currentRadius * Math.sin(angle) - dimensions.height / 2
+          };
+          attempts++;
+        }
+        
+        // Improved positioning with better spacing
         const mainBranchNode = {
           id: Date.now() + index,
           type: 'rectangle',
           text: branch.text,
-          position: {
-            x: centralNode.position.x + radius * Math.cos(angle),
-            y: centralNode.position.y + radius * Math.sin(angle)
-          },
+          position: position,
           width: dimensions.width,
           height: dimensions.height
         };
 
         newItems.push(mainBranchNode);
+        const defaults = getDefaultConnectionSettings();
         newConnections.push({
           id: `connection-${Date.now()}-${index}`,
           from: centralNode.id,
-          to: mainBranchNode.id
+          to: mainBranchNode.id,
+          color: defaults.color,
+          strokeWidth: defaults.strokeWidth,
+          lineType: defaults.lineType,
+          lineDesign: defaults.lineDesign || 'curved',
+          arrowDirection: defaults.arrowDirection,
+          arrowHeadStyle: defaults.arrowHeadStyle
         });
 
-        // Add sub-branches for this main branch
+        // Redesigned sub-branch positioning for compact layout
         const subBranches = branches
           .filter(b => b.type === 'SUB')
           .slice(index * 2, index * 2 + 2); // Get 2 sub-branches for each main branch
 
         subBranches.forEach((subBranch, subIndex) => {
-          const subAngle = angle - 0.3 + (subIndex * 0.6); // Spread sub-branches around main branch
-          const subRadius = radius * 0.7; // Place sub-branches closer to main branch
+          const subDimensions = calculateTextDimensions(subBranch.text, 'rectangle');
+          
+          // Calculate sub-branch position with smart spacing
+          const subRadius = currentRadius * 0.6; // 60% of main branch radius
+          const subAngleOffset = (subIndex - 0.5) * 0.3; // Balanced spread
+          const subAngle = angle + subAngleOffset;
+          
+          // Calculate initial sub-branch position
+          let subPosition = {
+            x: mainBranchNode.position.x + subRadius * Math.cos(subAngle) - subDimensions.width / 2,
+            y: mainBranchNode.position.y + subRadius * Math.sin(subAngle) - subDimensions.height / 2
+          };
+          
+          // Enhanced collision detection for sub-branches
+          const subMinSpacing = 35; // Increased minimum spacing for sub-branches
+          let subAttempts = 0;
+          const subMaxAttempts = 8;
+          let subCurrentRadius = subRadius;
+          
+          while (subAttempts < subMaxAttempts) {
+            let hasCollision = false;
+            
+            // Check collision with all existing items using enhanced detection
+            for (const existingItem of newItems) {
+              if (checkCollision(subPosition, subDimensions, existingItem, subMinSpacing)) {
+                hasCollision = true;
+                break;
+              }
+            }
+            
+            if (!hasCollision) break;
+            
+            // Increase sub-radius with better progression
+            const subRadiusIncrement = 25 + (subAttempts * 8); // More aggressive radius increase
+            subCurrentRadius += subRadiusIncrement;
+            subPosition = {
+              x: mainBranchNode.position.x + subCurrentRadius * Math.cos(subAngle) - subDimensions.width / 2,
+              y: mainBranchNode.position.y + subCurrentRadius * Math.sin(subAngle) - subDimensions.height / 2
+            };
+            subAttempts++;
+          }
+          
           const subBranchNode = {
             id: Date.now() + index + 1 + (subIndex + 1) * 1000,
             type: 'rectangle',
             text: subBranch.text,
-            position: {
-              x: mainBranchNode.position.x + subRadius * Math.cos(subAngle),
-              y: mainBranchNode.position.y + subRadius * Math.sin(subAngle)
-            },
-            width: 100,
-            height: 60
+            position: subPosition,
+            width: subDimensions.width,
+            height: subDimensions.height
           };
 
           newItems.push(subBranchNode);
+          const subDefaults = getDefaultConnectionSettings();
           newConnections.push({
             id: `connection-${Date.now()}-${index}-${subIndex}`,
             from: mainBranchNode.id,
-            to: subBranchNode.id
+            to: subBranchNode.id,
+            color: subDefaults.color,
+            strokeWidth: subDefaults.strokeWidth,
+            lineType: subDefaults.lineType,
+            lineDesign: subDefaults.lineDesign || 'curved',
+            arrowDirection: subDefaults.arrowDirection,
+            arrowHeadStyle: subDefaults.arrowHeadStyle
           });
         });
       });
@@ -2304,7 +3075,6 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
       
       setIsMindMapPanelOpen(false);
     } catch (error) {
-      console.error('Error generating mind map:', error);
       alert(error.message || 'Failed to generate mind map. Please try again.');
     } finally {
       setIsGeneratingMindMap(false);
@@ -2324,22 +3094,53 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Calculate current view size
+  useEffect(() => {
+    const updateViewSize = () => {
+      const canvas = document.querySelector('.whiteboard-canvas');
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const viewWidth = rect.width / scale;
+        const viewHeight = (rect.height - 15) / scale; // Subtract footer height
+        setCanvasViewSize({ width: viewWidth, height: viewHeight });
+      }
+    };
+
+    updateViewSize();
+    const interval = setInterval(updateViewSize, 100); // Update every 100ms
+
+    const handleResize = () => {
+      updateViewSize();
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [scale, windowDimensions]);
+
   // Calculate dimensions based on text content and node type
   const calculateTextDimensions = (text, nodeType = 'rectangle') => {
     // Create a temporary span to measure text
     const span = document.createElement('span');
     span.style.visibility = 'hidden';
     span.style.position = 'absolute';
-    span.style.whiteSpace = 'pre-wrap'; // Allow text wrapping
-    span.style.maxWidth = '250px'; // Reduced from 300px
-    span.style.font = '12px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'; // Reduced from 14px
-    span.style.padding = '8px'; // Reduced from 10px
+    span.style.maxWidth = '250px'; // Increased max width to prevent squishing
+    span.style.font = '13px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    span.style.padding = '10px 14px'; // Better padding to prevent squishing
+    span.style.lineHeight = '1.4'; // Optimal line spacing for readability
+    span.style.textAlign = 'center'; // Center text in nodes
+    span.style.fontWeight = '500'; // Slightly bolder for better visibility
+    span.style.whiteSpace = 'nowrap'; // Prevent text wrapping to avoid squishing
     span.textContent = text;
     document.body.appendChild(span);
 
-    // Get dimensions
-    const width = span.offsetWidth;
-    const height = span.offsetHeight;
+    // Get dimensions with proper sizing to prevent squishing
+    const naturalWidth = span.scrollWidth; // Get natural width without constraints
+    const naturalHeight = span.scrollHeight; // Get natural height
+    const width = Math.max(naturalWidth + 20, 140); // Natural width + padding, minimum 140px
+    const height = Math.max(naturalHeight + 10, 40); // Natural height + padding, minimum 40px
 
     // Clean up
     document.body.removeChild(span);
@@ -2360,14 +3161,6 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
     };
   };
 
-  useEffect(() => {
-    console.log('Canvas dimensions:', {
-      width: window.innerWidth,
-      height: window.innerHeight,
-      scale,
-      dpr: window.devicePixelRatio
-    });
-  }, [scale]);
 
   const handleResetView = useCallback(() => {
     setScale(1.0);
@@ -2500,8 +3293,289 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
 
   return (
     <div className={`whiteboard-container ${isSearchPanelOpen ? 'panel-open' : ''}`} style={{ position: 'relative', width: '100%', height: '100%' }}>
+      {/* Connection Edit Menu at top right */}
+      {selectedConnection && !isSearchPanelOpen && (() => {
+        const connection = connections.find(c => c.id === selectedConnection);
+        if (!connection) return null;
+        
+        // Use key to force re-render when connection properties change
+        const connectionKey = `${connection.id}-${connection.strokeWidth || 2}-${connection.color || '#2196F3'}`;
+        
+        return (
+          <div 
+            ref={connectionSettingsMenuRef}
+            key={connectionKey}
+            style={{
+              position: 'fixed',
+              top: 70,
+              right: 20,
+              zIndex: 2000,
+              background: 'white',
+              borderRadius: '12px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              padding: '10px',
+              minWidth: 220,
+            }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: '10px' }}>Connection Settings</div>
+            
+            {/* Connection Color */}
+            <div style={{ marginBottom: '15px' }}>
+              <div style={{ fontSize: 13, marginBottom: 6 }}>Color</div>
+              <div style={{
+                display: 'flex',
+                gap: '4px',
+                marginBottom: '10px',
+                flexWrap: 'nowrap',
+                width: '100%',
+                justifyContent: 'center',
+                overflowX: 'hidden',
+                alignItems: 'center',
+                height: '30px',
+                padding: '2px',
+              }}>
+                {['#2196F3', '#4CAF50', '#FF9800', '#F44336', '#9C27B0', '#00BCD4', '#FFC107', '#607D8B'].map(color => (
+                  <div
+                    key={color}
+                    onClick={() => handleUpdateConnection(selectedConnection, { color })}
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: '50%',
+                      background: color,
+                      border: '2px solid #eee',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+                      outline: connection.color === color ? '2px solid #2196F3' : 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative',
+                      flex: '0 0 auto',
+                    }}
+                  />
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <div style={{ boxShadow: 'none' }}>
+                  <ChromePicker
+                    color={connection.color || '#2196F3'}
+                    onChange={(color) => handleUpdateConnection(selectedConnection, { color: color.hex })}
+                    disableAlpha
+                    styles={{
+                      default: {
+                        picker: {
+                          boxShadow: 'none'
+                        }
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Stroke Width */}
+            <div style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+              <div style={{ fontSize: 13 }}>Stroke Width</div>
+              <select
+                value={Number(connection.strokeWidth) || 2}
+                onChange={(e) => {
+                  const newWidth = parseInt(e.target.value, 10);
+                  handleUpdateConnection(selectedConnection, { strokeWidth: newWidth });
+                }}
+                style={{
+                  flex: '0 0 auto',
+                  padding: '6px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid #ddd',
+                  fontSize: '12px',
+                  background: 'white',
+                  cursor: 'pointer',
+                  minWidth: '80px',
+                }}
+              >
+                <option value="1">1px</option>
+                <option value="2">2px</option>
+                <option value="3">3px</option>
+                <option value="4">4px</option>
+              </select>
+            </div>
+
+            {/* Line Type */}
+            <div style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+              <div style={{ fontSize: 13 }}>Line Type</div>
+              <select
+                value={connection.lineType || 'straight'}
+                onChange={(e) => {
+                  handleUpdateConnection(selectedConnection, { lineType: e.target.value });
+                }}
+                style={{
+                  flex: '0 0 auto',
+                  padding: '6px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid #ddd',
+                  fontSize: '12px',
+                  background: 'white',
+                  cursor: 'pointer',
+                  minWidth: '120px',
+                }}
+              >
+                <option value="straight">Straight</option>
+                <option value="dashed">Dashed</option>
+                <option value="dotted">Dotted</option>
+              </select>
+            </div>
+
+            {/* Line Design */}
+            <div style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+              <div style={{ fontSize: 13 }}>Line Design</div>
+              <select
+                value={connection.lineDesign || 'curved'}
+                onChange={(e) => {
+                  handleUpdateConnection(selectedConnection, { lineDesign: e.target.value });
+                }}
+                style={{
+                  flex: '0 0 auto',
+                  padding: '6px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid #ddd',
+                  fontSize: '12px',
+                  background: 'white',
+                  cursor: 'pointer',
+                  minWidth: '120px',
+                }}
+              >
+                <option value="sharp">Sharp</option>
+                <option value="curved">Curved</option>
+                <option value="orthogonal">90° Cuts</option>
+              </select>
+            </div>
+
+            {/* Arrow Direction */}
+            <div style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+              <div style={{ fontSize: 13 }}>Arrow Direction</div>
+              <select
+                value={connection.arrowDirection || '->'}
+                onChange={(e) => {
+                  handleUpdateConnection(selectedConnection, { arrowDirection: e.target.value });
+                }}
+                style={{
+                  flex: '0 0 auto',
+                  padding: '6px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid #ddd',
+                  fontSize: '12px',
+                  background: 'white',
+                  cursor: 'pointer',
+                  minWidth: '140px',
+                }}
+              >
+                <option value="->">→ (End only)</option>
+                <option value="<-">← (Start only)</option>
+                <option value="<->">↔ (Both ends)</option>
+              </select>
+            </div>
+
+            {/* Arrow Head Style */}
+            <div style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+              <div style={{ fontSize: 13 }}>Arrow Head Style</div>
+              <select
+                value={connection.arrowHeadStyle || 'medium'}
+                onChange={(e) => {
+                  handleUpdateConnection(selectedConnection, { arrowHeadStyle: e.target.value });
+                }}
+                style={{
+                  flex: '0 0 auto',
+                  padding: '6px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid #ddd',
+                  fontSize: '12px',
+                  background: 'white',
+                  cursor: 'pointer',
+                  minWidth: '120px',
+                }}
+              >
+                <option value="spear">Spear</option>
+                <option value="small">Small</option>
+                <option value="medium">Medium</option>
+                <option value="large">Large</option>
+              </select>
+            </div>
+
+            {/* Save as Default Button */}
+            <button
+              onClick={() => {
+                const settings = {
+                  color: connection.color || '#2196F3',
+                  strokeWidth: connection.strokeWidth || 2,
+                  lineType: connection.lineType || 'straight',
+                  lineDesign: connection.lineDesign || 'curved',
+                  arrowDirection: connection.arrowDirection || '->',
+                  arrowHeadStyle: connection.arrowHeadStyle || 'medium'
+                };
+                saveDefaultConnectionSettings(settings);
+              }}
+              style={{
+                width: '100%',
+                padding: '8px',
+                background: '#4CAF50',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: 500,
+                marginTop: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+              }}
+              title="Save as Default Line Settings"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                <polyline points="17 21 17 13 7 13 7 21"/>
+                <polyline points="7 3 7 8 15 8"/>
+              </svg>
+            </button>
+
+            {/* Delete Button */}
+            <button
+              onClick={() => {
+                handleDeleteConnection(selectedConnection);
+                setSelectedConnection(null);
+              }}
+              style={{
+                width: '100%',
+                padding: '8px',
+                background: '#f44336',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: 500,
+                marginTop: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+              }}
+              title="Delete Connection"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                <line x1="10" y1="11" x2="10" y2="17"/>
+                <line x1="14" y1="11" x2="14" y2="17"/>
+              </svg>
+            </button>
+          </div>
+        );
+      })()}
+
       {/* Color Wheel at top right */}
-      {selectedItem && selectedItem.type !== 'chart' && (
+      {selectedItem && selectedItem.type !== 'chart' && selectedItems.size === 1 && !isSearchPanelOpen && (
         <div style={{
           position: 'fixed',
           top: 70,
@@ -2531,6 +3605,7 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
               <option value="background">Background Color</option>
               <option value="border">Border Color</option>
               <option value="text">Text Styling</option>
+              <option value="layout">Layout Settings</option>
             </select>
           </div>
 
@@ -2594,11 +3669,20 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
                   </div>
                 ))}
               </div>
-              <ChromePicker
-                color={selectedItem.backgroundColor || colorPicker.background}
-                onChange={handleColorChange}
-                disableAlpha
-              />
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <ChromePicker
+                  color={selectedItem.backgroundColor || colorPicker.background}
+                  onChange={handleColorChange}
+                  disableAlpha
+                  styles={{
+                    default: {
+                      picker: {
+                        boxShadow: 'none'
+                      }
+                    }
+                  }}
+                />
+              </div>
             </>
           )}
 
@@ -2670,11 +3754,20 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
                   </div>
                 ))}
               </div>
-              <ChromePicker
-                color={selectedItem.borderColor || colorPicker.border}
-                onChange={handleBorderColorChange}
-                disableAlpha
-              />
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <ChromePicker
+                  color={selectedItem.borderColor || colorPicker.border}
+                  onChange={handleBorderColorChange}
+                  disableAlpha
+                  styles={{
+                    default: {
+                      picker: {
+                        boxShadow: 'none'
+                      }
+                    }
+                  }}
+                />
+              </div>
             </>
           )}
 
@@ -2800,20 +3893,106 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
               </div>
             </>
           )}
+
+          {/* Layout Settings Section */}
+          {activeColorSection === 'layout' && (
+            <>
+              <div style={{ fontSize: 13, marginBottom: 6 }}>Layout Settings</div>
+              
+              {/* Branch Distance Slider */}
+              <div style={{ marginBottom: '15px' }}>
+                <div style={{ fontSize: 11, marginBottom: 4 }}>Branch Distance: {branchDistance.toFixed(2)}x</div>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="2.0"
+                  step="0.05"
+                  value={branchDistance}
+                  onChange={(e) => {
+                    const newDistance = parseFloat(e.target.value);
+                    setBranchDistance(newDistance);
+                    
+                    // Live update: regenerate mind map with new distance
+                    if (selectedItem && selectedItem.type === 'circle') {
+                      // Regenerate the mind map with new distance
+                      regenerateMindMapWithNewDistance(selectedItem, [], newDistance);
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    height: '6px',
+                    borderRadius: '3px',
+                    background: '#ddd',
+                    outline: 'none',
+                    cursor: 'pointer',
+                  }}
+                />
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  fontSize: '10px', 
+                  color: '#666',
+                  marginTop: '4px'
+                }}>
+                  <span>Compact</span>
+                  <span>Default</span>
+                  <span>Spread Out</span>
+                </div>
+              </div>
+              
+              {/* Reset Layout Button */}
+              <button
+                onClick={() => {
+                  setBranchDistance(0.8);
+                  if (selectedItem && selectedItem.type === 'circle') {
+                    regenerateMindMapWithNewDistance(selectedItem, [], 0.8);
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  backgroundColor: '#f5f5f5',
+                  border: '1px solid #ddd',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  color: '#333',
+                  transition: 'background-color 0.2s',
+                }}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#e9e9e9'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = '#f5f5f5'}
+              >
+                Reset to Default
+              </button>
+            </>
+          )}
         </div>
       )}
       <div className="whiteboard-header">
         <div className="header-left-controls">
-          <img 
-            src="/logo_and_name.png" 
-            alt="MindMap Logo" 
+          <div
             style={{
+              width: '32px',
               height: '32px',
+              overflow: 'hidden',
               marginRight: '16px',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center'
             }}
             onClick={() => navigate('/')}
-          />
+          >
+            <img 
+              src="/logo_and_name.png" 
+              alt="MindMap Logo" 
+              style={{
+                height: '32px',
+                width: 'auto',
+                objectFit: 'contain',
+                objectPosition: 'left center'
+              }}
+            />
+          </div>
           <SavedWhiteboardsMenu
             isOpen={isSavedBoardsMenuOpen}
             onToggle={toggleSavedBoardsMenu}
@@ -2832,20 +4011,20 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
             <button 
               className="export-button header-button" 
               onClick={toggleExportMenu}
+              title="Export"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-              Export
             </button>
             {isExportMenuOpen && renderExportMenu()}
           </div>
           <button 
             className="header-button"
             onClick={handleResetBoard}
-            title="Clear whiteboard"
+            title="Reset"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18"/>
@@ -2854,16 +4033,17 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
               <line x1="10" y1="11" x2="10" y2="17"/>
               <line x1="14" y1="11" x2="14" y2="17"/>
             </svg>
-            Reset
           </button>
           <button 
             className="header-button"
-            onClick={() => setIsPricingOpen(true)}
+            onClick={handleUndo}
+            disabled={undoStack.length === 0}
+            title="Undo"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+              <path d="M3 7v6h6"/>
+              <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
             </svg>
-            Pricing
           </button>
           {/* Temporarily removed community and publish buttons
           <button 
@@ -2881,7 +4061,131 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
           </button>
           */}
         </div>
-        <UserMenu />
+        <div className="header-right-controls">
+          <button 
+            className="header-button save-button"
+            onClick={async () => {
+              if (!user) {
+                alert('Please sign in to save boards');
+                return;
+              }
+              const boardName = prompt('Enter a name for this board:');
+              if (boardName && boardName.trim()) {
+                try {
+                  await handleSaveWhiteboard(boardName.trim());
+                  alert('Board saved successfully!');
+                } catch (error) {
+                  const errorMessage = error.message || error.toString();
+                  alert(`Failed to save board: ${errorMessage}`);
+                }
+              }
+            }}
+            title="Save New Canvas"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              padding: '8px'
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+          </button>
+          {currentBoardId && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 8px',
+                fontSize: '12px',
+                color: isAutoSaving ? '#2196F3' : '#666',
+                opacity: isAutoSaving ? 1 : 0.7
+              }}
+              title={isAutoSaving ? 'Saving...' : lastSaveTime ? `Last saved: ${lastSaveTime.toLocaleTimeString()}` : 'Auto-save enabled'}
+            >
+              {isAutoSaving ? (
+                <>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" className="spinner" strokeDasharray="20" strokeDashoffset="10" />
+                  </svg>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M20 6L9 17l-5-5"/>
+                  </svg>
+                  Auto-saved
+                </>
+              )}
+            </div>
+          )}
+          <button 
+            className="header-button new-canvas-button"
+            onClick={handleNewCanvas}
+            title="New Canvas"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px'
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            New Canvas
+          </button>
+          <UserMenu />
+          {/* Board URL Path - displayed in header */}
+          {currentBoardName && user && (() => {
+            // Get username from displayName or email
+            const getUsername = () => {
+              if (user.displayName) {
+                return user.displayName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+              }
+              if (user.email) {
+                // Extract username from email (part before @)
+                return user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9-]/g, '');
+              }
+              return 'user';
+            };
+            
+            const username = getUsername();
+            const boardSlug = currentBoardName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+            const urlPath = `${username}/dashboards/${boardSlug}`;
+            
+            return (
+              <div className="board-url-path-inline">
+                <span className="board-url-text">
+                  {urlPath}
+                </span>
+                <button
+                  className="copy-url-button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.origin + '/' + urlPath).then(() => {
+                      alert('URL copied to clipboard!');
+                    }).catch(() => {
+                      // Silently fail
+                    });
+                  }}
+                  title="Copy URL to clipboard"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                </button>
+              </div>
+            );
+          })()}
+        </div>
       </div>
 
       <div
@@ -2898,17 +4202,17 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
           position: 'relative',
           overflow: 'hidden',
           width: '100%',
-          height: '100%'
+          height: 'calc(100% - 15px)'
         }}
       >
         <div className="whiteboard-zoom-overlay">
           <div className="zoom-controls">
-            <button onClick={() => setScale(s => Math.min(s * 1.1, 4))}>+</button>
+            <button onClick={(e) => { e.stopPropagation(); setScale(s => Math.min(s * 1.1, 4)); }}>+</button>
             <span>{Math.round(scale * 100)}%</span>
-            <button onClick={() => setScale(s => Math.max(s * 0.9, 0.1))}>-</button>
+            <button onClick={(e) => { e.stopPropagation(); setScale(s => Math.max(s * 0.9, 0.1)); }}>-</button>
             <button 
               className="home-button" 
-              onClick={handleResetView}
+              onClick={(e) => { e.stopPropagation(); handleResetView(); }}
               title="Reset view"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2918,16 +4222,17 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
             </button>
             <button 
               className="full-width-button" 
-              onClick={handleZoomToFullWidth}
+              onClick={(e) => { e.stopPropagation(); handleZoomToFullWidth(); }}
               title="Zoom to full width"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 6h16M4 12h16M4 18h16"/>
+                <path d="M3 12h18M8 8l-4 4 4 4M16 8l4 4-4 4"/>
               </svg>
             </button>
             <div 
               className="viewport-indicator" 
               onClick={(e) => {
+                e.stopPropagation();
                 const viewport = e.currentTarget;
                 const rect = viewport.getBoundingClientRect();
                 const x = (e.clientX - rect.left) / rect.width;
@@ -3067,6 +4372,8 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
                 onOrganize={organizeNodes}
                 onChartEdit={handleChartEdit}
                 isChartEditing={editingChartId === item.id}
+                onDragEnd={saveState}
+                onResizeEnd={saveState}
               />
             ))}
           {/* Render non-chart items after (in front) */}
@@ -3090,6 +4397,8 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
                 scale={scale}
                 onContextMenu={(e) => handleContextMenu(e, item.id)}
                 onOrganize={organizeNodes}
+                onDragEnd={saveState}
+                onResizeEnd={saveState}
               />
             ))}
         </div>
@@ -3214,6 +4523,27 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
                   rows={4}
                 />
               </div>
+              
+              <div className="mind-map-settings-container">
+                <label htmlFor="branch-distance-slider">
+                  Branch Distance: {branchDistance.toFixed(2)}x
+                </label>
+                <input
+                  id="branch-distance-slider"
+                  type="range"
+                  min="0.7"
+                  max="1.5"
+                  step="0.05"
+                  value={branchDistance}
+                  onChange={(e) => setBranchDistance(parseFloat(e.target.value))}
+                  className="branch-distance-slider"
+                />
+                <div className="slider-labels">
+                  <span>Compact</span>
+                  <span>Default</span>
+                  <span>Spread Out</span>
+                </div>
+              </div>
               <button 
                 className="generate-mind-map-button"
                 onClick={handleGenerateMindMap}
@@ -3233,10 +4563,6 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
         </div>
       )}
 
-      <PricingTable 
-        isOpen={isPricingOpen}
-        onClose={() => setIsPricingOpen(false)}
-      />
 
       {/* Temporarily removed publish modal
       <PublishModal
@@ -3255,6 +4581,23 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
       >
         ?
       </button>
+
+      {/* Footer with canvas and view size */}
+      <div className="whiteboard-footer">
+        <div className="footer-left">
+          <span>
+            {currentBoardName ? `Board: ${currentBoardName}` : 'Untitled Board'}
+          </span>
+        </div>
+        <div className="footer-right">
+          <span>
+            Canvas: {4000} × {4000}px
+          </span>
+          <span>
+            View: {Math.round(canvasViewSize.width)} × {Math.round(canvasViewSize.height)}px
+          </span>
+        </div>
+      </div>
     </div>
   );
 });

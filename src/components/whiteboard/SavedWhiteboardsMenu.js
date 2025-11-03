@@ -16,14 +16,13 @@ const SavedWhiteboardsMenu = ({
   const [userBoards, setUserBoards] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [hasLoadedBoards, setHasLoadedBoards] = useState(false);
 
-  // Fetch boards when the menu is opened and tab is personal (if not already loaded)
+  // Fetch boards when the menu is opened and tab is personal
   useEffect(() => {
-    if (isOpen && activeTab === 'personal' && user && !hasLoadedBoards) {
+    if (isOpen && activeTab === 'personal' && user) {
       fetchUserBoards();
     }
-  }, [isOpen, activeTab, user, hasLoadedBoards]); // Dependencies for fetching
+  }, [isOpen, activeTab, user]); // Removed hasLoadedBoards to allow refresh on open
 
   const fetchUserBoards = async () => {
     if (!user) {
@@ -35,11 +34,8 @@ const SavedWhiteboardsMenu = ({
     setError(null);
     try {
       const boards = await getUserBoards(user.uid);
-      console.log('Fetched user boards:', boards);
       setUserBoards(boards);
-      setHasLoadedBoards(true);
     } catch (error) {
-      console.error('Error fetching user boards:', error);
       setError(error.message || 'Failed to load boards');
       setUserBoards([]);
     } finally {
@@ -103,7 +99,6 @@ const SavedWhiteboardsMenu = ({
 
   const cleanItem = (item) => {
     if (!item || typeof item !== 'object') {
-      console.warn('Invalid item:', item);
       return null;
     }
 
@@ -126,12 +121,6 @@ const SavedWhiteboardsMenu = ({
       // Always preserve the storageRef for images
       if (item.storageRef) {
         cleanedImage.storageRef = String(item.storageRef);
-      } else {
-        console.error('Image item missing storage reference:', {
-          itemId: cleanedImage.id,
-          type: cleanedImage.type,
-          position: cleanedImage.position
-        });
       }
 
       return cleanedImage;
@@ -153,11 +142,19 @@ const SavedWhiteboardsMenu = ({
   };
 
   const cleanConnection = (conn) => {
-    return {
+    const cleaned = {
       id: String(conn.id || `connection-${Date.now()}`),
       from: String(conn.from),
-      to: String(conn.to)
+      to: String(conn.to),
+      // Always save customization properties (use defaults if not set)
+      color: String(conn.color || '#2196F3'),
+      strokeWidth: Number(conn.strokeWidth || 2),
+      lineType: String(conn.lineType || 'straight'),
+      lineDesign: String(conn.lineDesign || 'curved'),
+      arrowDirection: String(conn.arrowDirection || '->'),
+      arrowHeadStyle: String(conn.arrowHeadStyle || 'medium')
     };
+    return cleaned;
   };
 
   const handleSave = async (e, boardName, existingBoardId = null) => {
@@ -208,11 +205,7 @@ const SavedWhiteboardsMenu = ({
         boardData.id = existingBoardId;
       }
 
-      // Log the cleaned data for debugging
-      console.log('Cleaned board data for Firestore:', JSON.stringify(boardData, null, 2));
-
       const savedBoard = await saveBoard(boardData, user.uid);
-      console.log('Board saved successfully:', savedBoard);
       
       if (existingBoardId) {
         // Update existing board in the list
@@ -226,7 +219,6 @@ const SavedWhiteboardsMenu = ({
       }
       onToggle(); // Close menu after save
     } catch (error) {
-      console.error('Error saving board:', error);
       setError(error.message || 'Failed to save board');
     } finally {
       setIsLoading(false);
@@ -249,7 +241,6 @@ const SavedWhiteboardsMenu = ({
       await deleteBoard(boardId);
       setUserBoards(prev => prev.filter(board => board.id !== boardId));
     } catch (error) {
-      console.error('Error deleting board:', error);
       setError(error.message || 'Failed to delete board');
     } finally {
       setIsLoading(false);
@@ -284,6 +275,7 @@ const SavedWhiteboardsMenu = ({
       <button 
         className="menu-toggle header-button"
         onClick={onToggle}
+        title="Library"
       >
         <svg 
           width="16" 
@@ -296,11 +288,10 @@ const SavedWhiteboardsMenu = ({
           strokeLinejoin="round"
           style={{ marginRight: '4px' }}
         >
-          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-          <polyline points="17 21 17 13 7 13 7 21" />
-          <polyline points="7 3 7 8 15 8" />
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
         </svg>
-        Saved 
+        Library 
       </button>
 
       {isOpen && (

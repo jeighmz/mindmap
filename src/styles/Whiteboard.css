@@ -4,6 +4,7 @@
   width: 100%;
   overflow: hidden;
   position: relative;
+  background-color: #2d2d2d;
 }
 
 .whiteboard-toolbar {
@@ -97,10 +98,41 @@
   position: relative;
   overflow: hidden;
   width: 100%;
-  height: 100vh;
+  height: calc(100vh - 15px);
   background-color: #f5f5f5;
   flex: 1;
   z-index: 1;
+}
+
+.whiteboard-footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 15px;
+  background-color: #f5f5f5;
+  border-top: 1px solid #ddd;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  font-size: 11px;
+  color: #666;
+  font-family: monospace;
+  z-index: 100;
+  user-select: none;
+}
+
+.footer-left {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.footer-right {
+  display: flex;
+  align-items: center;
+  gap: 15px;
 }
 
 .whiteboard-canvas.panning {
@@ -121,6 +153,7 @@
   transition: transform 0.05s linear;
   z-index: 1;
   will-change: transform;
+  background-color: #e0e0e0;
 }
 
 .panel-open .canvas-content {
@@ -137,6 +170,7 @@
   left: 0;
   right: 0;
   bottom: 0;
+  background-color: #ffffff;
   background-image: 
     linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
@@ -161,6 +195,7 @@
   z-index: 100;
   will-change: transform;
   transition: transform 0.1s ease-out;
+  overflow: visible;
 }
 
 .whiteboard-item:hover {
@@ -174,6 +209,7 @@
 .whiteboard-item.selected {
   outline: 2px solid #2196F3;
   outline-offset: 2px;
+  overflow: visible;
 }
 
 .whiteboard-item.selected::after {
@@ -294,10 +330,20 @@
 .sticky-note {
   width: 200px;
   height: 200px;
-  background: #fff740;
-  padding: 16px;
+  /* background color is set inline from item.backgroundColor */
+  padding: 0;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   overflow: hidden;
+  position: relative;
+}
+
+/* Ensure resize handles are visible outside sticky notes */
+.whiteboard-item.selected {
+  overflow: visible;
+}
+
+.whiteboard-item.selected .sticky-note {
+  overflow: hidden; /* Keep text clipping inside */
 }
 
 .sticky-note textarea {
@@ -587,6 +633,7 @@
 .whiteboard-item.selected {
   outline: 2px solid #007bff;
   outline-offset: 2px;
+  overflow: visible;
 }
 
 .whiteboard-item.selected.dragging {
@@ -633,12 +680,24 @@
   pointer-events: none;
 }
 
+.whiteboard-item.dragging .edit-control,
+.whiteboard-item.dragging .connector-control,
+.whiteboard-item.dragging .expand-control {
+  pointer-events: auto;
+}
+
 .whiteboard-item.resizing {
   cursor: auto !important;
 }
 
 .whiteboard-item.resizing * {
   pointer-events: none;
+}
+
+.whiteboard-item.resizing .edit-control,
+.whiteboard-item.resizing .connector-control,
+.whiteboard-item.resizing .expand-control {
+  pointer-events: auto;
 }
 
 .resize-handle {
@@ -800,11 +859,11 @@
 
 .connector path {
   transition: all 0.2s ease;
-  stroke-width: 2;
+  /* stroke-width is set dynamically via inline style, don't override */
 }
 
 .connector path:hover {
-  stroke-width: 3;
+  /* Don't override stroke-width on hover, keep the dynamic value */
   stroke: #1976D2;
 }
 
@@ -897,17 +956,13 @@
   display: flex;
 }
 
-.connector path {
-  transition: all 0.2s ease;
-}
-
 .connector path.creating {
   stroke-dasharray: 5,5;
   animation: dash 1s linear infinite;
 }
 
 .connector path:hover {
-  stroke-width: 3;
+  /* Don't override stroke-width on hover, keep the dynamic value */
   stroke: #1976D2;
 }
 
@@ -932,10 +987,12 @@
 
 .whiteboard-item.selected {
   outline: 2px solid #007bff;
+  overflow: visible;
 }
 
 .whiteboard-item.multi-selected {
   outline: 2px solid #007bff;
+  overflow: visible;
   background: rgba(0, 123, 255, 0.05);
 }
 
@@ -1057,10 +1114,10 @@
   }
 }
 
-/* Adjust position for when panels are open */
+/* Reduce opacity for when panels are open (keep position unchanged) */
 .panel-open .whiteboard-controls-overlay,
 .mind-map-panel-open .whiteboard-controls-overlay {
-  left: calc(50% - 200px);
+  opacity: 0.3;
 }
 
 @media (max-width: 768px) {
@@ -1117,6 +1174,7 @@
 
 .whiteboard-item.selected {
   z-index: 101;
+  overflow: visible;
 }
 
 .connector {
@@ -1163,10 +1221,10 @@
   pointer-events: auto;
 }
 
-/* Adjust positions when panels are open */
+/* Reduce opacity when panels are open (keep position unchanged) */
 .panel-open .whiteboard-controls-overlay,
 .mind-map-panel-open .whiteboard-controls-overlay {
-  left: calc(50% - 200px);
+  opacity: 0.3;
 }
 
 /* For small screens, ensure controls remain accessible */
@@ -1236,6 +1294,7 @@
 
 .whiteboard-item.selected {
   outline: 2px solid #007bff;
+  overflow: visible;
 }
 
 /* Add these styles */
@@ -1248,6 +1307,14 @@
 .whiteboard-item.group-select-mode .resize-handle,
 .whiteboard-item.group-select-mode .edit-control {
   display: none !important;
+}
+
+/* Ensure edit buttons are clickable */
+.edit-control,
+.connector-control,
+.expand-control {
+  pointer-events: auto !important;
+  z-index: 1003;
 }
 
 .whiteboard-item.group-select-mode.selected {
@@ -1521,8 +1588,7 @@
 
   .panel-open .whiteboard-controls-overlay,
   .mind-map-panel-open .whiteboard-controls-overlay {
-    left: 20px;
-    bottom: 80px;
+    opacity: 0.3;
   }
 }
 
@@ -1616,6 +1682,89 @@
   border-color: #007bff;
   box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
   background: white;
+}
+
+/* Mind map settings container */
+.mind-map-settings-container {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.mind-map-settings-container label {
+  display: block;
+  margin-bottom: 12px;
+  color: #333;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Branch distance slider */
+.branch-distance-slider {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: #ddd;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  margin-bottom: 8px;
+}
+
+.branch-distance-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #007bff;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+.branch-distance-slider::-webkit-slider-thumb:hover {
+  background: #0056b3;
+  transform: scale(1.1);
+}
+
+.branch-distance-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #007bff;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.branch-distance-slider::-moz-range-thumb:hover {
+  background: #0056b3;
+  transform: scale(1.1);
+}
+
+/* Slider labels */
+.slider-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+}
+
+.slider-labels span {
+  flex: 1;
+  text-align: center;
+}
+
+.slider-labels span:first-child {
+  text-align: left;
+}
+
+.slider-labels span:last-child {
+  text-align: right;
 }
 
 .generate-mind-map-button {
@@ -1932,10 +2081,76 @@
   box-sizing: border-box;
 }
 
+.board-url-path-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  color: #495057;
+  border-left: 1px solid #dee2e6;
+  margin-left: 8px;
+  padding-left: 16px;
+}
+
+.board-url-text {
+  color: #6366f1;
+  font-weight: 500;
+}
+
+.copy-url-button {
+  background: transparent;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 4px 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6c757d;
+  transition: all 0.2s ease;
+  font-size: 12px;
+}
+
+.copy-url-button:hover {
+  background-color: #e9ecef;
+  border-color: #adb5bd;
+  color: #495057;
+}
+
 .header-left-controls {
   display: flex;
   align-items: center;
   gap: 15px;
+}
+
+.header-right-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.save-button {
+  background-color: #10b981;
+  color: white;
+  border: none;
+}
+
+.save-button:hover {
+  background-color: #059669;
+  border-color: #059669;
+}
+
+.new-canvas-button {
+  background-color: #6366f1;
+  color: white;
+  border: none;
+}
+
+.new-canvas-button:hover {
+  background-color: #4f46e5;
+  border-color: #4f46e5;
 }
 
 /* Common style for header buttons */
@@ -2041,8 +2256,6 @@
     right: 0;
     padding: 0 10px;
     height: 50px;
-  }
-  .whiteboard-canvas {
   }
   .header-button, 
   .saved-whiteboards-container .menu-toggle {
@@ -2265,4 +2478,18 @@
 
 .viewport-frame:hover {
   background: rgba(0, 123, 255, 0.2);
+}
+
+/* Auto-save indicator styles */
+@keyframes auto-save-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.whiteboard-header .spinner {
+  animation: auto-save-spin 1s linear infinite;
 } 

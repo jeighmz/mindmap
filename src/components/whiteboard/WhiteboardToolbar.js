@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { useDrag } from 'react-dnd';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getAuth } from 'firebase/auth';
+import { storage } from '../../firebase-config';
 import { useAuth } from '../../contexts/AuthContext';
+
 import AgentChat from './agent/AgentChat';
 
 const ToolbarItem = ({ type, icon, chartType }) => {
@@ -22,12 +25,21 @@ const ToolbarItem = ({ type, icon, chartType }) => {
       return;
     }
 
-    console.log('Starting image addition process...', { userId: user.uid });
+    console.log('Starting image addition process...', { 
+      userId: user.uid,
+      userEmail: user.email,
+      isAuthenticated: !!user
+    });
 
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = async (e) => {
+    try {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      
+      console.log('File input created, setting up handler...');
+      
+      input.onchange = async (e) => {
+        console.log('File input changed event fired');
       const file = e.target.files[0];
       if (file) {
         try {
@@ -35,7 +47,8 @@ const ToolbarItem = ({ type, icon, chartType }) => {
           console.log('File selected:', {
             name: file.name,
             type: file.type,
-            size: file.size
+            size: file.size,
+            lastModified: file.lastModified
           });
           
           // Validate file type and size
@@ -72,37 +85,110 @@ const ToolbarItem = ({ type, icon, chartType }) => {
               const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
               const storagePath = `mindmap-images/${user.uid}/${fileName}`;
               
-              // Upload the file immediately
-              const storage = getStorage();
+              // Verify storage is properly initialized
+              if (!storage) {
+                throw new Error('Firebase Storage is not properly initialized');
+              }
+
+              // Verify storage bucket is configured
+              const storageBucket = storage.app?.options?.storageBucket;
+              if (!storageBucket) {
+                console.error('❌ STORAGE CONFIG ERROR: Storage bucket is not configured');
+                throw new Error('Storage bucket is not configured. Please check your Firebase configuration.');
+              }
+
+              console.log('📦 STORAGE: Using storage instance:', {
+                app: storage.app.name,
+                bucket: storageBucket,
+                isInitialized: !!storage
+              });
+
               const imageRef = ref(storage, storagePath);
               
               console.log('📦 STORAGE: Starting immediate image upload:', {
                 path: storagePath,
                 contentType: file.type,
-                fileSize: file.size
+                fileSize: file.size,
+                storageRef: imageRef.fullPath
               });
 
-              // Upload with metadata
-              const uploadResult = await uploadBytes(imageRef, file, {
-                contentType: file.type,
-                customMetadata: {
-                  uploadedBy: user.uid,
-                  uploadedAt: new Date().toISOString(),
-                  originalName: fileName
+              // Upload with better error handling
+              // A 412 error can occur due to metadata issues or auth token problems
+              let uploadResult;
+              try {
+                // Get the Firebase user from auth to access getIdToken method
+                const auth = getAuth();
+                const firebaseUser = auth.currentUser;
+                
+                if (firebaseUser) {
+                  // Verify user auth token is still valid before upload
+                  try {
+                    const authToken = await firebaseUser.getIdToken(true); // Force refresh
+                    console.log('📦 STORAGE: User authenticated, token obtained');
+                  } catch (tokenError) {
+                    console.warn('📦 STORAGE: Could not refresh token, proceeding with upload:', tokenError);
+                  }
+                } else {
+                  console.warn('📦 STORAGE: No Firebase user found, proceeding with upload');
                 }
-              });
+                
+                // Try upload with just contentType (metadata can cause 412 errors)
+                console.log('📦 STORAGE: Attempting upload...');
+                uploadResult = await uploadBytes(imageRef, file, {
+                  contentType: file.type
+                });
+              } catch (uploadError) {
+                console.error('📦 STORAGE ERROR: Upload failed with details:', {
+                  code: uploadError.code,
+                  message: uploadError.message,
+                  serverResponse: uploadError.serverResponse,
+                  name: uploadError.name,
+                  stack: uploadError.stack,
+                  fullError: uploadError,
+                  storageBucket: storageBucket,
+                  storagePath: storagePath,
+                  userUID: user.uid,
+                  authTokenExists: !!user
+                });
+                
+                // 412 Precondition Failed - usually means storage rules or metadata issue
+                if (uploadError.code === 'storage/unknown' && uploadError.message.includes('412')) {
+                  console.error('❌ 412 Precondition Failed - Possible causes:');
+                  console.error('1. Storage rules may be rejecting the request');
+                  console.error('2. Authentication token may be invalid or expired');
+                  console.error('3. Storage bucket CORS configuration may need updating');
+                  console.error('4. Try deploying storage rules: firebase deploy --only storage');
+                } else if (!uploadError.code) {
+                  console.error('❌ No error code provided - this might be a network or CORS issue');
+                  console.error('Check:');
+                  console.error('1. Is the storage bucket enabled in Firebase Console?');
+                  console.error('2. Are storage rules properly configured?');
+                  console.error('3. Is there a CORS configuration issue?');
+                  console.error('4. Is the network connection stable?');
+                }
+                
+                throw uploadError;
+              }
 
               if (!uploadResult || !uploadResult.ref) {
                 throw new Error('Storage upload failed - no reference returned');
               }
 
-              // Get the download URL
-              const downloadUrl = await getDownloadURL(imageRef);
-
               console.log('📦 STORAGE: Upload completed successfully:', {
                 path: uploadResult.ref.fullPath,
                 contentType: uploadResult.metadata.contentType,
-                size: uploadResult.metadata.size
+                size: uploadResult.metadata.size,
+                timeCreated: uploadResult.metadata.timeCreated
+              });
+
+              // Get the download URL with error handling
+              const downloadUrl = await getDownloadURL(imageRef).catch(error => {
+                console.error('📦 STORAGE ERROR: Failed to get download URL:', {
+                  code: error.code,
+                  message: error.message,
+                  storageRef: imageRef.fullPath
+                });
+                throw new Error(`Failed to get download URL: ${error.message}`);
               });
 
               const newItem = {
@@ -117,18 +203,79 @@ const ToolbarItem = ({ type, icon, chartType }) => {
               console.log('Dispatching new image item:', {
                 id: Date.now(),
                 storageRef: newItem.storageRef,
-                hasUrl: !!newItem.imageUrl
+                hasUrl: !!newItem.imageUrl,
+                urlLength: newItem.imageUrl?.length
               });
 
               // Dispatch event to add image to canvas
               const event = new CustomEvent('addImageItem', { detail: newItem });
               window.dispatchEvent(event);
             } catch (error) {
-              console.error('📦 STORAGE ERROR: Failed to upload image:', error);
-              alert('Failed to upload image: ' + error.message);
+              console.error('📦 STORAGE ERROR: Failed to upload image:', {
+                error: error.message,
+                code: error.code,
+                name: error.name,
+                stack: error.stack,
+                user: user.uid,
+                fileSize: file.size,
+                fileType: file.type
+              });
+              
+              console.error('📦 STORAGE ERROR DETAILS:', {
+                code: error.code,
+                message: error.message,
+                serverResponse: error.serverResponse
+              });
+              
+              // Provide more specific error messages
+              let errorMessage = 'Failed to upload image';
+              if (error.code === 'storage/unauthorized') {
+                errorMessage = 'You are not authorized to upload images. Please check your permissions.';
+              } else if (error.code === 'storage/quota-exceeded') {
+                errorMessage = 'Storage quota exceeded. Please try a smaller image or contact support.';
+              } else if (error.code === 'storage/unauthenticated') {
+                errorMessage = 'Please sign in again to upload images.';
+              } else if (error.code === 'storage/unknown') {
+                // Check if it's a 412 error specifically
+                if (error.message && error.message.includes('412')) {
+                  errorMessage = 'Upload failed due to authentication or permissions. Please try signing out and signing back in, or contact support if the issue persists.';
+                } else {
+                  errorMessage = 'An unknown storage error occurred. Please check your internet connection and try again.';
+                }
+              } else {
+                errorMessage = `Upload failed: ${error.message}`;
+              }
+              
+              // Log additional debug information for unknown errors
+              if (error.code === 'storage/unknown' || !error.code) {
+                console.error('🔍 Unknown storage error - full error details:', {
+                  error: error,
+                  errorString: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+                  errorMessage: error.message,
+                  errorName: error.name,
+                  errorStack: error.stack,
+                  storageBucket: storage?.app?.options?.storageBucket,
+                  storageApp: storage?.app?.name,
+                  userAuthenticated: !!user,
+                  userUID: user?.uid,
+                  userEmail: user?.email,
+                  fileSize: file?.size,
+                  fileType: file?.type,
+                  fileName: file?.name
+                });
+              }
+              
+              alert(errorMessage);
               URL.revokeObjectURL(tempUrl);
             }
           };
+          
+          img.onerror = () => {
+            console.error('Failed to load image for dimension calculation');
+            alert('Failed to process image. Please try a different image file.');
+            setIsUploading(false);
+          };
+          
           img.src = tempUrl;
         } catch (error) {
           console.error('Error preparing image:', error);
@@ -138,7 +285,27 @@ const ToolbarItem = ({ type, icon, chartType }) => {
         }
       }
     };
+    
+    // Add error handler for file input
+    input.onerror = (e) => {
+      console.error('File input error:', e);
+      setIsUploading(false);
+      alert('Error opening file picker. Please try again.');
+    };
+    
+    // Add cancel handler (when user closes file picker without selecting)
+    input.oncancel = () => {
+      console.log('File picker cancelled by user');
+      setIsUploading(false);
+    };
+    
+    console.log('Opening file picker...');
     input.click();
+    console.log('File picker opened (user should see file selection dialog)');
+    } catch (error) {
+      console.error('Error setting up file input:', error);
+      alert('Failed to open file picker: ' + error.message);
+    }
   };
 
   return (

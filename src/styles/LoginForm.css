@@ -158,7 +158,7 @@
   transform: translate(-50%, -50%);
   z-index: 1001;
   width: 100%;
-  max-width: 40vw;
+  max-width: 360px;
   max-height: 90vh;
   overflow-y: auto;
 }
@@ -166,7 +166,7 @@
 .modal-content {
   background: white;
   border-radius: 12px;
-  padding: 2rem;
+  padding: 1.5rem;
   position: relative;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }

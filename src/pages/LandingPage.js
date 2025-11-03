@@ -50,6 +50,7 @@ const LandingPage = () => {
               <li><a href="#use-cases" onClick={(e) => { e.preventDefault(); scrollToSection('use-cases'); }}>Use Cases</a></li>
               <li><a href="#technology" onClick={(e) => { e.preventDefault(); scrollToSection('technology'); }}>Technology</a></li>
               <li><a href="#integrations" onClick={(e) => { e.preventDefault(); scrollToSection('integrations'); }}>Integrations</a></li>
+              <li><a href="/pricing" onClick={(e) => { e.preventDefault(); navigate('/pricing'); }}>Pricing</a></li>
             </ul>
           </nav>
           <div className="header-actions">
@@ -69,23 +70,46 @@ const LandingPage = () => {
 
       {/* Hero Section */}
       <section className="hero-section">
-        <div className="hero-content">
-          <h1 className="hero-title">
-            Unlock Your Ideas with <img src="/logo_and_name.png" alt="Mindra" className="hero-logo-inline" />
-          </h1>
-          <p className="hero-subtitle">
-            Visually organize thoughts, brainstorm concepts, and collaborate in real-time.
-          </p>
-          <button
-            className="hero-cta-button"
-            onClick={() => navigate('/whiteboard')}
-          >
-            Start Mind Mapping Now
-          </button>
+        <div className="hero-background">
+          <div className="hero-gradient-orb hero-gradient-orb-1"></div>
+          <div className="hero-gradient-orb hero-gradient-orb-2"></div>
+          <div className="hero-gradient-orb hero-gradient-orb-3"></div>
         </div>
-        <div className="hero-visual">
-          {/* Placeholder for an image, illustration, or animation */}
-          <img src="/mindmap-screenshot.png" alt="Mind Map Application Screenshot" /> 
+        <div className="hero-container">
+          <div className="hero-content">
+            <div className="hero-badge">
+              <span>✨ AI-Powered Mind Mapping</span>
+            </div>
+            <h1 className="hero-title">
+              <span className="hero-title-line">Unlock Your</span>
+              <span className="hero-title-gradient">Ideas</span>
+            </h1>
+            <p className="hero-subtitle">
+              Visually organize thoughts, brainstorm concepts, and collaborate in real-time with cutting-edge AI technology.
+            </p>
+            <div className="hero-cta-group">
+              <button
+                className="hero-cta-button"
+                onClick={() => navigate('/whiteboard')}
+              >
+                <span>Start Mind Mapping Now</span>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
+              </button>
+              <div className="hero-features-preview">
+                <span className="feature-pill">⚡ Instant Generation</span>
+                <span className="feature-pill">🎨 Visualize Concepts</span>
+                <span className="feature-pill">🤝 Real-time Collaboration</span>
+              </div>
+            </div>
+          </div>
+          <div className="hero-visual">
+            <div className="hero-visual-wrapper">
+              <div className="hero-visual-glow"></div>
+              <img src="/mindmap-screenshot.png" alt="Mind Map Application Screenshot" className="hero-screenshot" /> 
+            </div>
+          </div>
         </div>
       </section>
 
@@ -347,16 +371,55 @@ const LandingPage = () => {
 
       {/* Call to Action Section */}
       <section className="cta-section">
-        <h2 className="cta-heading">Start Mapping Your Next Big Idea</h2>
-        <p className="cta-description">
-          Join thousands of innovators using AI-powered mind mapping to bring their ideas to life in minutes, not hours.
-        </p>
-        <button
-          className="cta-button"
-          onClick={() => navigate('/whiteboard')}
-        >
-          Create Your First Mind Map
-        </button>
+        <div className="cta-background-elements">
+          <div className="cta-glow cta-glow-1"></div>
+          <div className="cta-glow cta-glow-2"></div>
+        </div>
+        <div className="cta-content">
+          <div className="cta-badge">
+            <span>🚀 Ready to Transform Your Ideas?</span>
+          </div>
+          <h2 className="cta-heading">
+            Turn Your Thoughts Into <span className="cta-heading-highlight">Visual Masterpieces</span>
+          </h2>
+          <p className="cta-description">
+            Join thousands of creators, innovators, and teams who use AI-powered mind mapping to visualize complex ideas, accelerate brainstorming, and unlock creative potential.
+          </p>
+          <div className="cta-stats">
+            <div className="cta-stat">
+              <div className="cta-stat-number">10K+</div>
+              <div className="cta-stat-label">Active Users</div>
+            </div>
+            <div className="cta-stat">
+              <div className="cta-stat-number">50K+</div>
+              <div className="cta-stat-label">Mind Maps Created</div>
+            </div>
+            <div className="cta-stat">
+              <div className="cta-stat-number">98%</div>
+              <div className="cta-stat-label">Satisfaction Rate</div>
+            </div>
+          </div>
+          <div className="cta-buttons">
+            <button
+              className="cta-button-primary"
+              onClick={() => navigate('/whiteboard')}
+            >
+              <span>Start Creating Free</span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14M12 5l7 7-7 7"/>
+              </svg>
+            </button>
+            <button
+              className="cta-button-secondary"
+              onClick={() => navigate('/pricing')}
+            >
+              View Pricing
+            </button>
+          </div>
+          <p className="cta-note">
+            ✨ No credit card required • Free forever plan available • Cancel anytime
+          </p>
+        </div>
       </section>
     </div>
   );

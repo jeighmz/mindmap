@@ -11,6 +11,58 @@
   --pricing-error-light: #f8d7da;
 }
 
+/* Pricing Page Styles */
+.pricing-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  padding: 2rem 1rem;
+}
+
+.pricing-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  color: var(--pricing-text-primary);
+}
+
+.pricing-header {
+  text-align: center;
+  margin-bottom: 3rem;
+  position: relative;
+}
+
+.back-button {
+  position: absolute;
+  left: 0;
+  top: 0;
+  background: transparent;
+  border: 2px solid var(--pricing-border);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  color: var(--pricing-text-primary);
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.back-button:hover {
+  background: var(--pricing-background);
+  border-color: var(--pricing-primary);
+  color: var(--pricing-primary);
+}
+
+.pricing-header h1 {
+  font-size: 3rem;
+  font-weight: 700;
+  margin: 1rem 0;
+  color: var(--pricing-text-primary);
+}
+
+.pricing-subtitle {
+  font-size: 1.25rem;
+  color: var(--pricing-text-secondary);
+  margin-top: 0.5rem;
+}
+
 .pricing-section {
   padding: 2rem;
   max-width: 1400px;
@@ -263,6 +315,24 @@
 }
 
 @media (max-width: 768px) {
+  .pricing-page {
+    padding: 1rem 0.5rem;
+  }
+
+  .pricing-header h1 {
+    font-size: 2rem;
+    margin-top: 2.5rem;
+  }
+
+  .pricing-subtitle {
+    font-size: 1rem;
+  }
+
+  .back-button {
+    position: relative;
+    margin-bottom: 1rem;
+  }
+
   .pricing-section {
     padding: 1rem;
   }

@@ -5,6 +5,7 @@ import { AppProvider } from "./contexts/AppContext";
 import { AuthProvider } from './contexts/AuthContext';
 import WhiteboardPage from './pages/WhiteboardPage';
 import LandingPage from './pages/LandingPage';
+import PricingPage from './pages/PricingPage';
 import Community from './components/Community';
 import DevelopmentBanner from './components/DevelopmentBanner';
 
@@ -18,6 +19,7 @@ function App() {
             <Routes>
               <Route path="/" element={<LandingPage />} />
               <Route path="/whiteboard" element={<WhiteboardPage />} />
+              <Route path="/pricing" element={<PricingPage />} />
               <Route path="/community" element={<Community />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

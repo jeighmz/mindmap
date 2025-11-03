@@ -59,7 +59,9 @@ const WhiteboardItem = ({
   onOrganize,
   onChartEdit,
   isChartEditing,
-  panOffset = { x: 0, y: 0 }
+  panOffset = { x: 0, y: 0 },
+  onDragEnd,
+  onResizeEnd
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
@@ -138,6 +140,10 @@ const WhiteboardItem = ({
   const itemRef = useRef(null);
 
   const handleClick = (e) => {
+    // Don't trigger selection if clicking on control buttons
+    if (e.target.closest('.edit-control, .connector-control, .expand-control')) {
+      return;
+    }
     e.stopPropagation();
     if (!isEditing && !isResizing) {
       onSelect(item.id, e);
@@ -150,8 +156,14 @@ const WhiteboardItem = ({
     e.preventDefault();
     e.stopPropagation();
 
-    const deltaX = (e.clientX - resizeStart.x) / scale;
-    const deltaY = (e.clientY - resizeStart.y) / scale;
+    // Calculate the raw delta in screen coordinates
+    const dx = e.clientX - resizeStart.x;
+    const dy = e.clientY - resizeStart.y;
+    
+    // Convert screen delta to canvas coordinates considering scale and device pixel ratio
+    const dpr = window.devicePixelRatio || 1;
+    const deltaX = dx / (scale * dpr);
+    const deltaY = dy / (scale * dpr);
     
     let newWidth = resizeStart.width;
     let newHeight = resizeStart.height;
@@ -224,7 +236,10 @@ const WhiteboardItem = ({
 
   const handleResizeEnd = useCallback(() => {
     setIsResizing(false);
-  }, []);
+    if (onResizeEnd) {
+      onResizeEnd();
+    }
+  }, [onResizeEnd]);
 
   useEffect(() => {
     if (isResizing) {
@@ -238,6 +253,11 @@ const WhiteboardItem = ({
   }, [isResizing, handleResizeMove, handleResizeEnd]);
 
   const handleMouseDown = (e) => {
+    // Don't start drag if clicking on control buttons or resize handles
+    if (e.target.closest('.edit-control, .connector-control, .expand-control, .resize-handle')) {
+      return;
+    }
+    
     // Allow moving without SHIFT when in group select mode
     if ((e.shiftKey || (isGroupSelectMode && isSelected)) && e.button === 0) {
       e.preventDefault();
@@ -266,9 +286,10 @@ const WhiteboardItem = ({
         const dx = e.clientX - dragStart.x;
         const dy = e.clientY - dragStart.y;
         
-        // Convert screen delta to canvas coordinates considering scale
-        const canvasDx = dx / scale;
-        const canvasDy = dy / scale;
+        // Convert screen delta to canvas coordinates considering scale and device pixel ratio
+        const dpr = window.devicePixelRatio || 1;
+        const canvasDx = dx / (scale * dpr);
+        const canvasDy = dy / (scale * dpr);
         
         // Calculate new position with grid snapping
         const newX = Math.round((dragStart.itemX + canvasDx) / 10) * 10;
@@ -292,6 +313,9 @@ const WhiteboardItem = ({
         setDragStart(null);
         if (itemRef.current) {
           itemRef.current.style.cursor = 'default';
+        }
+        if (onDragEnd) {
+          onDragEnd();
         }
       }
     };
@@ -1031,11 +1055,14 @@ const WhiteboardItem = ({
           style={{
             ...stickyStyle,
             resize: 'none',
-            border: 'none',
-            background: item.type === 'sticky' ? '#fff740' : 'transparent',
+            // Don't override border or backgroundColor - stickyStyle already has them set correctly
             outline: 'none',
             textAlign: 'left',
-            lineHeight: '1.5'
+            lineHeight: '1.5',
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'flex-start',
+            paddingTop: '8px'
           }}
           onClick={(e) => e.stopPropagation()}
           autoFocus
@@ -1057,15 +1084,12 @@ const WhiteboardItem = ({
   const renderResizeHandles = () => {
     if (!isSelected) return null;
 
+    // Only show corner handles, exclude center handles (n, s, e, w)
     const handles = [
       { position: 'nw', cursor: 'nw-resize' },
-      { position: 'n', cursor: 'n-resize' },
       { position: 'ne', cursor: 'ne-resize' },
-      { position: 'e', cursor: 'e-resize' },
       { position: 'se', cursor: 'se-resize' },
-      { position: 's', cursor: 's-resize' },
-      { position: 'sw', cursor: 'sw-resize' },
-      { position: 'w', cursor: 'w-resize' }
+      { position: 'sw', cursor: 'sw-resize' }
     ];
 
     return handles.map(({ position, cursor }) => (
@@ -1083,42 +1107,58 @@ const WhiteboardItem = ({
   };
 
   const EditButton = ({ onStartEditing, scale }) => {
-    const handleClick = (e) => {
+    const handleMouseDown = (e) => {
+      // Stop all propagation immediately
       e.stopPropagation();
+      e.preventDefault();
+      if (e.nativeEvent) {
+        e.nativeEvent.stopImmediatePropagation();
+      }
+      // Trigger action directly on mousedown for better reliability
       onStartEditing();
     };
 
     return (
       <div
         className="edit-control"
-        onClick={handleClick}
+        onMouseDown={handleMouseDown}
+        onMouseDownCapture={handleMouseDown}
+        onClick={(e) => {
+          // Also handle click as fallback
+          e.stopPropagation();
+          e.preventDefault();
+          onStartEditing();
+        }}
         style={{
           position: 'absolute',
-          right: '-28px',
+          right: '-19px',
           top: '50%',
           transform: 'translateY(-50%)',
-          width: '24px',
-          height: '24px',
+          width: '14px',
+          height: '14px',
           background: '#2196F3',
           borderRadius: '50%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           cursor: 'pointer',
-          border: '2px solid white',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-          zIndex: 1003
+          border: '1.5px solid white',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+          zIndex: 1003,
+          padding: '2px',
+          pointerEvents: 'auto'
         }}
       >
         <svg 
-          width="14" 
-          height="14" 
+          width="8" 
+          height="8" 
           viewBox="0 0 24 24" 
           fill="none" 
           stroke="white" 
-          strokeWidth="3"
+          strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
+          style={{ pointerEvents: 'none' }}
         >
           <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
         </svg>
@@ -1127,41 +1167,59 @@ const WhiteboardItem = ({
   };
 
   const ConnectorButton = ({ onStartConnection, scale }) => {
+    const handleMouseDown = (e) => {
+      // Stop all propagation immediately
+      e.stopPropagation();
+      e.preventDefault();
+      if (e.nativeEvent) {
+        e.nativeEvent.stopImmediatePropagation();
+      }
+      // Trigger action directly on mousedown for better reliability
+      onStartConnection(item.id);
+    };
+
     return (
       <div
         className="connector-control"
+        onMouseDown={handleMouseDown}
+        onMouseDownCapture={handleMouseDown}
         onClick={(e) => {
+          // Also handle click as fallback
           e.stopPropagation();
+          e.preventDefault();
           onStartConnection(item.id);
         }}
         style={{
           position: 'absolute',
-          right: '-28px',
+          right: '-19px',
           top: '50%',
           transform: 'translateY(-50%)',
-          width: '24px',
-          height: '24px',
+          width: '14px',
+          height: '14px',
           background: '#4CAF50',
           borderRadius: '50%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           cursor: 'pointer',
-          border: '2px solid white',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+          border: '1.5px solid white',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
           zIndex: 1003,
-          marginTop: '30px'
+          marginTop: '22px',
+          padding: '2px',
+          pointerEvents: 'auto'
         }}
       >
         <svg 
-          width="14" 
-          height="14" 
+          width="8" 
+          height="8" 
           viewBox="0 0 24 24" 
           fill="none" 
           stroke="white" 
-          strokeWidth="3"
+          strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
+          style={{ pointerEvents: 'none' }}
         >
           <path d="M7 17L17 7M17 7H7M17 7V17" />
         </svg>
@@ -1170,46 +1228,66 @@ const WhiteboardItem = ({
   };
 
   const ExpandButton = ({ onExpandConcept, scale, isExpanding }) => {
+    const handleMouseDown = (e) => {
+      // Stop all propagation immediately
+      e.stopPropagation();
+      e.preventDefault();
+      if (e.nativeEvent) {
+        e.nativeEvent.stopImmediatePropagation();
+      }
+      // Trigger action directly on mousedown for better reliability
+      if (!isExpanding) {
+        onExpandConcept();
+      }
+    };
+
     return (
       <div
         className={`expand-control ${isExpanding ? 'expanding' : ''}`}
+        onMouseDown={handleMouseDown}
+        onMouseDownCapture={handleMouseDown}
         onClick={(e) => {
+          // Also handle click as fallback
           e.stopPropagation();
+          e.preventDefault();
           if (!isExpanding) {
             onExpandConcept();
           }
         }}
         style={{
           position: 'absolute',
-          right: '-28px',
+          right: '-19px',
           top: '50%',
           transform: 'translateY(-50%)',
-          width: '24px',
-          height: '24px',
+          width: '14px',
+          height: '14px',
           background: isExpanding ? '#7b1fa2' : '#9c27b0',
           borderRadius: '50%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           cursor: isExpanding ? 'wait' : 'pointer',
-          border: '2px solid white',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+          border: '1.5px solid white',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
           zIndex: 1003,
-          marginTop: '-30px'
+          marginTop: '-22px',
+          padding: '2px',
+          pointerEvents: 'auto'
         }}
       >
         {isExpanding ? (
-          <div className="spinner" style={{ width: '12px', height: '12px' }}></div>
+          <div className="spinner" style={{ width: '7px', height: '7px' }}></div>
         ) : (
           <svg 
-            width="14" 
-            height="14" 
+            width="8" 
+            height="8" 
             viewBox="0 0 24 24" 
             fill="none" 
             stroke="white" 
-            strokeWidth="3"
+            strokeWidth="2.5"
             strokeLinecap="round"
             strokeLinejoin="round"
+            style={{ pointerEvents: 'none' }}
           >
             <path d="M12 2v20M2 12h20" />
           </svg>
@@ -1242,8 +1320,18 @@ const WhiteboardItem = ({
         zIndex: item.type === 'chart' ? 1 : (isSelected ? 1000 : 100),
         userSelect: 'none',
         border: isValidTarget ? '2px dashed #4CAF50' : 'none',
+        ...(item.type === 'sticky' ? { backgroundColor: item.backgroundColor || '#fff740' } : {}),
       }}
       onClick={handleClick}
+      onDoubleClick={(e) => {
+        // Enable double-click to edit for circle, rectangle, and sticky note types
+        if (item.type === 'circle' || item.type === 'rectangle' || item.type === 'sticky') {
+          if (!isEditing && !isResizing && !isDragging) {
+            e.stopPropagation();
+            setIsEditing(true);
+          }
+        }
+      }}
       onMouseDown={handleMouseDown}
       onContextMenu={(e) => onContextMenu && onContextMenu(e)}
     >

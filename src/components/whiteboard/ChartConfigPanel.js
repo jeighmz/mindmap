@@ -67,11 +67,6 @@ const ChartConfigPanel = React.memo(({
       ...prev,
       [name]: newValue
     }));
-
-    // Log the change to verify the checkbox state
-    if (type === 'checkbox') {
-      console.log(`Checkbox ${name} changed to:`, newValue);
-    }
   }, []);
 
   const parseCustomValues = (valuesString) => {
@@ -81,7 +76,6 @@ const ChartConfigPanel = React.memo(({
         .map(val => val.trim())
         .filter(val => val !== '');
     } catch (error) {
-      console.error('Error parsing custom values:', error);
       return [];
     }
   };
