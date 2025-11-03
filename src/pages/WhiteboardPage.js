@@ -16,6 +16,7 @@ const WhiteboardPage = () => {
   const canvasRef = useRef(null);
   const [items, setItems] = useState([]);
   const [connections, setConnections] = useState([]);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const navigate = useNavigate();
   const { boardId } = useParams();
   const { user } = useAuth();
@@ -92,12 +93,14 @@ const WhiteboardPage = () => {
           onPublishToCommunity={handlePublishToCommunity}
           items={items}
           connections={connections}
+          isLibraryOpen={isLibraryOpen}
         />
         <WhiteboardCanvas 
           ref={canvasRef}
           isMindMapPanelOpen={isMindMapPanelOpen}
           onMindMapPanelClose={() => setIsMindMapPanelOpen(false)}
           onUpdate={handleCanvasUpdate}
+          onLibraryStateChange={setIsLibraryOpen}
         />
       </div>
     </DndProvider>

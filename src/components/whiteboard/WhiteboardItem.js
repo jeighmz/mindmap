@@ -260,6 +260,19 @@ const WhiteboardItem = ({
     
     // Allow moving without SHIFT when in group select mode
     if ((e.shiftKey || (isGroupSelectMode && isSelected)) && e.button === 0) {
+      // In group select mode, only allow one item to be the primary dragger
+      // If another item is already dragging, don't start a new drag
+      if (isGroupSelectMode && isSelected) {
+        if (typeof window.startGroupDrag === 'function') {
+          // Try to register as primary dragger - if another item is already primary, this will fail
+          const wasPrimary = window.startGroupDrag(item.id);
+          if (wasPrimary === false) {
+            // Another item is already the primary dragger, don't start dragging
+            return;
+          }
+        }
+      }
+      
       e.preventDefault();
       e.stopPropagation();
       
@@ -291,18 +304,18 @@ const WhiteboardItem = ({
         const canvasDx = dx / (scale * dpr);
         const canvasDy = dy / (scale * dpr);
         
-        // Calculate new position with grid snapping
-        const newX = Math.round((dragStart.itemX + canvasDx) / 10) * 10;
-        const newY = Math.round((dragStart.itemY + canvasDy) / 10) * 10;
-        
-        // Update position for individual item movement
-        updatePosition(item.id, { x: newX, y: newY });
-        
-        // If in group select mode, signal the parent component to move all selected items
+        // If in group select mode, only move items through the group drag function
+        // This prevents multiple items from updating positions simultaneously
         if (isGroupSelectMode && isSelected) {
           if (typeof window.moveSelectedItems === 'function') {
-            window.moveSelectedItems(canvasDx, canvasDy);
+            // Only the primary dragger should call this, and it moves all items
+            window.moveSelectedItems(canvasDx, canvasDy, item.id);
           }
+        } else {
+          // Single item movement - update position directly
+          const newX = Math.round((dragStart.itemX + canvasDx) / 10) * 10;
+          const newY = Math.round((dragStart.itemY + canvasDy) / 10) * 10;
+          updatePosition(item.id, { x: newX, y: newY });
         }
       }
     };
@@ -314,6 +327,12 @@ const WhiteboardItem = ({
         if (itemRef.current) {
           itemRef.current.style.cursor = 'default';
         }
+        
+        // Clear the primary dragger if this was a group drag
+        if (isGroupSelectMode && isSelected && typeof window.endGroupDrag === 'function') {
+          window.endGroupDrag();
+        }
+        
         if (onDragEnd) {
           onDragEnd();
         }

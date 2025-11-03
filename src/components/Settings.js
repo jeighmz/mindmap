@@ -75,7 +75,6 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
 
   const loadSettings = useCallback(async () => {
     if (!user?.uid) {
-      console.log('No user UID available for loading settings');
       setMessage({ type: 'error', text: 'Please sign in to access settings' });
       setIsLoading(false);
       return;
@@ -88,16 +87,11 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
       // Set display name from user object
       setDisplayName(user.displayName || '');
       
-      console.log('Attempting to load settings for user:', user.uid);
       const settingsRef = doc(db, 'userSettings', user.uid);
       const settingsSnap = await getDoc(settingsRef);
       
       if (settingsSnap.exists()) {
         const data = settingsSnap.data();
-        console.log('Retrieved settings - Has API keys:', {
-          groq: !!data.groqApiKey,
-          notion: !!data.notionApiKey
-        });
 
         // Load Groq API key
         if (data.groqApiKey) {
@@ -155,7 +149,6 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
           }
         }
       } else {
-        console.log('No existing settings found, creating new document');
         await setDoc(settingsRef, {
           groqApiKey: '',
           notionApiKey: '',

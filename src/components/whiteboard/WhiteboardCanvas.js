@@ -15,7 +15,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import UserMenu from '../UserMenu';
 import { useNavigate } from 'react-router-dom';
 import { useTierPermissions } from '../../hooks/useTierPermissions';
-import { saveBoard } from '../../services/boardService';
+import { saveBoard, getDemoBoards } from '../../services/boardService';
 import { getApiBaseUrl } from '../../utils/api';
 import { createNotionPage, writeToNotionDatabase } from './agent/tools/notion';
 import { ChromePicker } from 'react-color';
@@ -24,7 +24,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const {
     isMindMapPanelOpen: externalIsMindMapPanelOpen,
     onMindMapPanelClose,
-    onUpdate
+    onUpdate,
+    onLibraryStateChange
   } = props;
 
   const [items, setItems] = useState([]);
@@ -37,6 +38,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [connectingFrom, setConnectingFrom] = useState(null);
   const [selectedConnection, setSelectedConnection] = useState(null);
   const connectionSettingsMenuRef = useRef(null);
+  const primaryDraggingItemIdRef = useRef(null);
+  const groupDragStartPositionsRef = useRef(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [selectionBox, setSelectionBox] = useState(null);
@@ -716,11 +719,34 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   }, [connections, items, selectedConnection]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('savedWhiteboards');
-    if (saved) {
-      setSavedWhiteboards(JSON.parse(saved));
-    }
+    // Load demo boards from Firebase
+    const loadDemoBoards = async () => {
+      try {
+        const boards = await getDemoBoards();
+        setSavedWhiteboards(boards);
+      } catch (error) {
+        console.error('Error loading demo boards:', error);
+        // Fallback to localStorage if Firebase fails
+        const saved = localStorage.getItem('savedWhiteboards');
+        if (saved) {
+          try {
+            setSavedWhiteboards(JSON.parse(saved));
+          } catch (e) {
+            console.error('Error parsing localStorage boards:', e);
+          }
+        }
+      }
+    };
+    
+    loadDemoBoards();
   }, []);
+
+  // Sync Library state with parent
+  useEffect(() => {
+    if (onLibraryStateChange) {
+      onLibraryStateChange(isSavedBoardsMenuOpen);
+    }
+  }, [isSavedBoardsMenuOpen, onLibraryStateChange]);
 
   // Close connection settings menu when clicking outside
   useEffect(() => {
@@ -892,10 +918,6 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
   const handleLoadWhiteboard = async (boardId) => {
     try {
-      if (!user) {
-        throw new Error('Please sign in to load whiteboards');
-      }
-
       const boardDoc = await getDoc(doc(db, 'boards', boardId));
       
       if (!boardDoc.exists()) {
@@ -903,6 +925,14 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       }
 
       const boardData = boardDoc.data();
+      
+      // Check if this is a demo board (userId is null)
+      const isDemoBoard = boardData.userId === null;
+      
+      // For non-demo boards, require authentication
+      if (!isDemoBoard && !user) {
+        throw new Error('Please sign in to load your boards');
+      }
 
       if (!boardData.content) {
         throw new Error('Invalid board data: missing content');
@@ -1020,8 +1050,17 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       setConnections(loadedConnections);
       setScale(boardData.content.scale || 1);
       setPanOffset(boardData.content.panOffset || { x: 0, y: 0 });
-      setCurrentBoardId(boardId);
-      setCurrentBoardName(boardData.name || null);
+      
+      // If it's a demo board, clear currentBoardId so saving creates a new board
+      // isDemoBoard was already determined above
+      if (isDemoBoard) {
+        setCurrentBoardId(null);
+        // Set a name that indicates it's a copy of a demo board
+        setCurrentBoardName(boardData.name ? `${boardData.name} (Copy)` : 'Demo Board (Copy)');
+      } else {
+        setCurrentBoardId(boardId);
+        setCurrentBoardName(boardData.name || null);
+      }
       
       // Mark that we just loaded, so we don't auto-save immediately
       isInitialLoadRef.current = true;
@@ -1294,8 +1333,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const updateMultipleItemPositions = useCallback((dx, dy) => {
     if (selectedItems.size <= 1) return;
 
-    // Store current positions of all items to avoid interference
-    const currentPositions = items.reduce((positions, item) => {
+    // Use stored original positions if available (from when drag started), otherwise use current
+    const basePositions = groupDragStartPositionsRef.current || items.reduce((positions, item) => {
       if (selectedItems.has(item.id)) {
         positions[item.id] = { ...item.position };
       }
@@ -1303,8 +1342,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }, {});
 
     // Calculate grid-aligned deltas
-    const alignedDx = Math.round(dx / 20) * 20;
-    const alignedDy = Math.round(dy / 20) * 20;
+    const alignedDx = Math.round(dx / 10) * 10;
+    const alignedDy = Math.round(dy / 10) * 10;
     
     // Only update if there's actual movement
     if (alignedDx === 0 && alignedDy === 0) return;
@@ -1312,8 +1351,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     requestAnimationFrame(() => {
       setItems(prevItems => 
         prevItems.map(item => {
-          if (selectedItems.has(item.id) && currentPositions[item.id]) {
-            const basePosition = currentPositions[item.id];
+          if (selectedItems.has(item.id) && basePositions[item.id]) {
+            const basePosition = basePositions[item.id];
             return {
               ...item,
               position: {
@@ -1403,15 +1442,97 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   // Set up global function for moving selected items
   useEffect(() => {
     // Function to move all selected items
-    window.moveSelectedItems = (dx, dy) => {
-      updateMultipleItemPositions(dx, dy);
+    window.moveSelectedItems = (dx, dy, itemId) => {
+      // Only allow the primary dragger to move items
+      if (primaryDraggingItemIdRef.current === null || primaryDraggingItemIdRef.current === itemId) {
+        updateMultipleItemPositions(dx, dy);
+      }
     };
 
-    // Clean up the global function on unmount
+    // Function to register the primary dragger and store original positions
+    window.startGroupDrag = (itemId) => {
+      // If another item is already the primary dragger, don't allow this one
+      if (primaryDraggingItemIdRef.current !== null && primaryDraggingItemIdRef.current !== itemId) {
+        return false;
+      }
+      primaryDraggingItemIdRef.current = itemId;
+      // Store original positions of all selected items
+      groupDragStartPositionsRef.current = items.reduce((positions, item) => {
+        if (selectedItems.has(item.id)) {
+          positions[item.id] = { ...item.position };
+        }
+        return positions;
+      }, {});
+      return true;
+    };
+
+    // Function to clear the primary dragger
+    window.endGroupDrag = () => {
+      primaryDraggingItemIdRef.current = null;
+      groupDragStartPositionsRef.current = null;
+    };
+
+    // Clean up the global functions on unmount
     return () => {
       window.moveSelectedItems = undefined;
+      window.startGroupDrag = undefined;
+      window.endGroupDrag = undefined;
     };
-  }, [updateMultipleItemPositions]);
+  }, [updateMultipleItemPositions, selectedItems, items]);
+
+  // Function to find the path from a node back to the central node
+  const findPathToCentralNode = useCallback((startItemId) => {
+    const path = [];
+    const visited = new Set();
+    const itemMap = new Map(items.map(item => [item.id, item]));
+    
+    // Helper function to find parent connections (nodes that connect TO this node)
+    // Also check bidirectional connections (where this node is the 'from')
+    const findParentConnections = (itemId) => {
+      const parents = [];
+      connections.forEach(conn => {
+        // If this node is the target, the other node is the parent
+        if (conn.to === itemId) {
+          parents.push(conn.from);
+        }
+        // Also check if there's a reverse connection (bidirectional)
+        // We'll prefer the 'to' connection as it's more likely hierarchical
+      });
+      return parents;
+    };
+    
+    // Traverse backwards from the starting node
+    let currentItemId = startItemId;
+    
+    while (currentItemId && !visited.has(currentItemId)) {
+      visited.add(currentItemId);
+      const currentItem = itemMap.get(currentItemId);
+      
+      if (currentItem) {
+        path.unshift(currentItem); // Add to beginning of path
+        
+        // Check if this is the central node (type 'circle')
+        if (currentItem.type === 'circle') {
+          // This is the central node
+          break;
+        }
+        
+        // Find parent connections
+        const parentIds = findParentConnections(currentItemId);
+        if (parentIds.length === 0) {
+          // No parent found, stop here (might be disconnected or already at root)
+          break;
+        }
+        
+        // Move to the first parent
+        currentItemId = parentIds[0];
+      } else {
+        break;
+      }
+    }
+    
+    return path;
+  }, [items, connections]);
 
   // Add expand functionality
   useEffect(() => {
@@ -1425,6 +1546,20 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         // Get the item being expanded
         const sourceItem = items.find(item => item.id === itemId);
         if (!sourceItem) throw new Error('Source item not found');
+        
+        // Find the path from this item back to the central node
+        const pathToCentral = findPathToCentralNode(itemId);
+        
+        // Build context string from the path
+        let contextString = '';
+        if (pathToCentral.length > 1) {
+          // If we have a path, build context from central node to current item
+          const pathTexts = pathToCentral.map(item => item.text || '');
+          contextString = `This concept is part of the following hierarchy:\n${pathTexts.join(' → ')}\n\n`;
+        } else if (pathToCentral.length === 1) {
+          // Only the current item, no path found
+          contextString = `Expanding the concept: ${text}\n\n`;
+        }
 
         // Fetch the Groq API key from Firebase
         if (!user?.uid) {
@@ -1478,15 +1613,17 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
             messages: [
               {
                 role: 'system',
-                content: `You are an expert at identifying key related concepts. When given a concept, generate exactly 5 closely related ideas or aspects that help expand understanding of the original concept.
+                content: `You are an expert at identifying key related concepts. When given a concept within a hierarchical context, generate exactly 5 closely related ideas or aspects that help expand understanding of the original concept.
 
 Guidelines:
 - Generate exactly 5 related concepts, no more and no less
 - Each concept should be 2-4 words long
 - Make each concept clear and specific
-- Ensure direct relevance to the original topic
+- Ensure direct relevance to the original topic within its hierarchical context
 - Use professional, field-appropriate terminology
 - Avoid generic or redundant information
+- Consider the full context path from central node to this concept when generating related ideas
+- The expanded concepts should fit naturally within the existing hierarchy
 
 Format:
 - Return only the 5 concepts, one per line
@@ -1502,7 +1639,7 @@ Performance Metrics Analysis`
               },
               {
                 role: 'user',
-                content: `Generate 5 key related concepts for: ${text}`
+                content: `${contextString}Generate 5 key related concepts for: ${text}`
               }
             ],
             temperature: 0.7,
@@ -1574,7 +1711,7 @@ Performance Metrics Analysis`
     return () => {
       window.expandSelectedConcept = undefined;
     };
-  }, [items, user, getApiBaseUrl]);
+  }, [items, user, getApiBaseUrl, findPathToCentralNode]);
 
   const handleCloseMindMapPanel = () => {
     setIsMindMapPanelOpen(false);
@@ -1756,15 +1893,24 @@ Performance Metrics Analysis`
 
   // Function to toggle Saved Boards menu (closes others)
   const toggleSavedBoardsMenu = useCallback(() => {
-    setIsSavedBoardsMenuOpen(prev => !prev);
+    setIsSavedBoardsMenuOpen(prev => {
+      const newState = !prev;
+      if (onLibraryStateChange) {
+        onLibraryStateChange(newState);
+      }
+      return newState;
+    });
     setIsExportMenuOpen(false); 
     // Close UserMenu if its state was lifted up
-  }, []);
+  }, [onLibraryStateChange]);
 
   // Function to toggle Export menu (closes others)
   const toggleExportMenu = useCallback(() => {
     setIsExportMenuOpen(prev => !prev);
     setIsSavedBoardsMenuOpen(false);
+    if (onLibraryStateChange) {
+      onLibraryStateChange(false);
+    }
     // Close UserMenu if its state was lifted up
   }, []);
 
@@ -2865,13 +3011,13 @@ Performance Metrics Analysis`
    - Treat this as the core concept to expand upon
 
 2. Main Branches (Level 1):
-   - Generate 4-6 fundamental aspects or key categories of the central topic
+   - Generate exactly 4 fundamental aspects or key categories of the central topic
    - These should be broad enough to warrant further exploration
    - Each should represent a distinct facet of the main topic
    - Format: MAIN: [concise label, max 4 words]
 
 3. Sub-Branches (Level 2):
-   - For each main branch, generate 2-4 specific sub-topics
+   - For each main branch, generate exactly 2 specific sub-topics
    - These should directly elaborate on their parent branch
    - Must be more specific and detailed than the parent
    - Should show clear relationship to both central topic and parent branch
@@ -2886,7 +3032,15 @@ MAIN: [Main Branch 2]
 SUB: [Sub Branch 2.1 - specific detail]
 SUB: [Sub Branch 2.2 - specific detail]
 
-And so on. Each line must start with either MAIN: or SUB: to indicate the branch type.`
+MAIN: [Main Branch 3]
+SUB: [Sub Branch 3.1 - specific detail]
+SUB: [Sub Branch 3.2 - specific detail]
+
+MAIN: [Main Branch 4]
+SUB: [Sub Branch 4.1 - specific detail]
+SUB: [Sub Branch 4.2 - specific detail]
+
+You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each MAIN branch. Each line must start with either MAIN: or SUB: to indicate the branch type.`
             },
             {
               role: 'user',
@@ -2905,48 +3059,102 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
 
       const data = await response.json();
       
-      const branches = data.choices[0].message.content
+      // Improved parsing with better error handling
+      const rawContent = data.choices[0].message.content;
+      const branches = rawContent
         .split('\n')
         .filter(line => line.trim())
         .map(line => {
-          const [type, text] = line.split(': ');
-          return { type, text: text.trim() };
-        });
+          const trimmed = line.trim();
+          // Handle both "MAIN:" and "SUB:" patterns, also handle cases with extra spaces
+          if (trimmed.startsWith('MAIN:')) {
+            const text = trimmed.substring(5).trim().replace(/^\[|\]$/g, '').trim();
+            return { type: 'MAIN', text: text || 'Main Branch' };
+          } else if (trimmed.startsWith('SUB:')) {
+            const text = trimmed.substring(4).trim().replace(/^\[|\]$/g, '').trim();
+            return { type: 'SUB', text: text || 'Sub Branch' };
+          }
+          return null;
+        })
+        .filter(b => b !== null && b.text);
 
-      // Calculate positions for branches using full canvas space (4000x4000)
+      // Validate we got the expected structure
       const mainBranches = branches.filter(b => b.type === 'MAIN');
+      const subBranches = branches.filter(b => b.type === 'SUB');
       
-      // Use full canvas dimensions for better mind map distribution
-      const canvasWidth = 4000; // Full canvas width
-      const canvasHeight = 4000; // Full canvas height
+      if (mainBranches.length === 0) {
+        throw new Error('No main branches found in response. Please try again.');
+      }
       
-        // User-friendly viewport-relative layout
-        const canvasEl3 = document.querySelector('.whiteboard-canvas');
-        const canvasBounds3 = canvasEl3.getBoundingClientRect();
-        const viewportWidth = canvasBounds3.width;
-        const viewportHeight = canvasBounds3.height;
-        
-        const baseRadius = Math.min(viewportWidth, viewportHeight) * 0.12; // 12% of viewport for better user experience
-        const radius = Math.max(baseRadius, 200) * branchDistance; // Apply scalar multiplier with viewport-relative minimum
-      const angleStep = (2 * Math.PI) / mainBranches.length;
+      if (mainBranches.length !== 4) {
+        console.warn(`Expected 4 main branches, got ${mainBranches.length}`);
+      }
+      
+      if (subBranches.length !== mainBranches.length * 2) {
+        console.warn(`Expected ${mainBranches.length * 2} sub branches, got ${subBranches.length}`);
+      }
+      
+      // Group sub-branches with their parent main branches
+      // The format should be: MAIN, SUB, SUB, MAIN, SUB, SUB, etc.
+      const groupedBranches = [];
+      let currentMainIndex = -1;
+      
+      for (const branch of branches) {
+        if (branch.type === 'MAIN') {
+          currentMainIndex++;
+          groupedBranches.push({
+            main: branch,
+            subs: []
+          });
+        } else if (branch.type === 'SUB' && currentMainIndex >= 0) {
+          if (groupedBranches[currentMainIndex].subs.length < 2) {
+            groupedBranches[currentMainIndex].subs.push(branch);
+          }
+        }
+      }
+      
+      // Use only the groups that have both main and at least one sub
+      const validGroups = groupedBranches.filter(g => g.main && g.subs.length > 0);
+      
+      if (validGroups.length === 0) {
+        throw new Error('Failed to parse mind map structure. Please try again.');
+      }
+      
+      // User-friendly viewport-relative layout
+      const canvasEl3 = document.querySelector('.whiteboard-canvas');
+      if (!canvasEl3) {
+        throw new Error('Canvas element not found');
+      }
+      const canvasBounds3 = canvasEl3.getBoundingClientRect();
+      const viewportWidth = canvasBounds3.width;
+      const viewportHeight = canvasBounds3.height;
+      
+      const baseRadius = Math.min(viewportWidth, viewportHeight) * 0.15; // 15% of viewport for better visibility
+      const radius = Math.max(baseRadius, 250) * branchDistance; // Ensure minimum radius for visibility
+      const angleStep = (2 * Math.PI) / validGroups.length;
 
       // Add branches and connections
       const newItems = [];
       const newConnections = [];
 
-      mainBranches.forEach((branch, index) => {
+      // Use the central node's center position (not top-left)
+      const centralNodeCenterX = centralNode.position.x + (centralNode.width || 150) / 2;
+      const centralNodeCenterY = centralNode.position.y + (centralNode.height || 150) / 2;
+
+      validGroups.forEach((group, index) => {
+        const branch = group.main;
         const angle = index * angleStep - Math.PI / 2; // Start from top (-π/2)
         const dimensions = calculateTextDimensions(branch.text, 'rectangle');
         
         // Calculate optimal position with smart spacing
         let currentRadius = radius;
         let position = {
-          x: centralNode.position.x + currentRadius * Math.cos(angle) - dimensions.width / 2,
-          y: centralNode.position.y + currentRadius * Math.sin(angle) - dimensions.height / 2
+          x: centralNodeCenterX + currentRadius * Math.cos(angle) - dimensions.width / 2,
+          y: centralNodeCenterY + currentRadius * Math.sin(angle) - dimensions.height / 2
         };
         
         // Enhanced collision detection with better spacing and symmetry
-        const minSpacing = 50; // Increased minimum spacing for better separation
+        const minSpacing = 60; // Increased minimum spacing for better separation
         let attempts = 0;
         const maxAttempts = 10;
         
@@ -2964,18 +3172,18 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
           if (!hasCollision) break;
           
           // Increase radius with better progression to maintain symmetry
-          const radiusIncrement = 40 + (attempts * 15); // More aggressive radius increase
+          const radiusIncrement = 50 + (attempts * 20); // More aggressive radius increase
           currentRadius += radiusIncrement;
           position = {
-            x: centralNode.position.x + currentRadius * Math.cos(angle) - dimensions.width / 2,
-            y: centralNode.position.y + currentRadius * Math.sin(angle) - dimensions.height / 2
+            x: centralNodeCenterX + currentRadius * Math.cos(angle) - dimensions.width / 2,
+            y: centralNodeCenterY + currentRadius * Math.sin(angle) - dimensions.height / 2
           };
           attempts++;
         }
         
         // Improved positioning with better spacing
         const mainBranchNode = {
-          id: Date.now() + index,
+          id: Date.now() + index * 1000,
           type: 'rectangle',
           text: branch.text,
           position: position,
@@ -2997,27 +3205,30 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
           arrowHeadStyle: defaults.arrowHeadStyle
         });
 
-        // Redesigned sub-branch positioning for compact layout
-        const subBranches = branches
-          .filter(b => b.type === 'SUB')
-          .slice(index * 2, index * 2 + 2); // Get 2 sub-branches for each main branch
+        // Use the grouped sub-branches
+        const subBranches = group.subs;
 
+        // Calculate main branch center
+        const mainBranchCenterX = mainBranchNode.position.x + mainBranchNode.width / 2;
+        const mainBranchCenterY = mainBranchNode.position.y + mainBranchNode.height / 2;
+        
         subBranches.forEach((subBranch, subIndex) => {
           const subDimensions = calculateTextDimensions(subBranch.text, 'rectangle');
           
-          // Calculate sub-branch position with smart spacing
-          const subRadius = currentRadius * 0.6; // 60% of main branch radius
-          const subAngleOffset = (subIndex - 0.5) * 0.3; // Balanced spread
+          // Calculate sub-branch position relative to main branch center
+          // Position them along the line from central node to main branch
+          const subRadius = Math.max(120, currentRadius * 0.5); // Minimum 120px spacing
+          const subAngleOffset = (subIndex - 0.5) * 0.4; // Spread sub-branches
           const subAngle = angle + subAngleOffset;
           
-          // Calculate initial sub-branch position
+          // Calculate initial sub-branch position relative to main branch center
           let subPosition = {
-            x: mainBranchNode.position.x + subRadius * Math.cos(subAngle) - subDimensions.width / 2,
-            y: mainBranchNode.position.y + subRadius * Math.sin(subAngle) - subDimensions.height / 2
+            x: mainBranchCenterX + subRadius * Math.cos(subAngle) - subDimensions.width / 2,
+            y: mainBranchCenterY + subRadius * Math.sin(subAngle) - subDimensions.height / 2
           };
           
           // Enhanced collision detection for sub-branches
-          const subMinSpacing = 35; // Increased minimum spacing for sub-branches
+          const subMinSpacing = 40; // Increased minimum spacing for sub-branches
           let subAttempts = 0;
           const subMaxAttempts = 8;
           let subCurrentRadius = subRadius;
@@ -3036,17 +3247,17 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
             if (!hasCollision) break;
             
             // Increase sub-radius with better progression
-            const subRadiusIncrement = 25 + (subAttempts * 8); // More aggressive radius increase
+            const subRadiusIncrement = 30 + (subAttempts * 10); // More aggressive radius increase
             subCurrentRadius += subRadiusIncrement;
             subPosition = {
-              x: mainBranchNode.position.x + subCurrentRadius * Math.cos(subAngle) - subDimensions.width / 2,
-              y: mainBranchNode.position.y + subCurrentRadius * Math.sin(subAngle) - subDimensions.height / 2
+              x: mainBranchCenterX + subCurrentRadius * Math.cos(subAngle) - subDimensions.width / 2,
+              y: mainBranchCenterY + subCurrentRadius * Math.sin(subAngle) - subDimensions.height / 2
             };
             subAttempts++;
           }
           
           const subBranchNode = {
-            id: Date.now() + index + 1 + (subIndex + 1) * 1000,
+            id: Date.now() + index * 10000 + (subIndex + 1) * 1000,
             type: 'rectangle',
             text: subBranch.text,
             position: subPosition,
@@ -3070,8 +3281,41 @@ And so on. Each line must start with either MAIN: or SUB: to indicate the branch
         });
       });
 
-      setItems(prevItems => [...prevItems, ...newItems]);
+      // Validate that we created nodes
+      if (newItems.length === 0) {
+        throw new Error('No nodes were created. Please try again.');
+      }
+
+      // Ensure all nodes have valid positions
+      const validItems = newItems.filter(item => 
+        item.position && 
+        typeof item.position.x === 'number' && 
+        typeof item.position.y === 'number' &&
+        !isNaN(item.position.x) && 
+        !isNaN(item.position.y)
+      );
+
+      if (validItems.length !== newItems.length) {
+        console.warn(`Some nodes had invalid positions. Created ${validItems.length} out of ${newItems.length} nodes.`);
+      }
+
+      // Add nodes and connections to canvas
+      setItems(prevItems => [...prevItems, ...validItems]);
       setConnections(prevConnections => [...prevConnections, ...newConnections]);
+      
+      // Center view on the mind map after a short delay to ensure rendering
+      setTimeout(() => {
+        if (centralNode && centralNode.position) {
+          // Pan to center the view on the central node
+          const canvasEl = document.querySelector('.whiteboard-canvas');
+          if (canvasEl) {
+            const canvasBounds = canvasEl.getBoundingClientRect();
+            const targetX = -centralNode.position.x * scale + canvasBounds.width / 2;
+            const targetY = -centralNode.position.y * scale + canvasBounds.height / 2;
+            setPanOffset({ x: targetX, y: targetY });
+          }
+        }
+      }, 100);
       
       setIsMindMapPanelOpen(false);
     } catch (error) {

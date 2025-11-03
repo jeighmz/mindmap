@@ -93,18 +93,37 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
   };
 
   useEffect(() => {
-    // Add initial message when items are selected
+    // Add or update initial message when items are selected
     if (highlightedItems.length > 0) {
       const activeTab = tabs.find(tab => tab.id === activeTabId);
-      if (activeTab && activeTab.messages.length === 0) {
-        updateTabMessages(activeTabId, [
-          {
-            role: 'assistant',
-            content: `I see you've selected ${highlightedItems.length} item${highlightedItems.length === 1 ? '' : 's'}. How would you like me to analyze them?`
+      if (activeTab) {
+        // If no messages, create the initial message
+        if (activeTab.messages.length === 0) {
+          updateTabMessages(activeTabId, [
+            {
+              role: 'assistant',
+              content: `I see you've selected ${highlightedItems.length} item${highlightedItems.length === 1 ? '' : 's'}. How would you like me to analyze them?`
+            }
+          ]);
+        } else {
+          // If the first message is the analyze message, update it to reflect current item count
+          const firstMessage = activeTab.messages[0];
+          if (firstMessage && 
+              firstMessage.role === 'assistant' && 
+              firstMessage.content && 
+              firstMessage.content.toLowerCase().includes('analyze')) {
+            const newContent = `I see you've selected ${highlightedItems.length} item${highlightedItems.length === 1 ? '' : 's'}. How would you like me to analyze them?`;
+            if (firstMessage.content !== newContent) {
+              updateTabMessages(activeTabId, [
+                { ...firstMessage, content: newContent },
+                ...activeTab.messages.slice(1)
+              ]);
+            }
           }
-        ]);
+        }
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [highlightedItems, activeTabId]);
 
   const updateTabMessages = (tabId, newMessages) => {
@@ -399,28 +418,64 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
       </div>
 
       <div className={isFullscreen ? "modal-chat-messages" : "chat-messages"}>
-        {activeTab.messages.map((message, index) => (
-          <div 
-            key={index} 
-            className={`message ${message.role} ${message.image && !message.content ? 'image-only' : ''}`}
-          >
-            <div className="message-content">
-              {message.content && (
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {message.content}
-                </ReactMarkdown>
-              )}
-              {message.image && (
-                <div className="message-screenshot">
-                  <img 
-                    src={message.image} 
-                    alt="Mindmap screenshot" 
-                  />
-                </div>
-              )}
+        {activeTab.messages.map((message, index) => {
+          // Check if this is the first assistant message and if it's the "analyze them" message
+          const isFirstAnalyzeMessage = index === 0 && 
+                                       message.role === 'assistant' && 
+                                       message.content && 
+                                       message.content.toLowerCase().includes('analyze');
+          
+          return (
+            <div 
+              key={index} 
+              className={`message ${message.role} ${message.image && !message.content ? 'image-only' : ''}`}
+            >
+              <div className="message-content">
+                {message.content && (
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {message.content}
+                  </ReactMarkdown>
+                )}
+                {message.image && (
+                  <div className="message-screenshot">
+                    <img 
+                      src={message.image} 
+                      alt="Mindmap screenshot" 
+                    />
+                  </div>
+                )}
+                {/* Display highlighted items as tags below the first analyze message */}
+                {isFirstAnalyzeMessage && highlightedItems.length > 0 && (
+                  <div className="highlighted-items-tags" style={{
+                    marginTop: '12px',
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '6px'
+                  }}>
+                    {highlightedItems.map((item, itemIndex) => (
+                      <span
+                        key={itemIndex}
+                        className="item-tag"
+                        style={{
+                          display: 'inline-block',
+                          padding: '4px 10px',
+                          backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                          border: '1px solid rgba(33, 150, 243, 0.3)',
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                          color: '#1976d2',
+                          fontWeight: '500'
+                        }}
+                      >
+                        {item.text || 'Untitled'}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {isLoading && (
           <div className="message assistant">
             <div className="typing-indicator">

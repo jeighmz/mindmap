@@ -13,7 +13,7 @@ import {
   writeActionItemsToNotion
 } from './tools/notion';
 
-const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
+const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItems = [] }) => {
   const { user } = useAuth();
   const [messages, setMessages] = useState([
     {
@@ -107,6 +107,15 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
       console.log('Notion database ID loaded');
     }
   }, []);
+
+  // Listen for updates to highlightedItems and update context
+  useEffect(() => {
+    if (highlightedItems && highlightedItems.length > 0) {
+      // Optionally add a system message about the highlighted items
+      // This helps the AI understand what context is available
+      console.log('Highlighted items updated:', highlightedItems.length);
+    }
+  }, [highlightedItems]);
 
   const analyzeMindMap = () => {
     // Extract structure and relationships from mind map
@@ -1380,6 +1389,13 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
           // Get selected tool context
           const toolContext = getToolContext();
           
+          // Build highlighted items context
+          let highlightedContext = '';
+          if (highlightedItems && highlightedItems.length > 0) {
+            const highlightedTexts = highlightedItems.map(item => item.text || 'Untitled').join('\n');
+            highlightedContext = `\n\nCurrently selected items:\n${highlightedTexts}\n\nPlease focus your analysis on these specific items when relevant.`;
+          }
+          
           // Create system prompt with tool context
           const systemPrompt = `You are an AI agent that helps users analyze mind maps and take actions.
           ${toolContext}
@@ -1392,7 +1408,7 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
 
           Current mind map structure:
           Central Topic: ${mindMapAnalysis.centralTopic}
-          Number of main branches: ${mindMapAnalysis.branches.length}`;
+          Number of main branches: ${mindMapAnalysis.branches.length}${highlightedContext}`;
 
           // Call the Groq API
           const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -1523,6 +1539,25 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections }) => {
             ))}
           </div>
         </div>
+
+        {/* Display highlighted items as context */}
+        {highlightedItems && highlightedItems.length > 0 && (
+          <div className="highlighted-items-context" style={{
+            padding: '8px 12px',
+            backgroundColor: 'rgba(33, 150, 243, 0.1)',
+            borderBottom: '1px solid rgba(33, 150, 243, 0.2)',
+            fontSize: '11px',
+            color: '#666',
+            fontStyle: 'italic'
+          }}>
+            <strong>Context:</strong> {highlightedItems.length} item{highlightedItems.length !== 1 ? 's' : ''} selected
+            {highlightedItems.length <= 5 && (
+              <span style={{ marginLeft: '8px' }}>
+                ({highlightedItems.map(item => item.text || 'Untitled').join(', ')})
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="agent-chat-messages">
           {messages.map((message, index) => (

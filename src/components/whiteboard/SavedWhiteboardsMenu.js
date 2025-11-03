@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserBoards, saveBoard, deleteBoard } from '../../services/boardService';
+import '../../styles/SavedWhiteboardsMenu.css';
 
 const SavedWhiteboardsMenu = ({ 
   savedWhiteboards, // This will now be used only for demo boards
@@ -12,10 +13,20 @@ const SavedWhiteboardsMenu = ({
 }) => {
   const { user } = useAuth();
   const [newBoardName, setNewBoardName] = useState('');
-  const [activeTab, setActiveTab] = useState('demo');
+  const [activeTab, setActiveTab] = useState(user ? 'personal' : 'demo');
   const [userBoards, setUserBoards] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Update activeTab when user logs in/out
+  useEffect(() => {
+    if (user && activeTab === 'demo') {
+      setActiveTab('personal');
+    } else if (!user && activeTab === 'personal') {
+      setActiveTab('demo');
+    }
+  }, [user]);
 
   // Fetch boards when the menu is opened and tab is personal
   useEffect(() => {
@@ -46,6 +57,7 @@ const SavedWhiteboardsMenu = ({
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     setError(null);
+    setSearchQuery(''); // Clear search when switching tabs
     // Fetching is now handled by useEffect
   };
 
@@ -247,7 +259,20 @@ const SavedWhiteboardsMenu = ({
     }
   };
 
-  const displayedBoards = activeTab === 'demo' ? savedWhiteboards : userBoards;
+  // Filter boards based on search query
+  const getFilteredBoards = (boards) => {
+    if (!searchQuery.trim() || activeTab === 'demo') {
+      return boards;
+    }
+    const query = searchQuery.toLowerCase().trim();
+    return boards.filter(board => 
+      board.name.toLowerCase().includes(query)
+    );
+  };
+
+  const displayedBoards = activeTab === 'demo' 
+    ? savedWhiteboards 
+    : getFilteredBoards(userBoards);
 
   const styles = {
     menuContainer: {
@@ -361,45 +386,52 @@ const SavedWhiteboardsMenu = ({
           )}
 
           {activeTab === 'personal' && user && (
-            <form 
-              className="save-new-board" 
-              onSubmit={(e) => handleSave(e, newBoardName)}
-            >
+            <div className="search-boards">
+              <svg 
+                width="16" 
+                height="16" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="search-icon"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.35-4.35" />
+              </svg>
               <input
                 type="text"
-                value={newBoardName}
-                onChange={(e) => setNewBoardName(e.target.value)}
-                placeholder="Enter board name"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search boards..."
                 disabled={isLoading}
+                className="search-input"
               />
-              <button 
-                type="submit"
-                disabled={isLoading || !newBoardName.trim()}
-              >
-                {isLoading ? (
-                  <span className="loading-spinner" />
-                ) : (
-                  <>
-                    <svg 
-                      width="14" 
-                      height="14" 
-                      viewBox="0 0 24 24" 
-                      fill="none" 
-                      stroke="currentColor" 
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      style={{ marginRight: '4px' }}
-                    >
-                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                      <line x1="12" y1="9" x2="12" y2="15" />
-                      <line x1="9" y1="12" x2="15" y2="12" />
-                    </svg>
-                    Save Current
-                  </>
-                )}
-              </button>
-            </form>
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="clear-search"
+                  title="Clear search"
+                >
+                  <svg 
+                    width="14" 
+                    height="14" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              )}
+            </div>
           )}
 
           <div className="saved-boards-list">
@@ -414,45 +446,22 @@ const SavedWhiteboardsMenu = ({
                       className={`saved-board-item ${board.id === currentBoardId ? 'selected' : ''}`}
                     >
                       <span>
-                        <svg 
-                          width="14" 
-                          height="14" 
-                          viewBox="0 0 24 24" 
-                          fill="none" 
-                          stroke="currentColor" 
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                          <polyline points="14 2 14 8 20 8" />
-                          <line x1="16" y1="13" x2="8" y2="13" />
-                          <line x1="16" y1="17" x2="8" y2="17" />
-                          <line x1="10" y1="9" x2="8" y2="9" />
-                        </svg>
                         {board.name}
                       </span>
                       <span className="saved-date">
-                        <svg 
-                          width="12" 
-                          height="12" 
-                          viewBox="0 0 24 24" 
-                          fill="none" 
-                          stroke="currentColor" 
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <circle cx="12" cy="12" r="10" />
-                          <polyline points="12 6 12 12 16 14" />
-                        </svg>
-                        {new Date(board.savedAt).toLocaleDateString()}
+                        {new Date(board.savedAt).toLocaleString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit'
+                        })}
                       </span>
                       <div className="board-actions">
                         <button 
                           type="button"
                           onClick={() => {
-                            onLoad(board.id, board.content);
+                            onLoad(board.id);
                             onToggle();
                           }}
                           disabled={isLoading}
@@ -474,53 +483,29 @@ const SavedWhiteboardsMenu = ({
                           </svg>
                         </button>
                         {(activeTab === 'personal' && user?.uid === board.userId) && (
-                          <>
-                            <button 
-                              type="button"
-                              className="save-btn"
-                              onClick={(e) => handleSave(e, board.name, board.id)}
-                              disabled={isLoading}
-                              title="Update this board"
+                          <button 
+                            type="button"
+                            className="delete-btn"
+                            onClick={() => handleDelete(board.id)}
+                            disabled={isLoading}
+                            title="Delete board"
+                          >
+                            <svg 
+                              width="14" 
+                              height="14" 
+                              viewBox="0 0 24 24" 
+                              fill="none" 
+                              stroke="currentColor" 
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
                             >
-                              <svg 
-                                width="14" 
-                                height="14" 
-                                viewBox="0 0 24 24" 
-                                fill="none" 
-                                stroke="currentColor" 
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                                <polyline points="17 21 17 13 7 13 7 21" />
-                                <polyline points="7 3 7 8 15 8" />
-                              </svg>
-                            </button>
-                            <button 
-                              type="button"
-                              className="delete-btn"
-                              onClick={() => handleDelete(board.id)}
-                              disabled={isLoading}
-                              title="Delete board"
-                            >
-                              <svg 
-                                width="14" 
-                                height="14" 
-                                viewBox="0 0 24 24" 
-                                fill="none" 
-                                stroke="currentColor" 
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <polyline points="3 6 5 6 21 6" />
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                <line x1="10" y1="11" x2="10" y2="17" />
-                                <line x1="14" y1="11" x2="14" y2="17" />
-                              </svg>
-                            </button>
-                          </>
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              <line x1="10" y1="11" x2="10" y2="17" />
+                              <line x1="14" y1="11" x2="14" y2="17" />
+                            </svg>
+                          </button>
                         )}
                       </div>
                     </div>
