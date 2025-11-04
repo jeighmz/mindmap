@@ -10,6 +10,9 @@ import { ReactComponent as LearningIcon } from '../assets/icons/learning.svg';
 import { ReactComponent as StrategicPlanningIcon } from '../assets/icons/strategic-planning.svg';
 import { ReactComponent as ContentCreationIcon } from '../assets/icons/content-creation.svg';
 import { ReactComponent as TeamCollaborationIcon } from '../assets/icons/team-collaboration.svg';
+import { ReactComponent as InstantGenerationIcon } from '../assets/icons/instant-generation.svg';
+import { ReactComponent as VisualizeConceptsIcon } from '../assets/icons/visualize-concepts.svg';
+import { ReactComponent as RealtimeCollaborationIcon } from '../assets/icons/realtime-collaboration.svg';
 
 // Consider importing SVG icons or using a library like react-icons
 // import { FiZap, FiUsers, FiSmartphone, FiCpu } from 'react-icons/fi';
@@ -98,9 +101,18 @@ const LandingPage = () => {
                 </svg>
               </button>
               <div className="hero-features-preview">
-                <span className="feature-pill">⚡ Instant Generation</span>
-                <span className="feature-pill">🎨 Visualize Concepts</span>
-                <span className="feature-pill">🤝 Real-time Collaboration</span>
+                <span className="feature-pill">
+                  <InstantGenerationIcon className="feature-pill-icon" />
+                  Instant Generation
+                </span>
+                <span className="feature-pill">
+                  <VisualizeConceptsIcon className="feature-pill-icon" />
+                  Visualize Concepts
+                </span>
+                <span className="feature-pill">
+                  <RealtimeCollaborationIcon className="feature-pill-icon" />
+                  Real-time Collaboration
+                </span>
               </div>
             </div>
           </div>
