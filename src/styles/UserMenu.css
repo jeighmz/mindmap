@@ -136,4 +136,38 @@
 
 .sign-in-button {
   font-weight: 500;
+}
+
+/* Mobile styles - hide username, show only profile picture */
+@media (max-width: 768px) {
+  .user-menu-button {
+    padding: 6px;
+    min-width: auto;
+    width: auto;
+    gap: 0;
+  }
+
+  .user-name {
+    display: none;
+  }
+
+  .dropdown-arrow {
+    display: none;
+  }
+
+  .user-avatar {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+@media (max-width: 480px) {
+  .user-menu-button {
+    padding: 4px;
+  }
+
+  .user-avatar {
+    width: 28px;
+    height: 28px;
+  }
 } 

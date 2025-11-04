@@ -32,6 +32,8 @@
   z-index: 1000;
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE and Edge */
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 .saved-whiteboards-menu::-webkit-scrollbar {
@@ -296,4 +298,149 @@ input.search-input:disabled {
   background-color: #f8f9fa;
   border-radius: 4px;
   margin-bottom: 12px;
+}
+
+/* Desktop - hide overlay and close button */
+.saved-whiteboards-menu-overlay {
+  display: none;
+}
+
+.saved-whiteboards-menu-close {
+  display: none;
+}
+
+/* Mobile - Full screen overlay */
+@media (max-width: 768px) {
+  .saved-whiteboards-container {
+    z-index: 2000;
+  }
+
+  .saved-whiteboards-menu-overlay {
+    display: block !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    background: rgba(0, 0, 0, 0.5) !important;
+    z-index: 2000 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    overflow: hidden !important;
+  }
+
+  .saved-whiteboards-menu {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    min-height: 100vh !important;
+    border-radius: 0 !important;
+    padding: 20px !important;
+    z-index: 2001 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    box-shadow: none !important;
+    background: white !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+  }
+
+  .saved-whiteboards-menu-close {
+    display: flex;
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: #f8f9fa;
+    border-radius: 50%;
+    cursor: pointer;
+    color: #666;
+    z-index: 2002;
+    transition: background-color 0.2s;
+    padding: 0;
+  }
+
+  .saved-whiteboards-menu-close:hover {
+    background: #e9ecef;
+  }
+
+  .saved-whiteboards-menu-close svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .board-tabs {
+    margin-top: 20px;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    flex-shrink: 0;
+  }
+
+  .search-boards {
+    margin-bottom: 16px;
+    flex-shrink: 0;
+  }
+
+  .saved-boards-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-bottom: 20px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .saved-whiteboards-menu > * {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+@media (max-width: 480px) {
+  .saved-whiteboards-menu {
+    padding: 16px !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    overflow: hidden !important;
+  }
+
+  .saved-whiteboards-menu-overlay {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+  }
+
+  .saved-whiteboards-menu-close {
+    top: 16px !important;
+    right: 16px !important;
+    width: 36px !important;
+    height: 36px !important;
+  }
+
+  .saved-whiteboards-menu-close svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  .board-tabs {
+    margin-top: 16px;
+    margin-bottom: 16px;
+  }
 } 
