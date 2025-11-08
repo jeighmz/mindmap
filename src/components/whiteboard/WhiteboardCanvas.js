@@ -24,6 +24,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const {
     isMindMapPanelOpen: externalIsMindMapPanelOpen,
     onMindMapPanelClose,
+    onMindMapPanelOpen,
     onUpdate,
     onLibraryStateChange
   } = props;
@@ -47,6 +48,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [selectionStart, setSelectionStart] = useState(null);
   const [highlightedItems, setHighlightedItems] = useState([]);
   const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(false);
+  const [isSearchPanelFullscreen, setIsSearchPanelFullscreen] = useState(false);
   const [isMindMapPanelOpen, setIsMindMapPanelOpen] = useState(false);
   const [mindMapPrompt, setMindMapPrompt] = useState('');
   const [isGeneratingMindMap, setIsGeneratingMindMap] = useState(false);
@@ -67,7 +69,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [editingChartId, setEditingChartId] = useState(null);
   const [isSavedBoardsMenuOpen, setIsSavedBoardsMenuOpen] = useState(false);
-  const [isInstructionsCollapsed, setIsInstructionsCollapsed] = useState(false);
+  const [isInstructionsCollapsed, setIsInstructionsCollapsed] = useState(true);
   const navigate = useNavigate();
   const { userTier } = useAuth();
   const { canExport, getCurrentTier } = useTierPermissions();
@@ -138,41 +140,32 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     };
   }, []);
   
-  // Zoom overlay fade-out effect on mouse inactivity
-  useEffect(() => {
-    const handleMouseActivity = () => {
-      setZoomOverlayVisible(true);
-      
-      // Clear existing timeout
-      if (zoomOverlayTimeoutRef.current) {
-        clearTimeout(zoomOverlayTimeoutRef.current);
-      }
-      
-      // Set new timeout to fade out after 2 seconds of inactivity
-      zoomOverlayTimeoutRef.current = setTimeout(() => {
-        setZoomOverlayVisible(false);
-      }, 2000);
-    };
+  // Helper function to show zoom overlay and set fade-out timeout
+  const showZoomOverlay = useCallback(() => {
+    setZoomOverlayVisible(true);
     
-    // Initial timeout
+    // Clear existing timeout
+    if (zoomOverlayTimeoutRef.current) {
+      clearTimeout(zoomOverlayTimeoutRef.current);
+    }
+    
+    // Set new timeout to fade out after 2 seconds of inactivity
+    zoomOverlayTimeoutRef.current = setTimeout(() => {
+      setZoomOverlayVisible(false);
+    }, 2000);
+  }, []);
+
+  // Initial timeout to fade out overlay after 2 seconds
+  useEffect(() => {
     zoomOverlayTimeoutRef.current = setTimeout(() => {
       setZoomOverlayVisible(false);
     }, 2000);
     
-    // Listen for mouse movement and mouse enter on canvas
-    const canvas = document.querySelector('.whiteboard-canvas');
-    if (canvas) {
-      canvas.addEventListener('mousemove', handleMouseActivity);
-      canvas.addEventListener('mouseenter', handleMouseActivity);
-      
-      return () => {
-        canvas.removeEventListener('mousemove', handleMouseActivity);
-        canvas.removeEventListener('mouseenter', handleMouseActivity);
-        if (zoomOverlayTimeoutRef.current) {
-          clearTimeout(zoomOverlayTimeoutRef.current);
-        }
-      };
-    }
+    return () => {
+      if (zoomOverlayTimeoutRef.current) {
+        clearTimeout(zoomOverlayTimeoutRef.current);
+      }
+    };
   }, []);
   
   // Sync with external state if provided
@@ -191,21 +184,43 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       }
     },
     handleOpenMindMapPanel: () => {
-      setIsMindMapPanelOpen(true);
+      // Toggle the mind map panel
+      // Use external state if provided, otherwise use internal state
+      const currentState = externalIsMindMapPanelOpen !== undefined ? externalIsMindMapPanelOpen : isMindMapPanelOpen;
+      if (currentState) {
+        setIsMindMapPanelOpen(false);
+        if (onMindMapPanelClose) {
+          onMindMapPanelClose();
+        }
+      } else {
+        setIsMindMapPanelOpen(true);
+        if (onMindMapPanelOpen) {
+          onMindMapPanelOpen();
+        }
+      }
     },
     handleOpenSearchPanel: () => {
-      // Only use highlighted items if there are currently selected items
-      // Otherwise, clear highlighted items to start fresh
-      if (selectedItems.size === 0) {
-        setHighlightedItems([]);
+      // Toggle the search panel
+      if (isSearchPanelOpen) {
+        setIsSearchPanelOpen(false);
       } else {
-        // Convert selectedItems Set to array of item objects
-        const selectedItemsArray = items.filter(item => selectedItems.has(item.id));
-        setHighlightedItems(selectedItemsArray);
+        // Only use highlighted items if there are currently selected items
+        // Otherwise, clear highlighted items to start fresh
+        if (selectedItems.size === 0) {
+          setHighlightedItems([]);
+        } else {
+          // Convert selectedItems Set to array of item objects
+          const selectedItemsArray = items.filter(item => selectedItems.has(item.id));
+          setHighlightedItems(selectedItemsArray);
+        }
+        setIsSearchPanelOpen(true);
       }
-      setIsSearchPanelOpen(true);
+    },
+    handleCloseSearchPanel: () => {
+      setIsSearchPanelOpen(false);
+      setIsSearchPanelFullscreen(false);
     }
-  }), [selectedItems, items]);
+  }), [selectedItems, items, isSearchPanelOpen, isMindMapPanelOpen, externalIsMindMapPanelOpen, onMindMapPanelClose, onMindMapPanelOpen]);
 
   const handleMouseUp = useCallback((e) => {
     if (isPanning) {
@@ -498,13 +513,13 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const handleWheel = useCallback((e) => {
     // Enable scroll zoom without requiring Ctrl key
     e.preventDefault();
-    setZoomOverlayVisible(true); // Show zoom overlay when zooming
+    showZoomOverlay(); // Show zoom overlay when zooming
     const delta = e.deltaY > 0 ? 0.9 : 1.1; // Scroll down = zoom out (0.9), scroll up = zoom in (1.1)
     setScale(s => {
       const newScale = Math.min(Math.max(0.1, s * delta), 4); // Restored max zoom to 4 for better zoom range
       return newScale;
     });
-  }, []);
+  }, [showZoomOverlay]);
 
   const updateItemPosition = useCallback((id, position) => {
     setItems(items.map(item => 
@@ -3571,11 +3586,13 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
 
 
   const handleResetView = useCallback(() => {
+    showZoomOverlay();
     setScale(1.0);
     setPanOffset({ x: 0, y: 0 });
-  }, []);
+  }, [showZoomOverlay]);
 
   const handleZoomToFullWidth = useCallback(() => {
+    showZoomOverlay();
     const canvas = document.querySelector('.whiteboard-canvas');
     if (canvas) {
       const { width } = canvas.getBoundingClientRect();
@@ -3583,7 +3600,7 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
       setScale(newScale);
       setPanOffset({ x: 0, y: panOffset.y }); // Keep the same vertical position
     }
-  }, [panOffset.y]);
+  }, [panOffset.y, showZoomOverlay]);
 
   const calculateViewportBounds = useCallback(() => {
     const padding = 50;
@@ -4550,7 +4567,7 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
             </svg>
             New Canvas
           </button>
-          <UserMenu />
+          <UserMenu onSettingsOpen={handleCloseMindMapPanel} />
         </div>
       </div>
 
@@ -4573,7 +4590,7 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
       >
         <div 
           className={`whiteboard-zoom-overlay ${zoomOverlayVisible ? 'zoom-overlay-visible' : 'zoom-overlay-hidden'}`}
-          onMouseEnter={() => setZoomOverlayVisible(true)}
+          onMouseEnter={showZoomOverlay}
           onMouseLeave={() => {
             // Start fade-out timer when mouse leaves
             if (zoomOverlayTimeoutRef.current) {
@@ -4587,20 +4604,19 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
           <div className="zoom-controls">
             <button onClick={(e) => { 
               e.stopPropagation(); 
-              setZoomOverlayVisible(true);
+              showZoomOverlay();
               setScale(s => Math.min(s * 1.1, 4)); 
             }}>+</button>
             <span>{Math.round(scale * 100)}%</span>
             <button onClick={(e) => { 
               e.stopPropagation(); 
-              setZoomOverlayVisible(true);
+              showZoomOverlay();
               setScale(s => Math.max(s * 0.9, 0.1)); 
             }}>-</button>
             <button 
               className="home-button" 
               onClick={(e) => { 
                 e.stopPropagation(); 
-                setZoomOverlayVisible(true);
                 handleResetView(); 
               }}
               title="Reset view"
@@ -4614,7 +4630,6 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
               className="full-width-button" 
               onClick={(e) => { 
                 e.stopPropagation(); 
-                setZoomOverlayVisible(true);
                 handleZoomToFullWidth(); 
               }}
               title="Zoom to full width"
@@ -4627,7 +4642,6 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
               className="viewport-indicator" 
               onClick={(e) => {
                 e.stopPropagation();
-                setZoomOverlayVisible(true);
                 const viewport = e.currentTarget;
                 const rect = viewport.getBoundingClientRect();
                 const x = (e.clientX - rect.left) / rect.width;
@@ -4873,6 +4887,7 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
         <SearchPanel
           highlightedItems={highlightedItems}
           onClose={handleCloseSearchPanel}
+          onFullscreenChange={setIsSearchPanelFullscreen}
         />
       )}
 
@@ -4926,7 +4941,7 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
         );
       })()}
 
-      {isMindMapPanelOpen && (
+      {isMindMapPanelOpen && !isSearchPanelFullscreen && (
         <div className="mind-map-floating-prompt">
           <div className="mind-map-prompt-container">
             <input

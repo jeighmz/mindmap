@@ -71,7 +71,7 @@
 
 .user-dropdown {
   position: absolute;
-  top: calc(100% + 12px);
+  top: calc(100% + 17px);
   right: 0;
   width: 240px;
   background-color: #ffffff;

@@ -47,7 +47,7 @@ const FullscreenIcon = () => (
   </svg>
 );
 
-const SearchPanel = ({ highlightedItems, onClose }) => {
+const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
   const { user } = useAuth();
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [tabs, setTabs] = useState([{ 
@@ -656,7 +656,7 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
 
   return (
     <>
-      <div className="search-panel chat-focused">
+      <div className={`search-panel chat-focused ${isFullscreen ? 'faded-out' : ''}`}>
         <div className="chat-header">
           <h3>AI Analysis Chat</h3>
           <div className="header-actions">
@@ -674,7 +674,12 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
             )}
             <button 
               className="fullscreen-button"
-              onClick={() => setIsFullscreen(true)}
+              onClick={() => {
+                setIsFullscreen(true);
+                if (onFullscreenChange) {
+                  onFullscreenChange(true);
+                }
+              }}
               title="Switch to full screen"
             >
               <FullscreenIcon />
@@ -721,9 +726,23 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
                   <SettingsIcon />
                 </button>
                 <button 
+                  className="settings-button minimize-button"
+                  onClick={() => {
+                    setIsFullscreen(false);
+                    if (onFullscreenChange) {
+                      onFullscreenChange(false);
+                    }
+                  }}
+                  title="Minimize"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                </button>
+                <button 
                   className="settings-button"
-                  onClick={() => setIsFullscreen(false)}
-                  title="Exit full screen"
+                  onClick={onClose}
+                  title="Close panel"
                 >
                   <CloseIcon />
                 </button>

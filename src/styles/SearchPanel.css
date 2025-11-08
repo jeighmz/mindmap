@@ -463,6 +463,13 @@
   transform: translateY(-50%);
   background: #ffffff;
   border-left: 1px solid #e0e0e0;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.search-panel.chat-focused.faded-out {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .chat-header {

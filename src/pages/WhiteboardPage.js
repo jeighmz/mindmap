@@ -22,7 +22,7 @@ const WhiteboardPage = () => {
   const { user } = useAuth();
 
   const handleOpenMindMapPanel = () => {
-    setIsMindMapPanelOpen(true);
+    // Toggle the mind map panel - let canvas handle the toggle
     if (canvasRef.current && typeof canvasRef.current.handleOpenMindMapPanel === 'function') {
       canvasRef.current.handleOpenMindMapPanel();
     }
@@ -106,6 +106,7 @@ const WhiteboardPage = () => {
           ref={canvasRef}
           isMindMapPanelOpen={isMindMapPanelOpen}
           onMindMapPanelClose={() => setIsMindMapPanelOpen(false)}
+          onMindMapPanelOpen={() => setIsMindMapPanelOpen(true)}
           onUpdate={handleCanvasUpdate}
           onLibraryStateChange={setIsLibraryOpen}
         />

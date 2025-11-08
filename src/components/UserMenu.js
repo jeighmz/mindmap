@@ -5,7 +5,7 @@ import Login from './Login';
 import Settings from './Settings';
 import '../styles/UserMenu.css';
 
-export default function UserMenu() {
+export default function UserMenu({ onSettingsOpen }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -72,6 +72,9 @@ export default function UserMenu() {
                   <button 
                     className="menu-item"
                     onClick={() => {
+                      if (onSettingsOpen) {
+                        onSettingsOpen();
+                      }
                       setIsSettingsOpen(true);
                       setIsMenuOpen(false);
                     }}
