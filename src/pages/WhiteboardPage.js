@@ -28,6 +28,12 @@ const WhiteboardPage = () => {
     }
   };
 
+  const handleOpenSearchPanel = () => {
+    if (canvasRef.current && typeof canvasRef.current.handleOpenSearchPanel === 'function') {
+      canvasRef.current.handleOpenSearchPanel();
+    }
+  };
+
   const handleCanvasUpdate = (newItems, newConnections) => {
     setItems(newItems);
     setConnections(newConnections);
@@ -90,6 +96,7 @@ const WhiteboardPage = () => {
       <div className="whiteboard">
         <WhiteboardToolbar 
           onOpenMindMapPanel={handleOpenMindMapPanel}
+          onOpenSearchPanel={handleOpenSearchPanel}
           onPublishToCommunity={handlePublishToCommunity}
           items={items}
           connections={connections}

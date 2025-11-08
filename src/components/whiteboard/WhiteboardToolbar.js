@@ -198,7 +198,7 @@ const ToolbarItem = ({ type, icon, chartType }) => {
   );
 };
 
-const WhiteboardToolbar = ({ onOpenMindMapPanel, items, connections, highlightedItems = [], isLibraryOpen = false }) => {
+const WhiteboardToolbar = ({ onOpenMindMapPanel, onOpenSearchPanel, items, connections, highlightedItems = [], isLibraryOpen = false }) => {
   const tools = [
     { 
       type: 'sticky', 
@@ -290,6 +290,22 @@ const WhiteboardToolbar = ({ onOpenMindMapPanel, items, connections, highlighted
           <path d="M15 15l2 2" />
           <path d="M15 7l-2 2" />
           <path d="M7 15l2 2" />
+        </svg>
+      </button>
+      <button 
+        className="toolbar-item ai-button"
+        onClick={onOpenSearchPanel}
+        title="AI Analysis Chat"
+        style={{
+          cursor: 'pointer',
+          transition: 'transform 0.2s ease, background-color 0.2s ease'
+        }}
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          <path d="M8 10h.01" />
+          <path d="M12 10h.01" />
+          <path d="M16 10h.01" />
         </svg>
       </button>
       {/* Agent chat button temporarily disabled

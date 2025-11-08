@@ -9,12 +9,18 @@
   PORT = ""
   NPM_FLAGS = "--legacy-peer-deps"
 
-# Handle SPA routing by redirecting all requests to index.html
+# Handle API routes FIRST (before SPA redirect)
+# Handle OPTIONS preflight requests
 [[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-  force = false
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 204
+  methods = ["OPTIONS"]
+  force = true
+  [redirects.headers]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
 
 # Handle API routes
 [[redirects]]
@@ -27,17 +33,12 @@
     Access-Control-Allow-Headers = "Content-Type, Authorization"
     Access-Control-Allow-Methods = "GET, POST, OPTIONS"
 
-# Handle OPTIONS preflight requests
+# Handle SPA routing by redirecting all requests to index.html (exclude /api/*)
 [[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
-  status = 204
-  methods = ["OPTIONS"]
-  force = true
-  [redirects.headers]
-    Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Headers = "Content-Type, Authorization"
-    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  force = false
 
 # Security headers for all routes
 [[headers]]

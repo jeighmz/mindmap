@@ -40,6 +40,8 @@
   },
   "scripts": {
     "start": "react-scripts start",
+    "dev": "netlify dev",
+    "dev:functions": "netlify dev --port 8888",
     "build": "CI=false npm install --legacy-peer-deps && react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"

@@ -19,8 +19,10 @@ const getStripe = () => {
 // Get the base URL for API calls
 const getBaseUrl = () => {
   if (process.env.NODE_ENV === 'development') {
-    return 'http://localhost:8888/api';
+    // In development, call Netlify Functions directly
+    return 'http://localhost:8888/.netlify/functions';
   }
+  // In production, use the /api redirect
   return '/api';
 };
 
@@ -28,7 +30,7 @@ const getBaseUrl = () => {
 const STRIPE_PRODUCT_IDS = {
   [USER_TIERS.STARTER]: 'prod_S9iMpACtlPv8kv',
   [USER_TIERS.PRO]: 'prod_S9iNjKTuDUKWLZ',
-  [USER_TIERS.CREATOR_AI]: 'prod_S9iOBu7jGBIJyp',
+  [USER_TIERS.CREATOR_AI]: 'prod_S9iOBu7jGBlJyp',
 };
 
 // Stripe uses 'month' and 'year' for intervals
@@ -64,6 +66,15 @@ class StripeService {
       }
       const userData = userDoc.data();
 
+      // Log the tier being sent for debugging
+      console.log('Creating checkout session with tier:', {
+        userId,
+        tier,
+        currentTier: userData.tier,
+        productId,
+        interval: INTERVAL_MAPPING[interval]
+      });
+      
       // Create checkout session through Firebase Function
       const response = await fetch(`${getBaseUrl()}/create-checkout-session`, {
         method: 'POST',
@@ -75,7 +86,7 @@ class StripeService {
           productId,
           interval: INTERVAL_MAPPING[interval],
           customerEmail: userData.email,
-          currentTier: userData.tier,
+          currentTier: userData.tier || 'FREE',
           newTier: tier,
         }),
       });
@@ -85,7 +96,11 @@ class StripeService {
         throw new Error(`Checkout session creation failed: ${errorData}`);
       }
 
-      const { sessionId } = await response.json();
+      const responseData = await response.json();
+      
+      // Always redirect to checkout - even for upgrades/downgrades
+      // Stripe will handle payment confirmation and subscription updates
+      const { sessionId } = responseData;
       
       // Get Stripe instance and redirect to checkout
       const stripe = await getStripe();

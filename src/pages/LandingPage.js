@@ -1,7 +1,11 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import '../styles/LandingPage.css';
 import Login from '../components/Login';
+import UserMenu from '../components/UserMenu';
+import { useAuth } from '../contexts/AuthContext';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase-config';
 
 // Import SVG icons
 import { ReactComponent as ProjectPlanningIcon } from '../assets/icons/project-planning.svg';
@@ -19,8 +23,38 @@ import { ReactComponent as RealtimeCollaborationIcon } from '../assets/icons/rea
 
 const LandingPage = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { user, userTier, refreshUserData } = useAuth();
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
+
+  // Check for payment success/cancel in URL params
+  useEffect(() => {
+    const paymentStatus = searchParams.get('payment');
+    const sessionId = searchParams.get('session_id');
+    const tier = searchParams.get('tier');
+
+    if (paymentStatus === 'success' && sessionId && user) {
+      // Firestore listener will automatically update the tier when webhook processes
+      // Just refresh once to get the latest (if webhook already processed)
+      if (refreshUserData) {
+        // Small delay to let webhook process, then refresh once
+        setTimeout(async () => {
+          try {
+            await refreshUserData();
+          } catch (error) {
+            console.error('Error refreshing user tier:', error);
+          }
+        }, 3000); // Wait 3 seconds for webhook to process
+      }
+      
+      // Remove query params immediately
+      navigate('/', { replace: true });
+    } else if (paymentStatus === 'cancelled') {
+      // Remove query params for cancelled payments
+      navigate('/', { replace: true });
+    }
+  }, [searchParams, user, navigate, refreshUserData]);
 
   const scrollToSection = (sectionId) => {
     const element = document.getElementById(sectionId);
@@ -57,8 +91,14 @@ const LandingPage = () => {
             </ul>
           </nav>
           <div className="header-actions">
-            <button className="login-button" onClick={handleLoginClick}>Log In</button>
-            <button className="signup-button" onClick={handleSignupClick}>Sign Up</button>
+            {user ? (
+              <UserMenu />
+            ) : (
+              <>
+                <button className="login-button" onClick={handleLoginClick}>Log In</button>
+                <button className="signup-button" onClick={handleSignupClick}>Sign Up</button>
+              </>
+            )}
           </div>
         </div>
       </header>

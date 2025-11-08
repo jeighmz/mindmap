@@ -29,7 +29,7 @@ const ChartComponent = ({ config, width, height }) => {
     }
   };
 
-  const formatAxisLabel = (value, mode) => {
+  const formatAxisLabel = (value, mode, xAxisTitle = '') => {
     if (mode === 'date') {
       return new Date(value).toLocaleDateString('en-US', { 
         month: 'short', 
@@ -39,6 +39,47 @@ const ChartComponent = ({ config, width, height }) => {
     } else if (mode === 'custom') {
       return value.toString();
     } else {
+      // Check if x-axis title contains pi symbol
+      const isPiMode = xAxisTitle && (xAxisTitle.includes('π') || xAxisTitle.toLowerCase().includes('pi'));
+      
+      if (isPiMode && typeof value === 'number') {
+        // Format as multiples of pi
+        const piMultiple = value / Math.PI;
+        
+        // Handle common fractions
+        if (Math.abs(piMultiple - 0) < 0.001) return '0';
+        if (Math.abs(piMultiple - 0.5) < 0.001) return 'π/2';
+        if (Math.abs(piMultiple - 1) < 0.001) return 'π';
+        if (Math.abs(piMultiple - 1.5) < 0.001) return '3π/2';
+        if (Math.abs(piMultiple - 2) < 0.001) return '2π';
+        if (Math.abs(piMultiple - -0.5) < 0.001) return '-π/2';
+        if (Math.abs(piMultiple - -1) < 0.001) return '-π';
+        if (Math.abs(piMultiple - -1.5) < 0.001) return '-3π/2';
+        if (Math.abs(piMultiple - -2) < 0.001) return '-2π';
+        
+        // Check for other simple fractions
+        const absMultiple = Math.abs(piMultiple);
+        const numerator = Math.round(absMultiple * 2);
+        if (numerator % 2 === 0 && Math.abs(absMultiple - numerator / 2) < 0.001) {
+          const coeff = numerator / 2;
+          if (coeff === 1) {
+            return piMultiple < 0 ? '-π' : 'π';
+          } else {
+            return piMultiple < 0 ? `-${coeff}π` : `${coeff}π`;
+          }
+        }
+        
+        // For other values, show as decimal multiple of pi
+        if (Math.abs(piMultiple) < 0.001) return '0';
+        const rounded = Math.round(piMultiple * 100) / 100;
+        if (rounded === 1) return 'π';
+        if (rounded === -1) return '-π';
+        if (rounded % 1 === 0) {
+          return rounded < 0 ? `${rounded}π` : `${rounded}π`;
+        }
+        return `${rounded.toFixed(2)}π`;
+      }
+      
       return typeof value === 'number' ? value.toFixed(1) : value;
     }
   };
@@ -134,7 +175,7 @@ const ChartComponent = ({ config, width, height }) => {
                   ? `rotate(-45, ${x}, ${height - effectivePadding + (tickLength * 3)})` 
                   : undefined}
               >
-                {formatAxisLabel(value, config.xAxisMode)}
+                {formatAxisLabel(value, config.xAxisMode, config.xAxisTitle)}
               </text>
             )}
           </g>

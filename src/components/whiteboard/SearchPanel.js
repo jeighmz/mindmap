@@ -49,7 +49,15 @@ const FullscreenIcon = () => (
 
 const SearchPanel = ({ highlightedItems, onClose }) => {
   const { user } = useAuth();
-  const [tabs, setTabs] = useState([{ id: 'default', messages: [], name: 'Chat 1' }]);
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
+  const [tabs, setTabs] = useState([{ 
+    id: 'default', 
+    messages: [{
+      role: 'assistant',
+      content: 'Hello! I\'m here to help you analyze your mind map. You can ask me questions about your concepts, request insights, or get suggestions for connections between ideas. What would you like to explore?'
+    }], 
+    name: 'Chat 1' 
+  }]);
   const [activeTabId, setActiveTabId] = useState('default');
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -66,16 +74,20 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
     // Production Models
     { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile (128K context)', provider: 'Meta' },
     { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant (128K context)', provider: 'Meta' },
-    { id: 'llama3-70b-8192', name: 'Llama 3 70B (8K context)', provider: 'Meta' },
-    { id: 'llama3-8b-8192', name: 'Llama 3 8B (8K context)', provider: 'Meta' },
-    { id: 'gemma2-9b-it', name: 'Gemma 2 9B (8K context)', provider: 'Google' },
+    { id: 'llama3-70b-8192', name: 'Llama 3 70B (8K context)', provider: 'Meta', disabled: true },
+    { id: 'llama3-8b-8192', name: 'Llama 3 8B (8K context)', provider: 'Meta', disabled: true },
+    { id: 'gemma2-9b-it', name: 'Gemma 2 9B (8K context)', provider: 'Google', disabled: true },
     
     // Preview Models
-    { id: 'deepseek-r1-distill-llama-70b', name: 'DeepSeek R1 Distill 70B (128K context)', provider: 'DeepSeek' },
-    { id: 'meta-llama/llama-4-maverick-17b-128e-instruct', name: 'Llama 4 Maverick 17B (128K context)', provider: 'Meta' },
-    { id: 'meta-llama/llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout 17B (128K context)', provider: 'Meta' },
-    { id: 'mistral-saba-24b', name: 'Mistral Saba 24B (32K context)', provider: 'Mistral' },
-    { id: 'qwen-qwq-32b', name: 'Qwen QWQ 32B (128K context)', provider: 'Alibaba Cloud' }
+    { id: 'deepseek-r1-distill-llama-70b', name: 'DeepSeek R1 Distill 70B (128K context)', provider: 'DeepSeek', disabled: true },
+    { id: 'meta-llama/llama-4-maverick-17b-128e-instruct', name: 'Llama 4 Maverick 17B (128K context)', provider: 'Meta', isVision: true },
+    { id: 'meta-llama/llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout 17B (128K context)', provider: 'Meta', isVision: true },
+    { id: 'mistral-saba-24b', name: 'Mistral Saba 24B (32K context)', provider: 'Mistral', disabled: true },
+    { id: 'qwen-qwq-32b', name: 'Qwen QWQ 32B (128K context)', provider: 'Alibaba Cloud', disabled: true },
+    { id: 'groq/compound', name: 'Groq Compound (128K context)', provider: 'Groq' },
+    { id: 'qwen/qwen3-32b', name: 'Qwen 3 32B (128K context)', provider: 'Alibaba Cloud' },
+    { id: 'openai/gpt-oss-20b', name: 'GPT OSS 20B (128K context)', provider: 'OpenAI', disabled: true },
+    { id: 'whisper-large-v3-turbo', name: 'Whisper Large V3 Turbo (Speech-to-Text)', provider: 'OpenAI', disabled: true }
   ];
 
   // Vision models that support image input
@@ -92,34 +104,43 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
     content: 'You are an AI assistant that analyzes concepts and provides insightful connections between ideas. Your responses should be clear, concise, and focused on identifying patterns, relationships, and key insights from the user\'s whiteboard items.'
   };
 
+  // Close dropdown when clicking outside
   useEffect(() => {
-    // Add or update initial message when items are selected
+    const handleClickOutside = (e) => {
+      if (isModelDropdownOpen && !e.target.closest('.custom-select-wrapper')) {
+        setIsModelDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isModelDropdownOpen]);
+
+  useEffect(() => {
+    // Add or update message when items are selected (but don't override if user has already started chatting)
     if (highlightedItems.length > 0) {
       const activeTab = tabs.find(tab => tab.id === activeTabId);
-      if (activeTab) {
-        // If no messages, create the initial message
-        if (activeTab.messages.length === 0) {
+      if (activeTab && activeTab.messages.length <= 1) {
+        // Only add/update the message if there's just the initial greeting
+        const hasOnlyGreeting = activeTab.messages.length === 1 && 
+          activeTab.messages[0].role === 'assistant' && 
+          activeTab.messages[0].content.toLowerCase().includes('hello');
+        
+        if (hasOnlyGreeting) {
+          // Update the greeting to mention selected items
           updateTabMessages(activeTabId, [
             {
               role: 'assistant',
               content: `I see you've selected ${highlightedItems.length} item${highlightedItems.length === 1 ? '' : 's'}. How would you like me to analyze them?`
             }
           ]);
-        } else {
-          // If the first message is the analyze message, update it to reflect current item count
-          const firstMessage = activeTab.messages[0];
-          if (firstMessage && 
-              firstMessage.role === 'assistant' && 
-              firstMessage.content && 
-              firstMessage.content.toLowerCase().includes('analyze')) {
-            const newContent = `I see you've selected ${highlightedItems.length} item${highlightedItems.length === 1 ? '' : 's'}. How would you like me to analyze them?`;
-            if (firstMessage.content !== newContent) {
-              updateTabMessages(activeTabId, [
-                { ...firstMessage, content: newContent },
-                ...activeTab.messages.slice(1)
-              ]);
+        } else if (activeTab.messages.length === 0) {
+          // If no messages at all, add the selection message
+          updateTabMessages(activeTabId, [
+            {
+              role: 'assistant',
+              content: `I see you've selected ${highlightedItems.length} item${highlightedItems.length === 1 ? '' : 's'}. How would you like me to analyze them?`
             }
-          }
+          ]);
         }
       }
     }
@@ -139,7 +160,10 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
     const newTabNumber = tabs.length + 1;
     setTabs(prevTabs => [...prevTabs, { 
       id: newTabId, 
-      messages: [], 
+      messages: [{
+        role: 'assistant',
+        content: 'Hello! I\'m here to help you analyze your mind map. You can ask me questions about your concepts, request insights, or get suggestions for connections between ideas. What would you like to explore?'
+      }], 
       name: `Chat ${newTabNumber}` 
     }]);
     setActiveTabId(newTabId);
@@ -199,15 +223,32 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
       const activeTab = tabs.find(tab => tab.id === activeTabId);
       const newMessages = [...activeTab.messages];
       
+      // Collect images from highlighted items (always collect for UI display)
+      const highlightedImages = highlightedItems.filter(item => item.type === 'image' && item.imageUrl);
+      
+      // Store screenshot before clearing (for API call)
+      const screenshotForApi = screenshot;
+      
       // If there's a screenshot, add it as a separate message first
       if (screenshot) {
         newMessages.push({
           role: 'user',
           content: '',
-          image: screenshot
+          image: screenshot,
+          imageAlt: 'Mindmap screenshot'
         });
         setScreenshot(null); // Clear the screenshot after sending
       }
+      
+      // Add highlighted images as separate messages for UI display (always show in UI)
+      highlightedImages.forEach((imageItem, index) => {
+        newMessages.push({
+          role: 'user',
+          content: '',
+          image: imageItem.imageUrl,
+          imageAlt: `Highlighted image ${index + 1}`
+        });
+      });
       
       // Add the user's text message
       newMessages.push({ 
@@ -217,48 +258,72 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
       
       updateTabMessages(activeTabId, newMessages);
 
-      // Get the context from highlighted items
-      const itemsContext = highlightedItems.map(item => item.text).join('\n\n');
+      // Get the context from highlighted items (text items only)
+      const textItems = highlightedItems.filter(item => item.type !== 'image' || !item.imageUrl);
+      const itemsContext = textItems.map(item => item.text).join('\n\n');
       
       // Prepare the full context for the AI
       const fullPrompt = `Context from whiteboard:\n${itemsContext}\n\nUser question: ${userMessage}`;
 
       const apiKey = await getUserApiKey();
 
-      // Prepare messages array based on whether we're using a vision model and have a screenshot
+      // Prepare messages array based on whether we're using a vision model and have images
       let messages = [systemMessage];
       
-      if (isVisionModel && screenshot) {
+      // Collect all images for API (only if model supports vision)
+      const allImages = [];
+      if (isVisionModel) {
+        if (screenshotForApi) {
+          allImages.push(screenshotForApi);
+        }
+        highlightedImages.forEach(imageItem => {
+          if (imageItem.imageUrl) {
+            allImages.push(imageItem.imageUrl);
+          }
+        });
+      }
+      
+      if (isVisionModel && allImages.length > 0) {
+        // Build content array with text and all images
+        const content = [
+          { type: 'text', text: fullPrompt }
+        ];
+        
+        // Add all images to the content array
+        allImages.forEach(imageUrl => {
+          content.push({
+            type: 'image_url',
+            image_url: {
+              url: imageUrl
+            }
+          });
+        });
+        
         messages.push({
           role: 'user',
-          content: [
-            { type: 'text', text: fullPrompt },
-            {
-              type: 'image_url',
-              image_url: {
-                url: screenshot
-              }
-            }
-          ]
+          content: content
         });
       } else {
         messages.push({ role: 'user', content: fullPrompt });
       }
 
-      // Log the request for debugging
-      console.log('Sending request to Groq API:', {
-        model: selectedModel.id,
-        messages: messages.map(msg => ({
-          ...msg,
-          content: Array.isArray(msg.content) 
-            ? msg.content.map(c => c.type === 'image_url' 
-              ? { ...c, image_url: { url: c.image_url.url.substring(0, 100) + '...' } }
-              : c)
-            : msg.content
-        })),
-        isVisionModel,
-        hasScreenshot: !!screenshot
-      });
+      // Log the request for debugging (development only)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Sending request to Groq API:', {
+          model: selectedModel.id,
+          messages: messages.map(msg => ({
+            ...msg,
+            content: Array.isArray(msg.content) 
+              ? msg.content.map(c => c.type === 'image_url' 
+                ? { ...c, image_url: { url: c.image_url.url.substring(0, 100) + '...' } }
+                : c)
+              : msg.content
+          })),
+          isVisionModel,
+          hasScreenshot: !!screenshot,
+          highlightedImageCount: highlightedImages.length
+        });
+      }
 
       const response = await fetch(`https://api.groq.com/openai/v1/chat/completions`, {
         method: 'POST',
@@ -368,22 +433,52 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
         <div className="chat-settings">
           <div className="model-selection">
             <label>Model:</label>
-            <select
-              value={selectedModel.id}
-              onChange={(e) => {
-                const model = availableModels.find(m => m.id === e.target.value);
-                setSelectedModel(model);
-                if (!visionModels.includes(model.id)) {
-                  setScreenshot(null);
-                }
-              }}
-            >
-              {availableModels.map(model => (
-                <option key={model.id} value={model.id}>
-                  {model.name}
-                </option>
-              ))}
-            </select>
+            <div className="custom-select-wrapper">
+              <div 
+                className="custom-select"
+                onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+              >
+                <span className="select-display">
+                  {visionModels.includes(selectedModel.id) && (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px', verticalAlign: 'middle' }}>
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                      <circle cx="12" cy="13" r="4" />
+                    </svg>
+                  )}
+                  {selectedModel.name}
+                </span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginLeft: 'auto' }}>
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </div>
+              {isModelDropdownOpen && (
+                <div className="custom-select-dropdown">
+                  {availableModels.map(model => (
+                    <div
+                      key={model.id}
+                      className={`custom-select-option ${model.disabled ? 'disabled' : ''} ${selectedModel.id === model.id ? 'selected' : ''}`}
+                      onClick={() => {
+                        if (!model.disabled) {
+                          setSelectedModel(model);
+                          setIsModelDropdownOpen(false);
+                          if (!visionModels.includes(model.id)) {
+                            setScreenshot(null);
+                          }
+                        }
+                      }}
+                    >
+                      {model.isVision && (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px', verticalAlign: 'middle' }}>
+                          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                          <circle cx="12" cy="13" r="4" />
+                        </svg>
+                      )}
+                      {model.name}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <div className="selected-items">
             <label>Selected items:</label>
@@ -425,10 +520,12 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
                                        message.content && 
                                        message.content.toLowerCase().includes('analyze');
           
+          const isImageOnly = message.image && !message.content;
+          
           return (
             <div 
               key={index} 
-              className={`message ${message.role} ${message.image && !message.content ? 'image-only' : ''}`}
+              className={`message ${message.role} ${isImageOnly ? 'image-only' : ''}`}
             >
               <div className="message-content">
                 {message.content && (
@@ -437,10 +534,35 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
                   </ReactMarkdown>
                 )}
                 {message.image && (
-                  <div className="message-screenshot">
+                  <div className="message-screenshot" style={{ 
+                    marginTop: message.content ? '8px' : '0',
+                    marginBottom: '0'
+                  }}>
                     <img 
                       src={message.image} 
-                      alt="Mindmap screenshot" 
+                      alt={message.imageAlt || "Image"} 
+                      style={{
+                        display: 'block',
+                        maxWidth: '100%',
+                        maxHeight: '300px',
+                        width: 'auto',
+                        height: 'auto',
+                        objectFit: 'contain',
+                        borderRadius: '8px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                        backgroundColor: isImageOnly ? 'transparent' : 'rgba(255,255,255,0.1)'
+                      }}
+                      onError={(e) => {
+                        if (process.env.NODE_ENV === 'development') {
+                          console.error('Failed to load image in chat:', {
+                            url: message.image,
+                            alt: message.imageAlt,
+                            messageIndex: index
+                          });
+                        }
+                        e.target.style.display = 'none';
+                        e.target.parentElement.innerHTML = '<div style="padding: 8px; color: #999; font-size: 12px;">Failed to load image</div>';
+                      }}
                     />
                   </div>
                 )}
@@ -452,24 +574,26 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
                     flexWrap: 'wrap',
                     gap: '6px'
                   }}>
-                    {highlightedItems.map((item, itemIndex) => (
-                      <span
-                        key={itemIndex}
-                        className="item-tag"
-                        style={{
-                          display: 'inline-block',
-                          padding: '4px 10px',
-                          backgroundColor: 'rgba(33, 150, 243, 0.1)',
-                          border: '1px solid rgba(33, 150, 243, 0.3)',
-                          borderRadius: '12px',
-                          fontSize: '12px',
-                          color: '#1976d2',
-                          fontWeight: '500'
-                        }}
-                      >
-                        {item.text || 'Untitled'}
-                      </span>
-                    ))}
+                    {highlightedItems
+                      .filter(item => item.type !== 'image') // Exclude images since they're shown as image messages
+                      .map((item, itemIndex) => (
+                        <span
+                          key={itemIndex}
+                          className="item-tag"
+                          style={{
+                            display: 'inline-block',
+                            padding: '4px 10px',
+                            backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                            border: '1px solid rgba(33, 150, 243, 0.3)',
+                            borderRadius: '12px',
+                            fontSize: '12px',
+                            color: '#1976d2',
+                            fontWeight: '500'
+                          }}
+                        >
+                          {item.text || 'Untitled'}
+                        </span>
+                      ))}
                   </div>
                 )}
               </div>
@@ -516,11 +640,11 @@ const SearchPanel = ({ highlightedItems, onClose }) => {
                 ? "Ask me about the selected items..."
                 : "Select items on the whiteboard to analyze them"
             }
-            disabled={highlightedItems.length === 0 || isLoading}
+            disabled={isLoading}
           />
           <button 
             onClick={handleSendMessage}
-            disabled={!inputMessage.trim() || isLoading || highlightedItems.length === 0}
+            disabled={!inputMessage.trim() || isLoading}
             className="send-button"
           >
             <SendIcon />

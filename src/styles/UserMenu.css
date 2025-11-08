@@ -12,11 +12,14 @@
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
-  height: 40px;
   transition: background-color 0.2s ease, border-color 0.2s ease;
   display: flex;
   align-items: center;
   gap: 8px;
+  box-sizing: border-box;
+  line-height: 1;
+  height: auto;
+  min-height: auto;
 }
 
 .user-menu-button:hover,
@@ -30,6 +33,9 @@
   height: 20px;
   border-radius: 50%;
   object-fit: cover;
+  flex-shrink: 0;
+  display: block;
+  margin: 0;
 }
 
 .user-avatar-large {

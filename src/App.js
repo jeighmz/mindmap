@@ -7,7 +7,6 @@ import WhiteboardPage from './pages/WhiteboardPage';
 import LandingPage from './pages/LandingPage';
 import PricingPage from './pages/PricingPage';
 import Community from './components/Community';
-import DevelopmentBanner from './components/DevelopmentBanner';
 
 function App() {
   return (
@@ -15,7 +14,6 @@ function App() {
       <AuthProvider>
         <AppProvider>
           <div className="app">
-            <DevelopmentBanner />
             <Routes>
               <Route path="/" element={<LandingPage />} />
               <Route path="/whiteboard" element={<WhiteboardPage />} />

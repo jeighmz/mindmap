@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase-config';
+import { db, storage } from '../firebase-config';
 import { useAuth } from '../contexts/AuthContext';
 import { USER_TIERS, TIER_FEATURES } from '../config/userTiers';
 import Modal from './Modal';
@@ -10,6 +10,7 @@ import {
   getAuth,
   updateProfile
 } from 'firebase/auth';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const TierIcon = ({ tier }) => {
   switch (tier) {
@@ -59,7 +60,7 @@ const SETTINGS_SECTIONS = {
 };
 
 export default function Settings({ isOpen, onClose, onUpgradeClick }) {
-  const { user, userTier } = useAuth();
+  const { user, userTier, refreshUserData } = useAuth();
   const [groqApiKey, setGroqApiKey] = useState('');
   const [notionApiKey, setNotionApiKey] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -72,9 +73,20 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
     const stored = localStorage.getItem('showCoordinates');
     return stored === null ? true : stored === 'true';
   });
+  const [showFooter, setShowFooter] = useState(() => {
+    const stored = localStorage.getItem('showFooter');
+    return stored === null ? true : stored === 'true';
+  });
+  const [profilePicture, setProfilePicture] = useState(null);
+  const [profilePicturePreview, setProfilePicturePreview] = useState(null);
+  const [isUploadingPicture, setIsUploadingPicture] = useState(false);
+  const fileInputRef = useRef(null);
+  const [integrationSearch, setIntegrationSearch] = useState('');
+  const [messageFadeOut, setMessageFadeOut] = useState(false);
 
   const loadSettings = useCallback(async () => {
-    if (!user?.uid) {
+    const currentUser = user; // Capture user at callback creation
+    if (!currentUser?.uid) {
       setMessage({ type: 'error', text: 'Please sign in to access settings' });
       setIsLoading(false);
       return;
@@ -85,9 +97,12 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
       setMessage({ type: '', text: '' });
       
       // Set display name from user object
-      setDisplayName(user.displayName || '');
+      setDisplayName(currentUser.displayName || '');
       
-      const settingsRef = doc(db, 'userSettings', user.uid);
+      // Set profile picture preview from user object
+      setProfilePicturePreview(currentUser.photoURL || null);
+      
+      const settingsRef = doc(db, 'userSettings', currentUser.uid);
       const settingsSnap = await getDoc(settingsRef);
       
       if (settingsSnap.exists()) {
@@ -106,7 +121,7 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  userId: user.uid,
+                  userId: currentUser.uid,
                   encryptedData: data.groqApiKey
                 })
               });
@@ -134,7 +149,7 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  userId: user.uid,
+                  userId: currentUser.uid,
                   encryptedData: data.notionApiKey
                 })
               });
@@ -163,13 +178,26 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [user?.uid]); // Only depend on user.uid, not the whole user object
 
   useEffect(() => {
     if (isOpen) {
       loadSettings();
     }
   }, [isOpen, loadSettings]);
+
+  // Update profile picture preview when user photoURL changes (but not if user is actively selecting a new picture)
+  useEffect(() => {
+    if (user?.photoURL && !profilePicture) {
+      // Only update if it's different and user isn't in the middle of selecting a new picture
+      setProfilePicturePreview(prev => {
+        if (prev !== user.photoURL) {
+          return user.photoURL;
+        }
+        return prev;
+      });
+    }
+  }, [user?.photoURL, profilePicture]);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -185,18 +213,64 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
     try {
       // Update display name if changed
       const trimmedDisplayName = displayName.trim();
+      const auth = getAuth();
+      const updateData = {};
+      
       if (trimmedDisplayName !== user.displayName) {
-        const auth = getAuth();
-        await updateProfile(auth.currentUser, {
-          displayName: trimmedDisplayName || null
-        });
+        updateData.displayName = trimmedDisplayName || null;
+      }
 
-        // Update display name in Firestore
-        const userRef = doc(db, 'users', user.uid);
-        await setDoc(userRef, {
-          displayName: trimmedDisplayName || null,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
+      // Handle profile picture upload or removal
+      if (profilePicture) {
+        // Upload new profile picture
+        setIsUploadingPicture(true);
+        try {
+          // Create a reference to the profile picture in storage
+          const fileExtension = profilePicture.name.split('.').pop();
+          const storageRef = ref(storage, `profilePictures/${user.uid}_${Date.now()}.${fileExtension}`);
+          
+          // Upload the file
+          await uploadBytes(storageRef, profilePicture);
+          
+          // Get the download URL
+          const photoURL = await getDownloadURL(storageRef);
+          updateData.photoURL = photoURL;
+          
+          // Update preview
+          setProfilePicturePreview(photoURL);
+        } catch (error) {
+          console.error('Error uploading profile picture:', error);
+          setMessage({ type: 'error', text: 'Failed to upload profile picture. Please try again.' });
+          setIsSaving(false);
+          setIsUploadingPicture(false);
+          return;
+        } finally {
+          setIsUploadingPicture(false);
+        }
+      } else if (profilePicturePreview === null && user.photoURL) {
+        // User removed their profile picture
+        updateData.photoURL = null;
+      }
+
+      // Update Firebase Auth profile if there are changes
+      if (Object.keys(updateData).length > 0) {
+        await updateProfile(auth.currentUser, updateData);
+      }
+
+      // Update Firestore user document
+      const userRef = doc(db, 'users', user.uid);
+      const firestoreUpdate = {
+        ...updateData,
+        updatedAt: new Date().toISOString()
+      };
+      await setDoc(userRef, firestoreUpdate, { merge: true });
+
+      // Clear the profile picture file input
+      if (profilePicture) {
+        setProfilePicture(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
       }
 
       // Handle API keys update
@@ -267,6 +341,14 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
       const settingsRef = doc(db, 'userSettings', user.uid);
       await setDoc(settingsRef, settingsData, { merge: true });
       setMessage({ type: 'success', text: 'Settings saved successfully' });
+      
+      // Refresh user data to update profile picture in UI
+      // Wait a moment for Firebase Auth to propagate the changes
+      setTimeout(async () => {
+        if (refreshUserData) {
+          await refreshUserData();
+        }
+      }, 500);
     } catch (error) {
       console.error('Error saving settings:', error);
       setMessage({ type: 'error', text: `Failed to save settings: ${error.message}` });
@@ -292,7 +374,7 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
 
   const renderProfileSection = () => (
     <div className="settings-section">
-      <h3>Profile Settings</h3>
+      <h3>Profile</h3>
       <div className="form-group">
         <label htmlFor="displayName">Display Name</label>
         <input
@@ -306,8 +388,8 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
       </div>
 
       <div className="form-group">
-        <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
-          <label htmlFor="groqApiKey">GROQ API Key</label>
+        <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px'}}>
+          <label htmlFor="groqApiKey" style={{ marginBottom: 0 }}>GROQ API Key</label>
           <a 
             href="https://console.groq.com/keys" 
             target="_blank" 
@@ -329,12 +411,239 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
     </div>
   );
 
+  const integrations = [
+    {
+      id: 'notion',
+      name: 'Notion',
+      description: 'Sync mind maps with Notion workspaces',
+      icon: '📝',
+      color: '#000000',
+      enabled: !!notionApiKey,
+      hasApiKey: true,
+      apiKeyUrl: 'https://www.notion.so/my-integrations'
+    },
+    {
+      id: 'figma',
+      name: 'Figma',
+      description: 'Export mind maps to Figma',
+      icon: '🎨',
+      color: '#F24E1E',
+      enabled: false,
+      hasApiKey: false
+    },
+    {
+      id: 'slack',
+      name: 'Slack',
+      description: 'Share mind maps in Slack channels',
+      icon: '💬',
+      color: '#4A154B',
+      enabled: false,
+      hasApiKey: false
+    },
+    {
+      id: 'google-drive',
+      name: 'Google Drive',
+      description: 'Save and sync to Google Drive',
+      icon: '☁️',
+      color: '#4285F4',
+      enabled: false,
+      hasApiKey: false
+    },
+    {
+      id: 'dropbox',
+      name: 'Dropbox',
+      description: 'Backup mind maps to Dropbox',
+      icon: '📦',
+      color: '#0061FF',
+      enabled: false,
+      hasApiKey: false
+    },
+    {
+      id: 'github',
+      name: 'GitHub',
+      description: 'Export mind maps as markdown',
+      icon: '🐙',
+      color: '#181717',
+      enabled: false,
+      hasApiKey: false
+    },
+    {
+      id: 'trello',
+      name: 'Trello',
+      description: 'Create cards from mind map nodes',
+      icon: '📋',
+      color: '#0079BF',
+      enabled: false,
+      hasApiKey: false
+    },
+    {
+      id: 'asana',
+      name: 'Asana',
+      description: 'Convert mind maps to tasks',
+      icon: '✅',
+      color: '#F06A6A',
+      enabled: false,
+      hasApiKey: false
+    },
+    {
+      id: 'jira',
+      name: 'Jira',
+      description: 'Generate issues from mind maps',
+      icon: '🎯',
+      color: '#0052CC',
+      enabled: false,
+      hasApiKey: false
+    },
+    {
+      id: 'confluence',
+      name: 'Confluence',
+      description: 'Publish mind maps to Confluence',
+      icon: '📚',
+      color: '#172B4D',
+      enabled: false,
+      hasApiKey: false
+    },
+    {
+      id: 'microsoft-teams',
+      name: 'Microsoft Teams',
+      description: 'Share mind maps in Teams',
+      icon: '👥',
+      color: '#6264A7',
+      enabled: false,
+      hasApiKey: false
+    },
+    {
+      id: 'zoom',
+      name: 'Zoom',
+      description: 'Present mind maps in Zoom',
+      icon: '📹',
+      color: '#2D8CFF',
+      enabled: false,
+      hasApiKey: false
+    },
+    {
+      id: 'onedrive',
+      name: 'OneDrive',
+      description: 'Sync with Microsoft OneDrive',
+      icon: '💾',
+      color: '#0078D4',
+      enabled: false,
+      hasApiKey: false
+    },
+    {
+      id: 'evernote',
+      name: 'Evernote',
+      description: 'Export to Evernote notes',
+      icon: '🐘',
+      color: '#00A82D',
+      enabled: false,
+      hasApiKey: false
+    },
+    {
+      id: 'obsidian',
+      name: 'Obsidian',
+      description: 'Export mind maps to Obsidian',
+      icon: '💎',
+      color: '#483699',
+      enabled: false,
+      hasApiKey: false
+    },
+    {
+      id: 'roam-research',
+      name: 'Roam Research',
+      description: 'Sync with Roam Research',
+      icon: '🕸️',
+      color: '#4A5568',
+      enabled: false,
+      hasApiKey: false
+    }
+  ];
+
+  const filteredIntegrations = integrations.filter(integration =>
+    integration.name.toLowerCase().includes(integrationSearch.toLowerCase()) ||
+    integration.description.toLowerCase().includes(integrationSearch.toLowerCase())
+  );
+
+  const handleIntegrationClick = (integration) => {
+    setMessageFadeOut(false);
+    if (integration.id === 'notion') {
+      // For Notion, we'll show the API key input in a modal or inline
+      // For now, just focus on the search or show a message
+      setMessage({ type: 'info', text: 'Use the API key field below to connect Notion' });
+      setTimeout(() => {
+        setMessageFadeOut(true);
+        setTimeout(() => {
+          setMessage({ type: '', text: '' });
+          setMessageFadeOut(false);
+        }, 500);
+      }, 10000);
+    } else {
+      setMessage({ type: 'info', text: `${integration.name} integration coming soon!` });
+      setTimeout(() => {
+        setMessageFadeOut(true);
+        setTimeout(() => {
+          setMessage({ type: '', text: '' });
+          setMessageFadeOut(false);
+        }, 500);
+      }, 10000);
+    }
+  };
+
   const renderIntegrationsSection = () => (
     <div className="settings-section">
       <h3>Integrations</h3>
-      <div className="form-group">
-        <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
-          <label htmlFor="notionApiKey">Notion API Key</label>
+      
+      <div className="integrations-search-container">
+        <div className="integrations-search-wrapper">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="search-icon">
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search integrations..."
+            value={integrationSearch}
+            onChange={(e) => setIntegrationSearch(e.target.value)}
+            className="integrations-search-input"
+          />
+        </div>
+      </div>
+
+      <div className="integrations-grid">
+        {filteredIntegrations.map((integration) => (
+          <div
+            key={integration.id}
+            className={`integration-card ${integration.enabled ? 'enabled' : ''}`}
+            onClick={() => handleIntegrationClick(integration)}
+          >
+            <div className="integration-icon" style={{ backgroundColor: `${integration.color}15` }}>
+              <span className="integration-emoji">{integration.icon}</span>
+            </div>
+            <div className="integration-info">
+              <h4>{integration.name}</h4>
+              <p>{integration.description}</p>
+            </div>
+            <div className="integration-status">
+              {integration.enabled ? (
+                <span className="status-badge connected">Connected</span>
+              ) : (
+                <span className="status-badge available">Available</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {filteredIntegrations.length === 0 && (
+        <div className="integrations-empty">
+          <p>No integrations found matching "{integrationSearch}"</p>
+        </div>
+      )}
+
+      {/* Notion API Key Input (shown when Notion is selected or always visible) */}
+      <div className="form-group" style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid #e9ecef' }}>
+        <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px'}}>
+          <label htmlFor="notionApiKey" style={{ marginBottom: 0 }}>Notion API Key</label>
           <a 
             href="https://www.notion.so/my-integrations" 
             target="_blank" 
@@ -356,44 +665,132 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
     </div>
   );
 
-  const renderSubscriptionSection = () => (
-    <div className="settings-section">
-      <h3>Subscription</h3>
-      <div className="subscription-info">
-        <div className="tier-display">
-          <span className="current-tier">
-            <TierIcon tier={userTier} />
-            <span className="tier-name">{userTier} Plan</span>
-          </span>
-          <button type="button" className="upgrade-button" onClick={handleUpgradeClick}>
-            Upgrade Plan
-          </button>
-        </div>
-        <div className="tier-features">
-          <h4>Your Features & Limits</h4>
-          <ul>
-            <li><CheckIcon /> Up to {TIER_FEATURES[userTier].maxMindMaps} mind maps</li>
-            <li><CheckIcon /> Maximum {TIER_FEATURES[userTier].maxNodesPerMap} nodes per map</li>
-            <li><CheckIcon /> {TIER_FEATURES[userTier].maxCollaborators} collaborator{TIER_FEATURES[userTier].maxCollaborators !== 1 ? 's' : ''}</li>
-            <li><CheckIcon /> Export formats: {TIER_FEATURES[userTier].allowedExportFormats.join(', ')}</li>
-            {Object.entries(TIER_FEATURES[userTier].features)
-              .filter(([_, enabled]) => enabled)
-              .map(([feature]) => (
-                <li key={feature}><CheckIcon /> {formatFeatureName(feature)}</li>
-              ))
-            }
-          </ul>
+  const renderSubscriptionSection = () => {
+    const formatLimit = (value) => value === -1 ? 'Unlimited' : value;
+    const formatCollaborators = (value) => {
+      if (value === -1) return 'Unlimited collaborators';
+      if (value === 0) return 'No collaborators';
+      return `${value} collaborator${value !== 1 ? 's' : ''}`;
+    };
+    
+    return (
+      <div className="settings-section">
+        <h3>Subscription</h3>
+        <div className="subscription-info">
+          <div className="tier-display">
+            <span className="current-tier">
+              <TierIcon tier={userTier} />
+              <span className="tier-name">{userTier} Plan</span>
+            </span>
+            <button type="button" className="upgrade-button" onClick={handleUpgradeClick}>
+              Upgrade Plan
+            </button>
+          </div>
+          <div className="tier-features">
+            <h4>Your Features & Limits</h4>
+            <ul>
+              <li><CheckIcon /> Up to {formatLimit(TIER_FEATURES[userTier].maxMindMaps)} mind maps</li>
+              <li><CheckIcon /> Maximum {formatLimit(TIER_FEATURES[userTier].maxNodesPerMap)} nodes per map</li>
+              <li><CheckIcon /> {formatCollaborators(TIER_FEATURES[userTier].maxCollaborators)}</li>
+              <li><CheckIcon /> Export: {TIER_FEATURES[userTier].allowedExportFormats.join(', ')}</li>
+              {Object.entries(TIER_FEATURES[userTier].features)
+                .filter(([_, enabled]) => enabled)
+                .map(([feature]) => (
+                  <li key={feature}><CheckIcon /> {formatFeatureName(feature)}</li>
+                ))
+              }
+            </ul>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
+
+  const handleProfilePictureChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setMessage({ type: 'error', text: 'Please select an image file' });
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage({ type: 'error', text: 'Image size must be less than 5MB' });
+      return;
+    }
+
+    setProfilePicture(file);
+    setMessage({ type: '', text: '' });
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setProfilePicturePreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
 
   // General section for toggling coordinates
   const renderGeneralSection = () => (
     <div className="settings-section">
       <h3>General</h3>
+      
       <div className="form-group">
-        <label htmlFor="showCoordinates" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <label htmlFor="profilePicture">Profile Picture</label>
+        <div className="profile-picture-container">
+          <div className="profile-picture-preview">
+            <img 
+              src={profilePicturePreview || '/default-avatar.png'} 
+              alt="Profile" 
+              className="profile-picture-preview-img"
+            />
+            {isUploadingPicture && (
+              <div className="profile-picture-uploading">Uploading...</div>
+            )}
+          </div>
+          <div className="profile-picture-actions">
+            <input
+              ref={fileInputRef}
+              type="file"
+              id="profilePicture"
+              accept="image/*"
+              onChange={handleProfilePictureChange}
+              style={{ display: 'none' }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="profile-picture-upload-button"
+              disabled={isUploadingPicture}
+            >
+              {profilePicture ? 'Change Picture' : 'Upload Picture'}
+            </button>
+            {(profilePicturePreview && profilePicturePreview !== '/default-avatar.png') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setProfilePicture(null);
+                  setProfilePicturePreview(null);
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                  }
+                }}
+                className="profile-picture-remove-button"
+                disabled={isUploadingPicture}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+        <small>Upload a profile picture (max 5MB). Changes will be saved when you click Save.</small>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="showCoordinates" style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer' }}>
           <input
             type="checkbox"
             id="showCoordinates"
@@ -402,10 +799,34 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
               setShowCoordinates(e.target.checked);
               localStorage.setItem('showCoordinates', e.target.checked);
             }}
+            style={{ marginTop: '2px', cursor: 'pointer' }}
           />
-          Show coordinates under each object
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 500, marginBottom: '4px' }}>Show coordinates under each object</div>
+            <small style={{ display: 'block', marginTop: '4px' }}>Toggle the display of (x, y) coordinates below each whiteboard item.</small>
+          </div>
         </label>
-        <small>Toggle the display of (x, y) coordinates below each whiteboard item.</small>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="showFooter" style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            id="showFooter"
+            checked={showFooter}
+            onChange={e => {
+              setShowFooter(e.target.checked);
+              localStorage.setItem('showFooter', e.target.checked);
+              // Dispatch custom event to notify other components
+              window.dispatchEvent(new Event('showFooterChanged'));
+            }}
+            style={{ marginTop: '2px', cursor: 'pointer' }}
+          />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 500, marginBottom: '4px' }}>Show footer</div>
+            <small style={{ display: 'block', marginTop: '4px' }}>Toggle the display of the footer showing board name and canvas/view dimensions.</small>
+          </div>
+        </label>
       </div>
     </div>
   );
@@ -466,7 +887,7 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
 
         <div className="settings-content">
           {message.text && (
-            <div className={`message ${message.type}`}>
+            <div className={`message ${message.type} ${messageFadeOut ? 'fade-out' : ''}`}>
               {message.text}
             </div>
           )}
@@ -474,11 +895,13 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
           {isLoading ? (
             <div className="loading-message">Loading settings...</div>
           ) : (
-            <form onSubmit={handleSave}>
-              {activeSection === SETTINGS_SECTIONS.GENERAL && renderGeneralSection()}
-              {activeSection === SETTINGS_SECTIONS.PROFILE && renderProfileSection()}
-              {activeSection === SETTINGS_SECTIONS.INTEGRATIONS && renderIntegrationsSection()}
-              {activeSection === SETTINGS_SECTIONS.SUBSCRIPTION && renderSubscriptionSection()}
+            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+              <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+                {activeSection === SETTINGS_SECTIONS.GENERAL && renderGeneralSection()}
+                {activeSection === SETTINGS_SECTIONS.PROFILE && renderProfileSection()}
+                {activeSection === SETTINGS_SECTIONS.INTEGRATIONS && renderIntegrationsSection()}
+                {activeSection === SETTINGS_SECTIONS.SUBSCRIPTION && renderSubscriptionSection()}
+              </div>
 
               <div className="form-actions">
                 <button type="button" onClick={onClose}>Cancel</button>

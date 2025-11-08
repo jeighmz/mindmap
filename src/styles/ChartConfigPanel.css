@@ -7,7 +7,7 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
   top: 50%;
   transform: translateY(-50%);
-  padding: 8px;
+  padding: 12px;
   border-radius: 6px;
   width: 240px;
   max-height: 70vh;
@@ -59,11 +59,15 @@
 
 /* Form sections */
 .chart-config-section {
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .chart-config-section:last-child {
   margin-bottom: 0;
+}
+
+.chart-config-section:first-child {
+  margin-top: 0;
 }
 
 /* Input groups for side-by-side inputs */
@@ -169,20 +173,15 @@
 
 /* Nested chart settings panel */
 .chart-settings-nested {
-  position: fixed;
-  right: 280px;
-  top: 50%;
-  transform: translateY(-50%);
-  background-color: white;
-  padding: 8px;
+  position: relative;
+  background-color: #f9f9f9;
+  padding: 12px;
   border-radius: 6px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-  width: 240px;
-  z-index: 2001;
-  border: 1px solid #ddd;
+  border: 1px solid #e0e0e0;
+  margin-top: 8px;
   font-size: 12px;
-  max-height: 70vh;
-  overflow-y: auto;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* Wave type selector */
@@ -310,7 +309,6 @@
   }
   
   .chart-settings-nested {
-    width: 200px;
-    right: 220px;
+    width: 100%;
   }
 } 

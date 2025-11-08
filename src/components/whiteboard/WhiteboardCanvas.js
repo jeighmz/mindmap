@@ -97,6 +97,16 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   // Add state for color picker section
   const [activeColorSection, setActiveColorSection] = useState('background');
   
+  // Add state for footer visibility
+  const [showFooter, setShowFooter] = useState(() => {
+    const stored = localStorage.getItem('showFooter');
+    return stored === null ? true : stored === 'true';
+  });
+  
+  // Add state for zoom overlay visibility (fade-out effect)
+  const [zoomOverlayVisible, setZoomOverlayVisible] = useState(true);
+  const zoomOverlayTimeoutRef = useRef(null);
+  
   // Add undo functionality
   const [undoStack, setUndoStack] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
@@ -104,6 +114,67 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   // Add scalar slider for mind map branch distance
   const [branchDistance, setBranchDistance] = useState(0.8); // Default multiplier - more compact
 
+  // Listen for showFooter changes from localStorage
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'showFooter') {
+        setShowFooter(e.newValue === 'true');
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Also listen for custom events (for same-tab updates)
+    const handleShowFooterChange = () => {
+      const stored = localStorage.getItem('showFooter');
+      setShowFooter(stored === null ? true : stored === 'true');
+    };
+    
+    window.addEventListener('showFooterChanged', handleShowFooterChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('showFooterChanged', handleShowFooterChange);
+    };
+  }, []);
+  
+  // Zoom overlay fade-out effect on mouse inactivity
+  useEffect(() => {
+    const handleMouseActivity = () => {
+      setZoomOverlayVisible(true);
+      
+      // Clear existing timeout
+      if (zoomOverlayTimeoutRef.current) {
+        clearTimeout(zoomOverlayTimeoutRef.current);
+      }
+      
+      // Set new timeout to fade out after 2 seconds of inactivity
+      zoomOverlayTimeoutRef.current = setTimeout(() => {
+        setZoomOverlayVisible(false);
+      }, 2000);
+    };
+    
+    // Initial timeout
+    zoomOverlayTimeoutRef.current = setTimeout(() => {
+      setZoomOverlayVisible(false);
+    }, 2000);
+    
+    // Listen for mouse movement and mouse enter on canvas
+    const canvas = document.querySelector('.whiteboard-canvas');
+    if (canvas) {
+      canvas.addEventListener('mousemove', handleMouseActivity);
+      canvas.addEventListener('mouseenter', handleMouseActivity);
+      
+      return () => {
+        canvas.removeEventListener('mousemove', handleMouseActivity);
+        canvas.removeEventListener('mouseenter', handleMouseActivity);
+        if (zoomOverlayTimeoutRef.current) {
+          clearTimeout(zoomOverlayTimeoutRef.current);
+        }
+      };
+    }
+  }, []);
+  
   // Sync with external state if provided
   useEffect(() => {
     if (externalIsMindMapPanelOpen !== undefined) {
@@ -118,8 +189,23 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       if (onMindMapPanelClose) {
         onMindMapPanelClose();
       }
+    },
+    handleOpenMindMapPanel: () => {
+      setIsMindMapPanelOpen(true);
+    },
+    handleOpenSearchPanel: () => {
+      // Only use highlighted items if there are currently selected items
+      // Otherwise, clear highlighted items to start fresh
+      if (selectedItems.size === 0) {
+        setHighlightedItems([]);
+      } else {
+        // Convert selectedItems Set to array of item objects
+        const selectedItemsArray = items.filter(item => selectedItems.has(item.id));
+        setHighlightedItems(selectedItemsArray);
+      }
+      setIsSearchPanelOpen(true);
     }
-  }));
+  }), [selectedItems, items]);
 
   const handleMouseUp = useCallback((e) => {
     if (isPanning) {
@@ -412,6 +498,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const handleWheel = useCallback((e) => {
     // Enable scroll zoom without requiring Ctrl key
     e.preventDefault();
+    setZoomOverlayVisible(true); // Show zoom overlay when zooming
     const delta = e.deltaY > 0 ? 0.9 : 1.1; // Scroll down = zoom out (0.9), scroll up = zoom in (1.1)
     setScale(s => {
       const newScale = Math.min(Math.max(0.1, s * delta), 4); // Restored max zoom to 4 for better zoom range
@@ -3421,7 +3508,8 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
       if (canvas) {
         const rect = canvas.getBoundingClientRect();
         const viewWidth = rect.width / scale;
-        const viewHeight = (rect.height - 15) / scale; // Subtract footer height
+        const footerHeight = showFooter ? 15 : 0;
+        const viewHeight = (rect.height - footerHeight) / scale;
         setCanvasViewSize({ width: viewWidth, height: viewHeight });
       }
     };
@@ -4463,48 +4551,6 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
             New Canvas
           </button>
           <UserMenu />
-          {/* Board URL Path - displayed in header */}
-          {currentBoardName && user && (() => {
-            // Get username from displayName or email
-            const getUsername = () => {
-              if (user.displayName) {
-                return user.displayName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-              }
-              if (user.email) {
-                // Extract username from email (part before @)
-                return user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9-]/g, '');
-              }
-              return 'user';
-            };
-            
-            const username = getUsername();
-            const boardSlug = currentBoardName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-            const urlPath = `${username}/dashboards/${boardSlug}`;
-            
-            return (
-              <div className="board-url-path-inline">
-                <span className="board-url-text">
-                  {urlPath}
-                </span>
-                <button
-                  className="copy-url-button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(window.location.origin + '/' + urlPath).then(() => {
-                      alert('URL copied to clipboard!');
-                    }).catch(() => {
-                      // Silently fail
-                    });
-                  }}
-                  title="Copy URL to clipboard"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                  </svg>
-                </button>
-              </div>
-            );
-          })()}
         </div>
       </div>
 
@@ -4522,17 +4568,41 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
           position: 'relative',
           overflow: 'hidden',
           width: '100%',
-          height: 'calc(100% - 15px)'
+          height: showFooter ? 'calc(100% - 15px)' : '100%'
         }}
       >
-        <div className="whiteboard-zoom-overlay">
+        <div 
+          className={`whiteboard-zoom-overlay ${zoomOverlayVisible ? 'zoom-overlay-visible' : 'zoom-overlay-hidden'}`}
+          onMouseEnter={() => setZoomOverlayVisible(true)}
+          onMouseLeave={() => {
+            // Start fade-out timer when mouse leaves
+            if (zoomOverlayTimeoutRef.current) {
+              clearTimeout(zoomOverlayTimeoutRef.current);
+            }
+            zoomOverlayTimeoutRef.current = setTimeout(() => {
+              setZoomOverlayVisible(false);
+            }, 2000);
+          }}
+        >
           <div className="zoom-controls">
-            <button onClick={(e) => { e.stopPropagation(); setScale(s => Math.min(s * 1.1, 4)); }}>+</button>
+            <button onClick={(e) => { 
+              e.stopPropagation(); 
+              setZoomOverlayVisible(true);
+              setScale(s => Math.min(s * 1.1, 4)); 
+            }}>+</button>
             <span>{Math.round(scale * 100)}%</span>
-            <button onClick={(e) => { e.stopPropagation(); setScale(s => Math.max(s * 0.9, 0.1)); }}>-</button>
+            <button onClick={(e) => { 
+              e.stopPropagation(); 
+              setZoomOverlayVisible(true);
+              setScale(s => Math.max(s * 0.9, 0.1)); 
+            }}>-</button>
             <button 
               className="home-button" 
-              onClick={(e) => { e.stopPropagation(); handleResetView(); }}
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                setZoomOverlayVisible(true);
+                handleResetView(); 
+              }}
               title="Reset view"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -4542,7 +4612,11 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
             </button>
             <button 
               className="full-width-button" 
-              onClick={(e) => { e.stopPropagation(); handleZoomToFullWidth(); }}
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                setZoomOverlayVisible(true);
+                handleZoomToFullWidth(); 
+              }}
               title="Zoom to full width"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -4553,6 +4627,7 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
               className="viewport-indicator" 
               onClick={(e) => {
                 e.stopPropagation();
+                setZoomOverlayVisible(true);
                 const viewport = e.currentTarget;
                 const rect = viewport.getBoundingClientRect();
                 const x = (e.clientX - rect.left) / rect.width;
@@ -4632,7 +4707,6 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
             </div>
             <div className="control-tip-container">
             <div className="control-tip">
-              <span className="keyboard-key">Alt</span> + <span className="mouse-action">Drag</span> or 
               <span className="keyboard-key">Space</span> + <span className="mouse-action">Drag</span> to pan
               <span className="touch-tip">• Use two fingers to pan on touch devices</span>
             </div>
@@ -4853,59 +4927,50 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
       })()}
 
       {isMindMapPanelOpen && (
-        <div className="mind-map-modal-overlay" onClick={handleCloseMindMapPanel}>
-          <div className="mind-map-modal" onClick={e => e.stopPropagation()}>
-            <div className="mind-map-modal-header">
-              <h3>Generate Mind Map</h3>
-              <button className="close-button" onClick={handleCloseMindMapPanel}>×</button>
-            </div>
-            <div className="mind-map-modal-content">
-              <div className="mind-map-input-container">
-                <label htmlFor="mind-map-prompt">Enter a topic or prompt:</label>
-                <textarea
-                  id="mind-map-prompt"
-                  value={mindMapPrompt}
-                  onChange={(e) => setMindMapPrompt(e.target.value)}
-                  placeholder="e.g., Artificial Intelligence, Project Planning, etc."
-                  rows={4}
-                />
-              </div>
-              
-              <div className="mind-map-settings-container">
-                <label htmlFor="branch-distance-slider">
-                  Branch Distance: {branchDistance.toFixed(2)}x
-                </label>
-                <input
-                  id="branch-distance-slider"
-                  type="range"
-                  min="0.7"
-                  max="1.5"
-                  step="0.05"
-                  value={branchDistance}
-                  onChange={(e) => setBranchDistance(parseFloat(e.target.value))}
-                  className="branch-distance-slider"
-                />
-                <div className="slider-labels">
-                  <span>Compact</span>
-                  <span>Default</span>
-                  <span>Spread Out</span>
-                </div>
-              </div>
-              <button 
-                className="generate-mind-map-button"
-                onClick={handleGenerateMindMap}
-                disabled={isGeneratingMindMap || !mindMapPrompt.trim()}
-              >
-                {isGeneratingMindMap ? (
-                  <>
-                    <span>Generating...</span>
-                    <span className="loading-spinner"></span>
-                  </>
-                ) : (
-                  'Generate Mind Map'
-                )}
-              </button>
-            </div>
+        <div className="mind-map-floating-prompt">
+          <div className="mind-map-prompt-container">
+            <input
+              type="text"
+              className="mind-map-prompt-input"
+              value={mindMapPrompt}
+              onChange={(e) => setMindMapPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !isGeneratingMindMap && mindMapPrompt.trim()) {
+                  e.preventDefault();
+                  handleGenerateMindMap();
+                }
+                if (e.key === 'Escape') {
+                  handleCloseMindMapPanel();
+                }
+              }}
+              placeholder="Generate a mind map..."
+              autoFocus
+              disabled={isGeneratingMindMap}
+            />
+            <button 
+              className="mind-map-prompt-button"
+              onClick={handleGenerateMindMap}
+              disabled={isGeneratingMindMap || !mindMapPrompt.trim()}
+              title="Generate Mind Map"
+            >
+              {isGeneratingMindMap ? (
+                <span className="loading-spinner"></span>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              )}
+            </button>
+            <button 
+              className="mind-map-prompt-close"
+              onClick={handleCloseMindMapPanel}
+              title="Close"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12"></path>
+              </svg>
+            </button>
           </div>
         </div>
       )}
@@ -4930,21 +4995,23 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
       </button>
 
       {/* Footer with canvas and view size */}
-      <div className="whiteboard-footer">
-        <div className="footer-left">
-          <span>
-            {currentBoardName ? `Board: ${currentBoardName}` : 'Untitled Board'}
-          </span>
+      {showFooter && (
+        <div className="whiteboard-footer">
+          <div className="footer-left">
+            <span>
+              {currentBoardName ? `Board: ${currentBoardName}` : 'Untitled Board'}
+            </span>
+          </div>
+          <div className="footer-right">
+            <span>
+              Canvas: {4000} × {4000}px
+            </span>
+            <span>
+              View: {Math.round(canvasViewSize.width)} × {Math.round(canvasViewSize.height)}px
+            </span>
+          </div>
         </div>
-        <div className="footer-right">
-          <span>
-            Canvas: {4000} × {4000}px
-          </span>
-          <span>
-            View: {Math.round(canvasViewSize.width)} × {Math.round(canvasViewSize.height)}px
-          </span>
-        </div>
-      </div>
+      )}
     </div>
   );
 });

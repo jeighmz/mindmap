@@ -7,29 +7,34 @@ const ChartConfigPanel = React.memo(({
   onClose,
   position = 'right'
 }) => {
-  // Initialize form data with a callback to prevent unnecessary recalculations
+  // ==================== State ====================
   const [formData, setFormData] = useState(() => ({
+    // Basic chart settings
     title: initialConfig.title || '',
     xAxisTitle: initialConfig.xAxisTitle || '',
     yAxisTitle: initialConfig.yAxisTitle || '',
-    xAxisUnit: initialConfig.xAxisUnit || 1,
-    yAxisUnit: initialConfig.yAxisUnit || 1,
-    xAxisStart: initialConfig.xAxisStart || 0,
-    yAxisStart: initialConfig.yAxisStart || 0,
-    xAxisEnd: initialConfig.xAxisEnd || 10,
-    yAxisEnd: initialConfig.yAxisEnd || 10,
+    
+    // X-axis settings
     xAxisMode: initialConfig.xAxisMode || 'number',
-    yAxisMode: initialConfig.yAxisMode || 'number',
+    xAxisUnit: initialConfig.xAxisUnit || 1,
+    xAxisStart: initialConfig.xAxisStart || 0,
+    xAxisEnd: initialConfig.xAxisEnd || 10,
     xAxisStartDate: initialConfig.xAxisStartDate || new Date().toISOString().split('T')[0],
     xAxisEndDate: initialConfig.xAxisEndDate || new Date().toISOString().split('T')[0],
+    xAxisCustomValues: initialConfig.xAxisCustomValues || [],
+    showXAxisLabels: initialConfig.showXAxisLabels === undefined ? true : Boolean(initialConfig.showXAxisLabels),
+    
+    // Y-axis settings
+    yAxisMode: initialConfig.yAxisMode || 'number',
+    yAxisUnit: initialConfig.yAxisUnit || 1,
+    yAxisStart: initialConfig.yAxisStart || 0,
+    yAxisEnd: initialConfig.yAxisEnd || 10,
     yAxisStartDate: initialConfig.yAxisStartDate || new Date().toISOString().split('T')[0],
     yAxisEndDate: initialConfig.yAxisEndDate || new Date().toISOString().split('T')[0],
-    xAxisCustomValues: initialConfig.xAxisCustomValues || [],
     yAxisCustomValues: initialConfig.yAxisCustomValues || [],
-    // Explicitly handle boolean values for axis labels
-    showXAxisLabels: initialConfig.showXAxisLabels === undefined ? true : Boolean(initialConfig.showXAxisLabels),
     showYAxisLabels: initialConfig.showYAxisLabels === undefined ? true : Boolean(initialConfig.showYAxisLabels),
-    // Add sine wave specific settings only if it's a sine chart
+    
+    // Sine wave specific settings (only for sine charts)
     ...(initialConfig.chartType === 'sine' ? {
       frequency: initialConfig.frequency || 1,
       amplitude: initialConfig.amplitude || 1,
@@ -40,12 +45,14 @@ const ChartConfigPanel = React.memo(({
       enableModulation: initialConfig.enableModulation || false,
       modulationDepth: initialConfig.modulationDepth || 0.5
     } : {}),
+    
+    // UI state
     expandedSection: null
   }));
 
   const configPanelRef = useRef(null);
 
-  // Handle clicks outside the panel
+  // ==================== Effects ====================
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (configPanelRef.current && !configPanelRef.current.contains(e.target)) {
@@ -57,10 +64,24 @@ const ChartConfigPanel = React.memo(({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [onClose]);
 
+  // ==================== Helper Functions ====================
+  const parseCustomValues = (valuesString) => {
+    try {
+      return valuesString.split(',')
+        .map(val => val.trim())
+        .filter(val => val !== '');
+    } catch (error) {
+      return [];
+    }
+  };
+
+  const getPositionClass = () => {
+    return `chart-config-panel ${position}`;
+  };
+
+  // ==================== Event Handlers ====================
   const handleChange = useCallback((e) => {
     const { name, value, type, checked } = e.target;
-    
-    // For checkboxes, ensure we're setting a strict boolean value
     const newValue = type === 'checkbox' ? checked === true : value;
     
     setFormData(prev => ({
@@ -69,16 +90,9 @@ const ChartConfigPanel = React.memo(({
     }));
   }, []);
 
-  const parseCustomValues = (valuesString) => {
-    try {
-      // Split by commas and clean up each value
-      return valuesString.split(',')
-        .map(val => val.trim())
-        .filter(val => val !== '');
-    } catch (error) {
-      return [];
-    }
-  };
+  const handleContainerClick = useCallback((e) => {
+    e.stopPropagation();
+  }, []);
 
   const handleSubmit = useCallback((e) => {
     e.preventDefault();
@@ -123,237 +137,26 @@ const ChartConfigPanel = React.memo(({
 
     // If it's a sine chart, include the sine-specific settings
     if (initialConfig.chartType === 'sine') {
+      const periods = parseFloat(formData.periods);
       Object.assign(processedData, {
         frequency: parseFloat(formData.frequency),
         amplitude: parseFloat(formData.amplitude),
-        periods: parseFloat(formData.periods),
+        periods: periods,
         waveType: formData.waveType,
         phaseShift: parseFloat(formData.phaseShift || 0),
         harmonics: parseInt(formData.harmonics || 1),
         enableModulation: Boolean(formData.enableModulation),
-        modulationDepth: parseFloat(formData.modulationDepth || 0.5)
+        modulationDepth: parseFloat(formData.modulationDepth || 0.5),
+        // Automatically set xAxisEnd based on periods (2π per period)
+        xAxisEnd: 2 * Math.PI * periods
       });
     }
-
-    // Log the processed data to verify the visibility settings
-    console.log('Chart config update:', {
-      title: processedData.title,
-      xAxisTitle: processedData.xAxisTitle,
-      yAxisTitle: processedData.yAxisTitle,
-      showXAxisLabels: processedData.showXAxisLabels,
-      showYAxisLabels: processedData.showYAxisLabels
-    });
 
     onConfigUpdate(processedData);
     onClose();
   }, [formData, onConfigUpdate, onClose, initialConfig]);
 
-  const handleContainerClick = useCallback((e) => {
-    e.stopPropagation();
-  }, []);
-
-  const getPositionClass = () => {
-    return `chart-config-panel ${position}`;
-  };
-
-  const renderXAxisInputs = () => {
-    return (
-      <>
-        <div className="checkbox-section">
-          <input
-            type="checkbox"
-            id="showXAxisLabels"
-            name="showXAxisLabels"
-            checked={Boolean(formData.showXAxisLabels)}
-            onChange={handleChange}
-          />
-          <label htmlFor="showXAxisLabels">
-            Show X-Axis Labels
-          </label>
-        </div>
-        
-        {Boolean(formData.showXAxisLabels) && (
-          <>
-            {formData.xAxisMode === 'number' && (
-              <>
-                <div className="input-group">
-                  <div>
-                    <label>X Start:</label>
-                    <input
-                      type="number"
-                      name="xAxisStart"
-                      value={formData.xAxisStart}
-                      onChange={handleChange}
-                      step="1"
-                    />
-                  </div>
-                  <div>
-                    <label>X End:</label>
-                    <input
-                      type="number"
-                      name="xAxisEnd"
-                      value={formData.xAxisEnd}
-                      onChange={handleChange}
-                      step="1"
-                    />
-                  </div>
-                </div>
-                <div className="input-container">
-                  <label>X Unit Step:</label>
-                  <input
-                    type="number"
-                    name="xAxisUnit"
-                    value={formData.xAxisUnit}
-                    onChange={handleChange}
-                    min="0.1"
-                    step="0.1"
-                  />
-                </div>
-              </>
-            )}
-            {formData.xAxisMode === 'date' && (
-              <div className="input-group">
-                <div>
-                  <label>Start Date:</label>
-                  <input
-                    type="date"
-                    name="xAxisStartDate"
-                    value={formData.xAxisStartDate}
-                    onChange={handleChange}
-                  />
-                </div>
-                <div>
-                  <label>End Date:</label>
-                  <input
-                    type="date"
-                    name="xAxisEndDate"
-                    value={formData.xAxisEndDate}
-                    onChange={handleChange}
-                  />
-                </div>
-              </div>
-            )}
-            {formData.xAxisMode === 'custom' && (
-              <div className="input-container">
-                <label>Custom Values:</label>
-                <textarea
-                  name="xAxisCustomValues"
-                  value={formData.xAxisCustomValues}
-                  onChange={handleChange}
-                  placeholder="Low, Medium, High"
-                  rows={2}
-                />
-                <small className="help-text">
-                  Comma-separated values
-                </small>
-              </div>
-            )}
-          </>
-        )}
-      </>
-    );
-  };
-
-  const renderYAxisInputs = () => {
-    return (
-      <>
-        <div className="y-axis-checkbox-section">
-          <input
-            type="checkbox"
-            id="showYAxisLabels"
-            name="showYAxisLabels"
-            checked={Boolean(formData.showYAxisLabels)}
-            onChange={handleChange}
-          />
-          <label 
-            htmlFor="showYAxisLabels"
-          >
-            Show Y-Axis Labels
-          </label>
-        </div>
-
-        {Boolean(formData.showYAxisLabels) && (
-          <>
-            {formData.yAxisMode === 'number' && (
-              <>
-                <div className="input-group">
-                  <div>
-                    <label>Y Start:</label>
-                    <input
-                      type="number"
-                      name="yAxisStart"
-                      value={formData.yAxisStart}
-                      onChange={handleChange}
-                      step="1"
-                    />
-                  </div>
-                  <div>
-                    <label>Y End:</label>
-                    <input
-                      type="number"
-                      name="yAxisEnd"
-                      value={formData.yAxisEnd}
-                      onChange={handleChange}
-                      step="1"
-                    />
-                  </div>
-                </div>
-                <div className="input-container">
-                  <label>Y Unit Step:</label>
-                  <input
-                    type="number"
-                    name="yAxisUnit"
-                    value={formData.yAxisUnit}
-                    onChange={handleChange}
-                    min="0.1"
-                    step="0.1"
-                  />
-                </div>
-              </>
-            )}
-            {formData.yAxisMode === 'date' && (
-              <div className="input-group">
-                <div>
-                  <label>Start Date:</label>
-                  <input
-                    type="date"
-                    name="yAxisStartDate"
-                    value={formData.yAxisStartDate}
-                    onChange={handleChange}
-                  />
-                </div>
-                <div>
-                  <label>End Date:</label>
-                  <input
-                    type="date"
-                    name="yAxisEndDate"
-                    value={formData.yAxisEndDate}
-                    onChange={handleChange}
-                  />
-                </div>
-              </div>
-            )}
-            {formData.yAxisMode === 'custom' && (
-              <div className="input-container">
-                <label>Custom Values:</label>
-                <textarea
-                  name="yAxisCustomValues"
-                  value={formData.yAxisCustomValues}
-                  onChange={handleChange}
-                  placeholder="Poor, Fair, Good, Excellent"
-                  rows={2}
-                />
-                <small className="help-text">
-                  Comma-separated values
-                </small>
-              </div>
-            )}
-          </>
-        )}
-      </>
-    );
-  };
-
+  // ==================== Render Functions ====================
   const renderChartSection = () => {
     const isExpanded = formData.expandedSection === 'chart';
     
@@ -506,6 +309,221 @@ const ChartConfigPanel = React.memo(({
     );
   };
 
+  const renderXAxisInputs = () => {
+    return (
+      <>
+        <div className="checkbox-section">
+          <input
+            type="checkbox"
+            id="showXAxisLabels"
+            name="showXAxisLabels"
+            checked={Boolean(formData.showXAxisLabels)}
+            onChange={handleChange}
+          />
+          <label htmlFor="showXAxisLabels">
+            Show X-Axis Labels
+          </label>
+        </div>
+        
+        {Boolean(formData.showXAxisLabels) && (
+          <>
+            {formData.xAxisMode === 'number' && (
+              <>
+                {initialConfig.chartType === 'sine' ? (
+                  <div className="input-container">
+                    <label>Periods:</label>
+                    <input
+                      type="number"
+                      name="periods"
+                      value={formData.periods}
+                      onChange={handleChange}
+                      min="0.5"
+                      step="0.5"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="input-group">
+                      <div>
+                        <label>X Start:</label>
+                        <input
+                          type="number"
+                          name="xAxisStart"
+                          value={formData.xAxisStart}
+                          onChange={handleChange}
+                          step="1"
+                        />
+                      </div>
+                      <div>
+                        <label>X End:</label>
+                        <input
+                          type="number"
+                          name="xAxisEnd"
+                          value={formData.xAxisEnd}
+                          onChange={handleChange}
+                          step="1"
+                        />
+                      </div>
+                    </div>
+                    <div className="input-container">
+                      <label>X Unit Step:</label>
+                      <input
+                        type="number"
+                        name="xAxisUnit"
+                        value={formData.xAxisUnit}
+                        onChange={handleChange}
+                        min="0.1"
+                        step="0.1"
+                      />
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+            {formData.xAxisMode === 'date' && (
+              <div className="input-group">
+                <div>
+                  <label>Start Date:</label>
+                  <input
+                    type="date"
+                    name="xAxisStartDate"
+                    value={formData.xAxisStartDate}
+                    onChange={handleChange}
+                  />
+                </div>
+                <div>
+                  <label>End Date:</label>
+                  <input
+                    type="date"
+                    name="xAxisEndDate"
+                    value={formData.xAxisEndDate}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+            )}
+            {formData.xAxisMode === 'custom' && (
+              <div className="input-container">
+                <label>Custom Values:</label>
+                <textarea
+                  name="xAxisCustomValues"
+                  value={formData.xAxisCustomValues}
+                  onChange={handleChange}
+                  placeholder="Low, Medium, High"
+                  rows={2}
+                />
+                <small className="help-text">
+                  Comma-separated values
+                </small>
+              </div>
+            )}
+          </>
+        )}
+      </>
+    );
+  };
+
+  const renderYAxisInputs = () => {
+    return (
+      <>
+        <div className="y-axis-checkbox-section">
+          <input
+            type="checkbox"
+            id="showYAxisLabels"
+            name="showYAxisLabels"
+            checked={Boolean(formData.showYAxisLabels)}
+            onChange={handleChange}
+          />
+          <label 
+            htmlFor="showYAxisLabels"
+          >
+            Show Y-Axis Labels
+          </label>
+        </div>
+
+        {Boolean(formData.showYAxisLabels) && (
+          <>
+            {formData.yAxisMode === 'number' && (
+              <>
+                <div className="input-group">
+                  <div>
+                    <label>Y Start:</label>
+                    <input
+                      type="number"
+                      name="yAxisStart"
+                      value={formData.yAxisStart}
+                      onChange={handleChange}
+                      step="1"
+                    />
+                  </div>
+                  <div>
+                    <label>Y End:</label>
+                    <input
+                      type="number"
+                      name="yAxisEnd"
+                      value={formData.yAxisEnd}
+                      onChange={handleChange}
+                      step="1"
+                    />
+                  </div>
+                </div>
+                <div className="input-container">
+                  <label>Y Unit Step:</label>
+                  <input
+                    type="number"
+                    name="yAxisUnit"
+                    value={formData.yAxisUnit}
+                    onChange={handleChange}
+                    min="0.1"
+                    step="0.1"
+                  />
+                </div>
+              </>
+            )}
+            {formData.yAxisMode === 'date' && (
+              <div className="input-group">
+                <div>
+                  <label>Start Date:</label>
+                  <input
+                    type="date"
+                    name="yAxisStartDate"
+                    value={formData.yAxisStartDate}
+                    onChange={handleChange}
+                  />
+                </div>
+                <div>
+                  <label>End Date:</label>
+                  <input
+                    type="date"
+                    name="yAxisEndDate"
+                    value={formData.yAxisEndDate}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+            )}
+            {formData.yAxisMode === 'custom' && (
+              <div className="input-container">
+                <label>Custom Values:</label>
+                <textarea
+                  name="yAxisCustomValues"
+                  value={formData.yAxisCustomValues}
+                  onChange={handleChange}
+                  placeholder="Poor, Fair, Good, Excellent"
+                  rows={2}
+                />
+                <small className="help-text">
+                  Comma-separated values
+                </small>
+              </div>
+            )}
+          </>
+        )}
+      </>
+    );
+  };
+
+  // ==================== Main Render ====================
   return (
     <div
       ref={configPanelRef}
@@ -513,10 +531,10 @@ const ChartConfigPanel = React.memo(({
       onClick={handleContainerClick}
     >
       <form onSubmit={handleSubmit}>
-        {/* Chart settings dropdown for sine charts only */}
+        {/* Sine wave specific settings */}
         {initialConfig.chartType === 'sine' && renderChartSection()}
 
-        {/* Regular chart configuration */}
+        {/* Basic Chart Information */}
         <div className="chart-config-section">
           <label>Chart Title:</label>
           <input
@@ -547,6 +565,7 @@ const ChartConfigPanel = React.memo(({
           />
         </div>
 
+        {/* X-Axis Configuration */}
         <div className="chart-config-section">
           <label>X-Axis Type:</label>
           <select
@@ -554,14 +573,14 @@ const ChartConfigPanel = React.memo(({
             value={formData.xAxisMode}
             onChange={handleChange}
           >
-            <option value="number">Number</option>
+            <option value="number">{initialConfig.chartType === 'sine' ? 'Periods' : 'Number'}</option>
             <option value="date">Date</option>
             <option value="custom">Custom Values</option>
           </select>
         </div>
-
         {renderXAxisInputs()}
 
+        {/* Y-Axis Configuration */}
         <div className="chart-config-section">
           <label>Y-Axis Type:</label>
           <select
@@ -574,7 +593,6 @@ const ChartConfigPanel = React.memo(({
             <option value="custom">Custom Values</option>
           </select>
         </div>
-
         {renderYAxisInputs()}
 
         <div className="button-group">

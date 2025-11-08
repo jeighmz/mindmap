@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../styles/Pricing.css';
 import { useAuth } from '../contexts/AuthContext';
@@ -68,10 +68,13 @@ const plans = [
 
 export default function PricingPage() {
   const navigate = useNavigate();
-  const { user, userTier } = useAuth();
+  const { user, userTier, refreshUserData } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [processingTier, setProcessingTier] = useState(null);
+
+  // Firestore listener in AuthContext will automatically update tier
+  // No need to manually refresh on mount
 
   const handlePlanSelect = async (plan) => {
     setError(null);
@@ -102,11 +105,15 @@ export default function PricingPage() {
       }
 
       setIsLoading(true);
+      // Always redirect to checkout - Stripe will handle payment confirmation
+      // This applies to both new subscriptions and upgrades/downgrades
       await StripeService.createCheckoutSession(
         user.uid,
         plan.tier,
         'monthly'
       );
+      // Note: User will be redirected to Stripe Checkout, so code below won't execute
+      // The webhook will handle updating the tier after payment confirmation
     } catch (err) {
       console.error('Error starting checkout:', err);
       setError({
@@ -161,18 +168,20 @@ export default function PricingPage() {
         </div>
         
         {error && (
-          <div className="error-message">
+          <div className={`error-message ${error.type === 'success' ? 'success-message' : ''}`}>
             <p>{error.message}</p>
-            <button 
-              onClick={() => handleErrorAction(error)}
-              className="error-action-button"
-              disabled={isLoading}
-            >
-              {isLoading ? 'Processing...' : 
-                error.action === 'login' ? 'Log In' :
-                error.action === 'manage' ? 'Manage Subscription' :
-                'Try Again'}
-            </button>
+            {error.action && (
+              <button 
+                onClick={() => handleErrorAction(error)}
+                className="error-action-button"
+                disabled={isLoading}
+              >
+                {isLoading ? 'Processing...' : 
+                  error.action === 'login' ? 'Log In' :
+                  error.action === 'manage' ? 'Manage Subscription' :
+                  'Try Again'}
+              </button>
+            )}
           </div>
         )}
         

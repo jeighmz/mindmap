@@ -31,12 +31,53 @@ const calculateScale = (start, end, unit, mode, customValues) => {
   }
 };
 
-const formatAxisLabel = (value, mode) => {
+const formatAxisLabel = (value, mode, xAxisTitle = '') => {
   if (mode === 'date') {
     return formatDateLabel(value);
   } else if (mode === 'custom') {
     return value;
   } else {
+    // Check if x-axis title contains pi symbol
+    const isPiMode = xAxisTitle && (xAxisTitle.includes('π') || xAxisTitle.toLowerCase().includes('pi'));
+    
+    if (isPiMode && typeof value === 'number') {
+      // Format as multiples of pi
+      const piMultiple = value / Math.PI;
+      
+      // Handle common fractions
+      if (Math.abs(piMultiple - 0) < 0.001) return '0';
+      if (Math.abs(piMultiple - 0.5) < 0.001) return 'π/2';
+      if (Math.abs(piMultiple - 1) < 0.001) return 'π';
+      if (Math.abs(piMultiple - 1.5) < 0.001) return '3π/2';
+      if (Math.abs(piMultiple - 2) < 0.001) return '2π';
+      if (Math.abs(piMultiple - -0.5) < 0.001) return '-π/2';
+      if (Math.abs(piMultiple - -1) < 0.001) return '-π';
+      if (Math.abs(piMultiple - -1.5) < 0.001) return '-3π/2';
+      if (Math.abs(piMultiple - -2) < 0.001) return '-2π';
+      
+      // Check for other simple fractions
+      const absMultiple = Math.abs(piMultiple);
+      const numerator = Math.round(absMultiple * 2);
+      if (numerator % 2 === 0 && Math.abs(absMultiple - numerator / 2) < 0.001) {
+        const coeff = numerator / 2;
+        if (coeff === 1) {
+          return piMultiple < 0 ? '-π' : 'π';
+        } else {
+          return piMultiple < 0 ? `-${coeff}π` : `${coeff}π`;
+        }
+      }
+      
+      // For other values, show as decimal multiple of pi
+      if (Math.abs(piMultiple) < 0.001) return '0';
+      const rounded = Math.round(piMultiple * 100) / 100;
+      if (rounded === 1) return 'π';
+      if (rounded === -1) return '-π';
+      if (rounded % 1 === 0) {
+        return rounded < 0 ? `${rounded}π` : `${rounded}π`;
+      }
+      return `${rounded.toFixed(2)}π`;
+    }
+    
     return typeof value === 'number' ? value.toFixed(1) : value;
   }
 };
@@ -74,11 +115,11 @@ const WhiteboardItem = ({
     title: item.title || '',
     xAxisTitle: item.xAxisTitle || '',
     yAxisTitle: item.yAxisTitle || '',
-    xAxisUnit: item.xAxisUnit || 1,
+    xAxisUnit: item.xAxisUnit || (item.chartType === 'sine' ? Math.PI / 2 : 1),
     yAxisUnit: item.yAxisUnit || 0.5,  // Changed to 0.5 for better Y-axis divisions
-    xAxisStart: item.xAxisStart || 0,
+    xAxisStart: item.xAxisStart !== undefined ? item.xAxisStart : (item.chartType === 'sine' ? 0 : 0),
     yAxisStart: item.chartType === 'sine' ? 0 : (item.yAxisStart || 0),  // Default to 0 for sine
-    xAxisEnd: item.xAxisEnd || 10,
+    xAxisEnd: item.chartType === 'sine' ? (2 * Math.PI * (item.periods || 1)) : (item.xAxisEnd !== undefined ? item.xAxisEnd : 10),
     yAxisEnd: item.chartType === 'sine' ? 3 : (item.yAxisEnd || 10),  // Default to 3 for sine
     xAxisMode: item.xAxisMode || 'number',
     yAxisMode: item.yAxisMode || 'number',
@@ -763,18 +804,50 @@ const WhiteboardItem = ({
                     const step = timeRange / (count - 1);
                     xValues = Array.from({ length: count }, (_, i) => new Date(start.getTime() + (step * i)));
                   } else {
-                    // Default to π-based values for sine wave
-                    const divisions = Math.floor((width - padding * 2) / 60);
-                    xValues = Array.from({ length: divisions }, (_, i) => 
-                      ((i * Math.PI / 2) / (divisions - 1) * 4).toFixed(1) + 'π'
-                    );
+                    // For sine charts, ensure x-axis aligns with wave periods
+                    if (item.chartType === 'sine') {
+                      const periods = chartConfig.periods || 1;
+                      const maxAngle = 2 * Math.PI * periods;
+                      const start = chartConfig.xAxisStart || 0;
+                      // Always use calculated end based on periods for sine charts
+                      const end = 2 * Math.PI * periods;
+                      const unit = chartConfig.xAxisUnit || (Math.PI / 2);
+                      
+                      // Generate values from start to end with unit step
+                      const numSteps = Math.ceil((end - start) / unit) + 1;
+                      xValues = Array.from({ length: numSteps }, (_, i) => {
+                        const value = start + (i * unit);
+                        return value > end ? end : value;
+                      });
+                    } else {
+                      // Use calculateScale for non-sine charts
+                      xValues = calculateScale(
+                        chartConfig.xAxisStart,
+                        chartConfig.xAxisEnd,
+                        chartConfig.xAxisUnit,
+                        chartConfig.xAxisMode,
+                        chartConfig.xAxisCustomValues
+                      );
+                    }
                   }
 
                   const axisLength = width - padding * 2;
-                  const stepSize = axisLength / (xValues.length - 1);
 
                   return xValues.map((value, i) => {
-                    const x = padding + (i * stepSize);
+                    let x;
+                    if (item.chartType === 'sine') {
+                      // Map angle values to chart positions
+                      // The wave spans from xAxisStart to 2π * periods
+                      const start = chartConfig.xAxisStart || 0;
+                      const periods = chartConfig.periods || 1;
+                      const end = 2 * Math.PI * periods;
+                      const range = end - start;
+                      const normalizedPosition = range > 0 ? (value - start) / range : 0;
+                      x = padding + (normalizedPosition * axisLength);
+                    } else {
+                      const stepSize = axisLength / (xValues.length - 1);
+                      x = padding + (i * stepSize);
+                    }
                     return (
                       <g key={`x-${i}`}>
                         {/* Vertical grid line */}
@@ -801,7 +874,7 @@ const WhiteboardItem = ({
                               ? `rotate(-45, ${x}, ${height - effectivePadding + (tickLength * 3)})` 
                               : undefined}
                           >
-                            {formatAxisLabel(value, chartConfig.xAxisMode)}
+                            {formatAxisLabel(value, chartConfig.xAxisMode, chartConfig.xAxisTitle)}
                           </text>
                         )}
                       </g>
@@ -861,25 +934,6 @@ const WhiteboardItem = ({
                   });
                 })()}
                 
-                {/* X-Axis Title for sine wave */}
-                {chartConfig.xAxisTitle && chartConfig.showXAxisLabels === true && (
-                  <g>
-                    <text
-                      x={effectivePadding + (chartWidth / 2)}
-                      y={height - (padding / 2)}
-                      fontSize={Math.min(width, height) * 0.045}
-                      fill="#1a1a1a"
-                      textAnchor="middle"
-                      fontWeight="600"
-                      letterSpacing="0.5px"
-                      fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-                      style={{ userSelect: 'none' }}
-                      dominantBaseline="hanging"
-                    >
-                      {chartConfig.xAxisTitle}
-                    </text>
-                  </g>
-                )}
 
                 {/* Y-Axis Title for sine wave */}
                 {chartConfig.yAxisTitle && chartConfig.showYAxisLabels === true && (
@@ -1009,49 +1063,26 @@ const WhiteboardItem = ({
                   ));
                 })()}
 
-                {/* X-axis labels for sine wave */}
-                {(() => {
-                  const periods = chartConfig.periods || 1;
-                  const labels = [];
-                  const numLabels = Math.ceil(periods) * 4 + 1; // 4 labels per period (0, π/2, π, 3π/2) plus the end
+                {/* X-Axis Title for sine wave */}
+                {chartConfig.xAxisTitle && chartConfig.showXAxisLabels !== false && (
+                  <g>
+                    <text
+                      x={effectivePadding + (chartWidth / 2)}
+                      y={height - (padding / 2)}
+                      fontSize={Math.min(width, height) * 0.045}
+                      fill="#1a1a1a"
+                      textAnchor="middle"
+                      fontWeight="600"
+                      letterSpacing="0.5px"
+                      fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+                      style={{ userSelect: 'none' }}
+                      dominantBaseline="hanging"
+                    >
+                      {chartConfig.xAxisTitle}
+                    </text>
+                  </g>
+                )}
 
-                  for (let i = 0; i < numLabels; i++) {
-                    const fraction = i / (numLabels - 1);
-                    const x = padding + (chartWidth * fraction);
-                    const angle = fraction * (2 * Math.PI * periods);
-                    const label = `${(angle / Math.PI).toFixed(1)}π`;
-
-                    labels.push(
-                      <g key={i}>
-                        {/* Tick mark */}
-                        <line 
-                          x1={x}
-                          y1={height/2 - 5}
-                          x2={x}
-                          y2={height/2 + 5}
-                          stroke="#2196F3"
-                          strokeWidth="1"
-                        />
-                        {/* Label */}
-                        {chartConfig.showXAxisLabels !== false && (
-                          <text 
-                            x={x}
-                            y={height/2 + 25}
-                            fontSize={Math.min(width, height) * 0.028}
-                            fill="#404040"
-                            textAnchor="middle"
-                            fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-                            style={{ userSelect: 'none' }}
-                          >
-                            {label}
-                          </text>
-                        )}
-                      </g>
-                    );
-                  }
-
-                  return labels;
-                })()}
               </>
             )}
           </svg>
