@@ -6,6 +6,7 @@ import { USER_TIERS, TIER_FEATURES } from '../config/userTiers';
 import Modal from './Modal';
 import '../styles/Settings.css';
 import { getApiBaseUrl } from '../utils/api';
+import { getUserProfilePicture, handleImageError } from '../utils/profilePicture';
 import {
   getAuth,
   updateProfile
@@ -99,7 +100,9 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
       setDisplayName(currentUser.displayName || '');
       
       // Set profile picture preview from user object
-      setProfilePicturePreview(currentUser.photoURL || null);
+      // Only use SSO photoURL, otherwise null (will show default)
+      const isSSO = currentUser.provider && currentUser.provider !== 'email' && currentUser.provider !== 'password';
+      setProfilePicturePreview(isSSO && currentUser.photoURL ? currentUser.photoURL : null);
       
       const settingsRef = doc(db, 'userSettings', currentUser.uid);
       const settingsSnap = await getDoc(settingsRef);
@@ -157,16 +160,19 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
 
   // Update profile picture preview when user photoURL changes (but not if user is actively selecting a new picture)
   useEffect(() => {
-    if (user?.photoURL && !profilePicture) {
-      // Only update if it's different and user isn't in the middle of selecting a new picture
+    if (!profilePicture) {
+      // Only use SSO photoURL, otherwise null (will show default)
+      const isSSO = user?.provider && user.provider !== 'email' && user.provider !== 'password';
+      const photoURL = isSSO && user?.photoURL ? user.photoURL : null;
+      
       setProfilePicturePreview(prev => {
-        if (prev !== user.photoURL) {
-          return user.photoURL;
+        if (prev !== photoURL) {
+          return photoURL;
         }
         return prev;
       });
     }
-  }, [user?.photoURL, profilePicture]);
+  }, [user?.photoURL, user?.provider, profilePicture]);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -604,9 +610,10 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
         <div className="profile-picture-container">
           <div className="profile-picture-preview">
             <img 
-              src={profilePicturePreview || '/default-avatar.png'} 
+              src={profilePicturePreview || getUserProfilePicture(user)} 
               alt="Profile" 
               className="profile-picture-preview-img"
+              onError={(e) => handleImageError(e, user)}
             />
             {isUploadingPicture && (
               <div className="profile-picture-uploading">Uploading...</div>
@@ -629,7 +636,7 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
             >
               {profilePicture ? 'Change Picture' : 'Upload Picture'}
             </button>
-            {(profilePicturePreview && profilePicturePreview !== '/default-avatar.png') && (
+            {(profilePicturePreview && profilePicturePreview !== getUserProfilePicture(user)) && (
               <button
                 type="button"
                 onClick={() => {

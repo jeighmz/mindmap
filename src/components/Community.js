@@ -3,6 +3,7 @@ import { collection, query, orderBy, getDocs, addDoc, updateDoc, doc, getDoc, wh
 import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { db } from '../firebase-config';
 import { useAuth } from '../contexts/AuthContext';
+import { getUserProfilePicture } from '../utils/profilePicture';
 import html2canvas from 'html2canvas';
 import '../styles/Community.css';
 
@@ -34,15 +35,23 @@ const Community = () => {
       const postsData = [];
       for (const postDoc of querySnapshot.docs) {
         const post = postDoc.data();
-        // Fetch user data for each post
-        const userDoc = await getDoc(doc(db, 'userSettings', post.userId));
+        // Fetch user data from users collection (has provider info)
+        const userDoc = await getDoc(doc(db, 'users', post.userId));
         const userData = userDoc.data() || {};
+        
+        // Also get display name from userSettings if available
+        const userSettingsDoc = await getDoc(doc(db, 'userSettings', post.userId));
+        const userSettings = userSettingsDoc.data() || {};
+        
+        // Determine if user is SSO
+        const isSSO = userData.provider && userData.provider !== 'email' && userData.provider !== 'password';
+        const userAvatar = isSSO && userData.photoURL ? userData.photoURL : '/default-avatar.png';
         
         postsData.push({
           id: postDoc.id,
           ...post,
-          userName: userData.displayName || 'Anonymous',
-          userAvatar: userData.photoURL || '/default-avatar.png'
+          userName: userData.displayName || userSettings.displayName || 'Anonymous',
+          userAvatar: userAvatar
         });
       }
       

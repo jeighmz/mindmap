@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { getUserProfilePicture, handleImageError } from '../utils/profilePicture';
 import Login from './Login';
 import Settings from './Settings';
 import '../styles/UserMenu.css';
@@ -37,9 +38,10 @@ export default function UserMenu({ onSettingsOpen }) {
             onClick={() => setIsMenuOpen(!isMenuOpen)}
           >
             <img 
-              src={user.photoURL || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'} 
+              src={getUserProfilePicture(user)} 
               alt="Profile" 
               className="user-avatar"
+              onError={(e) => handleImageError(e, user)}
             />
             <span className="user-name">{user.displayName || user.email}</span>
             <span className="dropdown-arrow">▼</span>
@@ -54,9 +56,10 @@ export default function UserMenu({ onSettingsOpen }) {
               <div className="user-dropdown">
                 <div className="user-info">
                   <img 
-                    src={user.photoURL || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'} 
+                    src={getUserProfilePicture(user)} 
                     alt="Profile" 
                     className="user-avatar-large"
+                    onError={(e) => handleImageError(e, user)}
                   />
                   <div className="user-details">
                     <div className="user-display-name">
