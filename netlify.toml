@@ -8,6 +8,9 @@
   BROWSER = ""
   PORT = ""
   NPM_FLAGS = "--legacy-peer-deps"
+  # Exclude REACT_APP_GROQ_API_KEY from secrets scanning
+  # This key is intentionally bundled in the client-side code
+  SECRETS_SCAN_OMIT_KEYS = "REACT_APP_GROQ_API_KEY"
 
 # Handle API routes FIRST (before SPA redirect)
 # Handle OPTIONS preflight requests
