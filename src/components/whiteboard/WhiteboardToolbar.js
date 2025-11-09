@@ -199,6 +199,72 @@ const ToolbarItem = ({ type, icon, chartType }) => {
 };
 
 const WhiteboardToolbar = ({ onOpenMindMapPanel, onOpenSearchPanel, items, connections, highlightedItems = [], isLibraryOpen = false }) => {
+  const [buttonMouseDown, setButtonMouseDown] = useState(null);
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
+
+  // Track space key state
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.code === 'Space' || e.key === ' ') {
+        setIsSpacePressed(true);
+      }
+    };
+    const handleKeyUp = (e) => {
+      if (e.code === 'Space' || e.key === ' ') {
+        setIsSpacePressed(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  const handleChatButtonMouseDown = (e) => {
+    // Don't track if space or alt is pressed (panning mode)
+    if (isSpacePressed || e.altKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    setButtonMouseDown({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleChatButtonClick = (e) => {
+    // Don't trigger if space key is pressed (panning mode) or alt key
+    if (isSpacePressed || e.altKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      setButtonMouseDown(null);
+      return;
+    }
+
+    // Only trigger if mouse hasn't moved significantly (indicating a click, not a drag/pan)
+    if (buttonMouseDown) {
+      const deltaX = Math.abs(e.clientX - buttonMouseDown.x);
+      const deltaY = Math.abs(e.clientY - buttonMouseDown.y);
+      const moveThreshold = 5; // pixels
+      
+      if (deltaX > moveThreshold || deltaY > moveThreshold) {
+        // Mouse moved too much, this was a drag/pan, not a click
+        e.preventDefault();
+        e.stopPropagation();
+        setButtonMouseDown(null);
+        return;
+      }
+    }
+    
+    setButtonMouseDown(null);
+    onOpenSearchPanel();
+  };
+
+  const handleChatButtonMouseUp = () => {
+    setButtonMouseDown(null);
+  };
+
   const tools = [
     { 
       type: 'sticky', 
@@ -293,11 +359,14 @@ const WhiteboardToolbar = ({ onOpenMindMapPanel, onOpenSearchPanel, items, conne
         </svg>
       </button>
       <button 
-        className="toolbar-item ai-button"
-        onClick={onOpenSearchPanel}
+        className={`toolbar-item ai-button ${isSpacePressed ? 'panning-mode' : ''}`}
+        onMouseDown={handleChatButtonMouseDown}
+        onClick={handleChatButtonClick}
+        onMouseUp={handleChatButtonMouseUp}
+        onMouseLeave={handleChatButtonMouseUp}
         title="AI Analysis Chat"
         style={{
-          cursor: 'pointer',
+          cursor: isSpacePressed ? 'grab' : 'pointer',
           transition: 'transform 0.2s ease, background-color 0.2s ease'
         }}
       >

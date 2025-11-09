@@ -61,12 +61,6 @@ export const AuthProvider = ({ children }) => {
       const userData = userDoc.data();
       const currentTier = userData.tier || USER_TIERS.FREE;
       
-      console.log('fetchUserData - Read tier from Firestore:', {
-        tier: currentTier,
-        userId: firebaseUser.uid,
-        timestamp: new Date().toISOString()
-      });
-      
       // Update last login time but preserve tier - use merge to ensure we don't overwrite tier
       try {
         // Only update lastLogin and profile fields, explicitly preserve tier
@@ -127,7 +121,6 @@ export const AuthProvider = ({ children }) => {
     
     userIdRef.current = currentUserId;
     const userDocRef = doc(db, 'users', currentUserId);
-    console.log('Setting up Firestore listener for tier changes, userId:', currentUserId);
     
     const unsubscribeTier = onSnapshot(userDocRef, (docSnapshot) => {
       if (docSnapshot.exists()) {
@@ -137,11 +130,6 @@ export const AuthProvider = ({ children }) => {
         // Only update tier, don't update user object (prevents loops)
         setUserTier(prevTier => {
           if (prevTier !== newTier) {
-            console.log('Tier changed detected via Firestore listener:', {
-              oldTier: prevTier,
-              newTier: newTier,
-              userId: currentUserId
-            });
             // Update user object only when tier actually changes
             setUser(prevUser => {
               if (prevUser) {
@@ -158,7 +146,6 @@ export const AuthProvider = ({ children }) => {
     });
     
     return () => {
-      console.log('Cleaning up Firestore listener for tier changes');
       unsubscribeTier();
       userIdRef.current = null;
     };
@@ -218,12 +205,9 @@ export const AuthProvider = ({ children }) => {
     // Throttle refresh calls - only allow one per 2 seconds
     const now = Date.now();
     if (refreshUserData.lastCall && (now - refreshUserData.lastCall) < 2000) {
-      console.log('Refresh throttled, skipping...');
       return user; // Return current user to avoid unnecessary updates
     }
     refreshUserData.lastCall = now;
-    
-    console.log('Refreshing user data for:', currentUser.uid);
     
     // Reload Firebase Auth user to get latest photoURL and displayName
     try {
@@ -254,7 +238,6 @@ export const AuthProvider = ({ children }) => {
         // Update tier if changed
         setUserTier(prevTier => {
           if (prevTier !== currentTier) {
-            console.log('refreshUserData - Tier updated:', prevTier, '->', currentTier);
             return currentTier;
           }
           return prevTier;
@@ -268,12 +251,6 @@ export const AuthProvider = ({ children }) => {
           const tierChanged = prevUser?.tier !== currentTier;
           
           if (photoURLChanged || displayNameChanged || tierChanged) {
-            console.log('refreshUserData - User updated:', {
-              photoURLChanged,
-              displayNameChanged,
-              tierChanged,
-              newPhotoURL: currentUser.photoURL
-            });
             return updatedUser;
           }
           return prevUser;

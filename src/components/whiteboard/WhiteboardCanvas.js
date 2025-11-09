@@ -16,9 +16,11 @@ import UserMenu from '../UserMenu';
 import { useNavigate } from 'react-router-dom';
 import { useTierPermissions } from '../../hooks/useTierPermissions';
 import { saveBoard, getDemoBoards } from '../../services/boardService';
-import { getApiBaseUrl } from '../../utils/api';
+import { getApiBaseUrl, getGroqApiKey } from '../../utils/api';
+import { canGenerateMindMap, canExpandConcept, incrementMindMapCount, incrementExpandCount, getUsageStats } from '../../utils/usageTracker';
 import { createNotionPage, writeToNotionDatabase } from './agent/tools/notion';
 import { ChromePicker } from 'react-color';
+import UsageTracker from './UsageTracker';
 
 const WhiteboardCanvas = forwardRef((props, ref) => {
   const {
@@ -85,6 +87,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [lastSaveTime, setLastSaveTime] = useState(null);
   const autoSaveTimeoutRef = useRef(null);
   const isInitialLoadRef = useRef(true);
+  const isGeneratingMindMapRef = useRef(false);
+  const previousBoardIdRef = useRef(null);
   // Add state for color picker
   const [colorPicker, setColorPicker] = useState({
     background: '#fff740',
@@ -98,6 +102,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   });
   // Add state for color picker section
   const [activeColorSection, setActiveColorSection] = useState('background');
+  // Add state to control color menu visibility
+  const [showColorMenu, setShowColorMenu] = useState(false);
   
   // Add state for footer visibility
   const [showFooter, setShowFooter] = useState(() => {
@@ -108,6 +114,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   // Add state for zoom overlay visibility (fade-out effect)
   const [zoomOverlayVisible, setZoomOverlayVisible] = useState(true);
   const zoomOverlayTimeoutRef = useRef(null);
+  const canvasRef = useRef(null);
   
   // Add undo functionality
   const [undoStack, setUndoStack] = useState([]);
@@ -293,6 +300,12 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }
     
     if (e.button === 1 || (e.button === 0 && isSpacePressed) || (e.button === 0 && e.altKey)) {
+      // Clear any active button states when starting to pan
+      setConnectingFrom(null);
+      setSelectedConnection(null);
+      setSelectedItems(new Set());
+      setContextMenu({ visible: false, x: 0, y: 0 });
+      
       setIsPanning(true);
       setPanStart({
         x: e.clientX - panOffset.x,
@@ -514,12 +527,40 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     // Enable scroll zoom without requiring Ctrl key
     e.preventDefault();
     showZoomOverlay(); // Show zoom overlay when zooming
-    const delta = e.deltaY > 0 ? 0.9 : 1.1; // Scroll down = zoom out (0.9), scroll up = zoom in (1.1)
+    
+    // Handle different scroll types (trackpad vs mouse wheel)
+    // deltaMode: 0 = pixels, 1 = lines, 2 = pages
+    let deltaY = e.deltaY;
+    if (e.deltaMode === 1) {
+      // Line mode (mouse wheel) - convert to pixel-like values
+      deltaY = e.deltaY * 20;
+    } else if (e.deltaMode === 2) {
+      // Page mode - convert to pixel-like values
+      deltaY = e.deltaY * 100;
+    }
+    
+    // Use a much smaller, smoother zoom factor for trackpad scrolling
+    // Trackpads send many small deltaY values, so we need a gentler multiplier
+    const zoomSensitivity = 0.0008; // Smooth sensitivity for trackpad
+    const zoomFactor = 1 - (deltaY * zoomSensitivity); // Negative deltaY = zoom in, positive = zoom out
+    
     setScale(s => {
-      const newScale = Math.min(Math.max(0.1, s * delta), 4); // Restored max zoom to 4 for better zoom range
+      const newScale = Math.min(Math.max(0.1, s * zoomFactor), 4);
       return newScale;
     });
   }, [showZoomOverlay]);
+
+  // Add wheel event listener with passive: false to allow preventDefault
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('wheel', handleWheel);
+    };
+  }, [handleWheel]);
 
   const updateItemPosition = useCallback((id, position) => {
     setItems(items.map(item => 
@@ -569,7 +610,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         saveState(); // Save state before creating connection
         const defaults = getDefaultConnectionSettings();
         const newConnection = {
-          id: `connection-${Date.now()}`,
+          id: `connection-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           from: connectingFrom,
           to: itemId,
           color: defaults.color,
@@ -583,6 +624,19 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         setConnectingFrom(null);
       }
     } else {
+      // Bring clicked item to front by updating its order
+      const clickedItem = items.find(item => String(item.id) === String(itemId));
+      if (clickedItem) {
+        const maxOrder = items.length > 0 ? Math.max(...items.map((i, idx) => i.order !== undefined ? i.order : idx)) : -1;
+        if (clickedItem.order !== maxOrder + 1) {
+          setItems(prevItems => prevItems.map(item => 
+            String(item.id) === String(itemId)
+              ? { ...item, order: maxOrder + 1 }
+              : item
+          ));
+        }
+      }
+      
       setSelectedItems(prev => {
         const newSet = new Set(prev);
         if (newSet.has(itemId)) {
@@ -787,12 +841,51 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   }, [connections, saveState]);
 
   const renderConnections = useCallback(() => {
-    return connections.map(connection => {
-      // Use loose comparison to handle string/number ID mismatches
-      const startItem = items.find(item => String(item.id) === String(connection.from));
-      const endItem = items.find(item => String(item.id) === String(connection.to));
+    // Filter out duplicates by ID (keep first occurrence) as a safeguard
+    const seenIds = new Set();
+    const uniqueConnections = connections.filter(conn => {
+      if (seenIds.has(conn.id)) {
+        return false;
+      }
+      seenIds.add(conn.id);
+      return true;
+    });
+    
+    return uniqueConnections.map(connection => {
+      // Use multiple comparison methods to handle string/number ID mismatches
+      const startItem = items.find(item => {
+        const itemIdStr = String(item.id);
+        const connFromStr = String(connection.from);
+        const itemIdNum = Number(item.id);
+        const connFromNum = Number(connection.from);
+        
+        return itemIdStr === connFromStr || 
+               (!isNaN(itemIdNum) && !isNaN(connFromNum) && itemIdNum === connFromNum) ||
+               item.id === connection.from;
+      });
+      
+      const endItem = items.find(item => {
+        const itemIdStr = String(item.id);
+        const connToStr = String(connection.to);
+        const itemIdNum = Number(item.id);
+        const connToNum = Number(connection.to);
+        
+        return itemIdStr === connToStr || 
+               (!isNaN(itemIdNum) && !isNaN(connToNum) && itemIdNum === connToNum) ||
+               item.id === connection.to;
+      });
       
       if (!startItem || !endItem) {
+        // Debug missing connections
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('Connection cannot render - missing item:', {
+            connection: { id: connection.id, from: connection.from, to: connection.to },
+            startItemFound: !!startItem,
+            endItemFound: !!endItem,
+            totalItems: items.length,
+            itemIds: items.map(i => i.id).slice(0, 5)
+          });
+        }
         return null;
       }
 
@@ -807,10 +900,10 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         arrowHeadStyle: connection.arrowHeadStyle || 'medium'
       };
       
-      // Use connection properties in key to force re-render when they change
+      // Use connection ID as key (should be unique). Add index as fallback for safety
       return (
         <Connector
-          key={`conn-${connection.id}-${connectionProps.strokeWidth}-${connectionProps.color}-${connectionProps.lineType}-${connectionProps.lineDesign}-${connectionProps.arrowDirection}-${connectionProps.arrowHeadStyle}`}
+          key={`conn-${connection.id}`}
           startItem={startItem}
           endItem={endItem}
           connection={connectionProps}
@@ -827,14 +920,27 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     const loadDemoBoards = async () => {
       try {
         const boards = await getDemoBoards();
-        setSavedWhiteboards(boards);
+        // Sort by savedAt descending (most recent first)
+        const sortedBoards = [...boards].sort((a, b) => {
+          const dateA = new Date(a.savedAt || 0);
+          const dateB = new Date(b.savedAt || 0);
+          return dateB - dateA;
+        });
+        setSavedWhiteboards(sortedBoards);
       } catch (error) {
         console.error('Error loading demo boards:', error);
         // Fallback to localStorage if Firebase fails
         const saved = localStorage.getItem('savedWhiteboards');
         if (saved) {
           try {
-            setSavedWhiteboards(JSON.parse(saved));
+            const boards = JSON.parse(saved);
+            // Sort by savedAt descending (most recent first)
+            const sortedBoards = [...boards].sort((a, b) => {
+              const dateA = new Date(a.savedAt || 0);
+              const dateB = new Date(b.savedAt || 0);
+              return dateB - dateA;
+            });
+            setSavedWhiteboards(sortedBoards);
           } catch (e) {
             console.error('Error parsing localStorage boards:', e);
           }
@@ -1022,6 +1128,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
   const handleLoadWhiteboard = async (boardId) => {
     try {
+      // Clear state before loading new board to prevent stale data
+      setItems([]);
+      setConnections([]);
+      setSelectedItems(new Set());
+      
       const boardDoc = await getDoc(doc(db, 'boards', boardId));
       
       if (!boardDoc.exists()) {
@@ -1128,7 +1239,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       
       // Load connections with all properties properly converted
       // Note: Item IDs might be numbers or strings, so we need to match them properly
-      const loadedConnections = (boardData.content.connections || []).map(conn => {
+      const seenIds = new Set();
+      const loadedConnections = (boardData.content.connections || []).map((conn, index) => {
         // Convert from/to to match item ID type (items might have number or string IDs)
         const fromId = conn.from;
         const toId = conn.to;
@@ -1137,9 +1249,17 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         const fromItem = processedItems.find(item => String(item.id) === String(fromId));
         const toItem = processedItems.find(item => String(item.id) === String(toId));
         
+        // Generate unique ID if missing or duplicate
+        let connectionId = String(conn.id || `connection-${Date.now()}-${index}`);
+        // Ensure uniqueness by appending index if duplicate
+        if (seenIds.has(connectionId)) {
+          connectionId = `${connectionId}-${index}`;
+        }
+        seenIds.add(connectionId);
+        
         // Use the actual item ID (preserving type) if item exists, otherwise use the connection value
         const cleaned = {
-          id: String(conn.id || `connection-${Date.now()}`),
+          id: connectionId,
           from: fromItem ? fromItem.id : (typeof fromId === 'number' ? fromId : Number(fromId) || fromId),
           to: toItem ? toItem.id : (typeof toId === 'number' ? toId : Number(toId) || toId),
           color: String(conn.color || '#2196F3'),
@@ -1151,7 +1271,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         };
         return cleaned;
       });
-      setConnections(loadedConnections);
+      // Filter out any remaining duplicates by ID (keep first occurrence)
+      const uniqueConnections = loadedConnections.filter((conn, index, self) => 
+        index === self.findIndex(c => c.id === conn.id)
+      );
+      setConnections(uniqueConnections);
       setScale(boardData.content.scale || 1);
       setPanOffset(boardData.content.panOffset || { x: 0, y: 0 });
       
@@ -1179,9 +1303,13 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
   // Auto-save function for existing boards
   const autoSave = useCallback(async () => {
-    if (!user || !currentBoardId || !currentBoardName || isInitialLoadRef.current) {
+    if (!user || !currentBoardId || !currentBoardName || isInitialLoadRef.current || isGeneratingMindMapRef.current) {
       return;
     }
+
+    // Store the boardId at the start of auto-save to ensure we're saving to the correct board
+    const boardIdToSave = currentBoardId;
+    const boardNameToSave = currentBoardName;
 
     try {
       setIsAutoSaving(true);
@@ -1254,10 +1382,16 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         };
       });
 
+      // Double-check before saving (user might have switched boards during processing)
+      // Only save if the board ID and name haven't changed
+      if (currentBoardId !== boardIdToSave || currentBoardName !== boardNameToSave) {
+        return; // Board changed, don't save
+      }
+
       // Don't save viewport (scale, panOffset) in auto-save to avoid saving on every view change
       const boardData = {
-        id: currentBoardId,
-        name: currentBoardName,
+        id: boardIdToSave, // Use the stored boardId to ensure we save to the correct board
+        name: boardNameToSave, // Use the stored boardName
         userId: user.uid,
         savedAt: serverTimestamp(),
         content: {
@@ -1276,9 +1410,29 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }
   }, [user, currentBoardId, currentBoardName, items, connections]);
 
+  // Clear state when currentBoardId becomes null (new board created)
+  useEffect(() => {
+    // Only clear if we're transitioning from a saved board (had an ID) to a new board (null)
+    // This prevents stale data from previous boards appearing on new boards
+    if (currentBoardId === null && previousBoardIdRef.current !== null) {
+      // We transitioned from a saved board to a new board - clear stale data
+      setItems([]);
+      setConnections([]);
+      setSelectedItems(new Set());
+      setConnectingFrom(null);
+      // Clear any pending auto-save
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+        autoSaveTimeoutRef.current = null;
+      }
+    }
+    // Update the ref to track the previous boardId
+    previousBoardIdRef.current = currentBoardId;
+  }, [currentBoardId]);
+
   // Auto-save effect - debounced (only for items and connections, not viewport changes)
   useEffect(() => {
-    if (!currentBoardId || isInitialLoadRef.current) {
+    if (!currentBoardId || isInitialLoadRef.current || isGeneratingMindMapRef.current) {
       return;
     }
 
@@ -1382,6 +1536,17 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         x: e.clientX,
         y: e.clientY
       });
+    }
+  };
+
+  const handleShowColorMenu = () => {
+    // Only show color menu for non-image, non-chart items
+    if (selectedItems.size === 1) {
+      const selectedItemId = Array.from(selectedItems)[0];
+      const selectedItem = items.find(item => item.id === selectedItemId);
+      if (selectedItem && selectedItem.type !== 'image' && selectedItem.type !== 'chart') {
+        setShowColorMenu(true);
+      }
     }
   };
 
@@ -1543,6 +1708,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     });
   }, [selectedItems, items]);
 
+  // Hide color menu when selection changes
+  useEffect(() => {
+    setShowColorMenu(false);
+  }, [selectedItems]);
+
   useEffect(() => {
     const handleGlobalClick = (e) => {
       if (contextMenu.visible && 
@@ -1550,22 +1720,35 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           !e.target.closest('.whiteboard-item.selected')) {
         setContextMenu({ visible: false, x: 0, y: 0 });
       }
+      // Hide color menu when clicking outside
+      if (showColorMenu) {
+        const chromePickerElement = document.querySelector('.chrome-picker');
+        if (!e.target.closest('.color-menu-panel') && 
+            !e.target.closest('.edit-control') &&
+            !e.target.closest('.whiteboard-item.selected') &&
+            (!chromePickerElement || !chromePickerElement.contains(e.target))) {
+          setShowColorMenu(false);
+        }
+      }
     };
 
-    if (contextMenu.visible) {
+    if (contextMenu.visible || showColorMenu) {
       document.addEventListener('mousedown', handleGlobalClick);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleGlobalClick);
     };
-  }, [contextMenu.visible]);
+  }, [contextMenu.visible, showColorMenu]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         if (contextMenu.visible) {
           setContextMenu({ visible: false, x: 0, y: 0 });
+        }
+        if (showColorMenu) {
+          setShowColorMenu(false);
         }
         if (connectingFrom) {
           e.preventDefault();
@@ -1613,7 +1796,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
     window.addEventListener('keydown', handleKeyDown, true); // Use capture phase for priority
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [connectingFrom, contextMenu.visible, selectedItems, items, connections, saveState, editingChartId]);
+  }, [connectingFrom, contextMenu.visible, showColorMenu, selectedItems, items, connections, saveState, editingChartId]);
 
   // Set up global function for moving selected items
   useEffect(() => {
@@ -1710,10 +1893,115 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     return path;
   }, [items, connections]);
 
+  // Function to build comprehensive context from parent nodes and related items
+  const buildExpandContext = useCallback((itemId, itemText) => {
+    const itemMap = new Map(items.map(item => [item.id, item]));
+    const pathToCentral = findPathToCentralNode(itemId);
+    
+    // Helper to find parent connections
+    const findParentConnections = (itemId) => {
+      const parents = [];
+      connections.forEach(conn => {
+        if (conn.to === itemId) {
+          parents.push(conn.from);
+        }
+      });
+      return parents;
+    };
+    
+    // Helper to find child connections (nodes this item connects TO)
+    const findChildConnections = (itemId) => {
+      const children = [];
+      connections.forEach(conn => {
+        if (conn.from === itemId) {
+          children.push(conn.to);
+        }
+      });
+      return children;
+    };
+    
+    let contextParts = [];
+    
+    // 1. Build hierarchical path context
+    if (pathToCentral.length > 1) {
+      contextParts.push('=== HIERARCHICAL CONTEXT ===');
+      contextParts.push('The concept exists within the following hierarchy (from central topic to current concept):');
+      pathToCentral.forEach((item, index) => {
+        const level = '  '.repeat(index);
+        contextParts.push(`${level}${index === 0 ? 'Central Topic' : `Level ${index}`}: ${item.text || '(unnamed)'}`);
+      });
+      contextParts.push('');
+    }
+    
+    // 2. Add parent node context with its children
+    const parentIds = findParentConnections(itemId);
+    if (parentIds.length > 0) {
+      parentIds.forEach(parentId => {
+        const parentItem = itemMap.get(parentId);
+        if (parentItem) {
+          contextParts.push('=== PARENT CONTEXT ===');
+          contextParts.push(`Direct Parent: ${parentItem.text || '(unnamed)'}`);
+          
+          // Get all children of the parent (siblings of current item)
+          const parentChildren = findChildConnections(parentId);
+          if (parentChildren.length > 0) {
+            const siblingTexts = parentChildren
+              .map(id => itemMap.get(id))
+              .filter(item => item && item.id !== itemId)
+              .map(item => item.text || '(unnamed)')
+              .filter(text => text);
+            
+            if (siblingTexts.length > 0) {
+              contextParts.push(`Sibling Concepts (related concepts at the same level): ${siblingTexts.join(', ')}`);
+            }
+          }
+          contextParts.push('');
+        }
+      });
+    }
+    
+    // 3. Add existing children context (if any)
+    const existingChildren = findChildConnections(itemId);
+    if (existingChildren.length > 0) {
+      const childTexts = existingChildren
+        .map(id => itemMap.get(id))
+        .filter(item => item)
+        .map(item => item.text || '(unnamed)')
+        .filter(text => text);
+      
+      if (childTexts.length > 0) {
+        contextParts.push('=== EXISTING CHILDREN ===');
+        contextParts.push(`Current concept already has these sub-concepts: ${childTexts.join(', ')}`);
+        contextParts.push('Generate NEW concepts that complement these existing ones.');
+        contextParts.push('');
+      }
+    }
+    
+    // 4. Build the final context string
+    let contextString = '';
+    if (contextParts.length > 0) {
+      contextString = contextParts.join('\n') + '\n';
+    }
+    
+    // Add the target concept
+    contextString += `=== TARGET CONCEPT TO EXPAND ===\n`;
+    contextString += `Concept: ${itemText}\n\n`;
+    
+    return contextString;
+  }, [items, connections, findPathToCentralNode]);
+
   // Add expand functionality
   useEffect(() => {
     window.expandSelectedConcept = async (itemId, text) => {
       if (!text) return;
+      
+      // Check usage limits for non-signed-in users
+      if (!user) {
+        if (!canExpandConcept()) {
+          alert(`You've reached the limit of 4 concept expansions. Please sign in to continue expanding unlimited concepts.`);
+          return;
+        }
+      }
       
       setExpandingItemId(itemId);
       setIsExpandingConcept(true);
@@ -1723,59 +2011,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         const sourceItem = items.find(item => item.id === itemId);
         if (!sourceItem) throw new Error('Source item not found');
         
-        // Find the path from this item back to the central node
-        const pathToCentral = findPathToCentralNode(itemId);
-        
-        // Build context string from the path
-        let contextString = '';
-        if (pathToCentral.length > 1) {
-          // If we have a path, build context from central node to current item
-          const pathTexts = pathToCentral.map(item => item.text || '');
-          contextString = `This concept is part of the following hierarchy:\n${pathTexts.join(' → ')}\n\n`;
-        } else if (pathToCentral.length === 1) {
-          // Only the current item, no path found
-          contextString = `Expanding the concept: ${text}\n\n`;
-        }
+        // Build comprehensive context from parent nodes and related items
+        const contextString = buildExpandContext(itemId, text);
 
-        // Fetch the Groq API key from Firebase
-        if (!user?.uid) {
-          throw new Error('Please sign in to expand concepts');
-        }
-
-        const settingsRef = doc(db, 'userSettings', user.uid);
-        const settingsSnap = await getDoc(settingsRef);
-        
-        if (!settingsSnap.exists() || !settingsSnap.data().groqApiKey) {
-          throw new Error('Please set your Groq API key in Settings first');
-        }
-
-        // Get and decrypt the API key
-        const encryptedApiKey = settingsSnap.data().groqApiKey;
-        let groqApiKey;
-
-        try {
-          groqApiKey = atob(encryptedApiKey);
-        } catch (e) {
-          const decryptResponse = await fetch(`${getApiBaseUrl()}/decryptApiKey`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: user.uid,
-              encryptedData: encryptedApiKey
-            })
-          });
-
-          if (!decryptResponse.ok) {
-            throw new Error('Failed to decrypt API key');
-          }
-
-          const { decrypted } = await decryptResponse.json();
-          groqApiKey = decrypted;
-        }
-
-        if (!groqApiKey?.trim() || !groqApiKey.startsWith('gsk_')) {
-          throw new Error('Invalid API key format');
-        }
+        // Get Groq API key from environment
+        const groqApiKey = getGroqApiKey();
 
         // Call Groq API to generate related concepts
         const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -1789,24 +2029,33 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
             messages: [
               {
                 role: 'system',
-                content: `You are an expert at identifying key related concepts. When given a concept within a hierarchical context, generate exactly 5 closely related ideas or aspects that help expand understanding of the original concept.
+                content: `You are an expert at identifying key related concepts within hierarchical knowledge structures. Your task is to generate exactly 5 closely related sub-concepts that expand upon a given concept, taking into account its full hierarchical context.
+
+CRITICAL INSTRUCTIONS:
+1. Analyze the hierarchical context provided - understand the full path from the central topic through parent nodes to the current concept
+2. Consider the parent node's context and any sibling concepts to maintain thematic consistency
+3. If existing children are listed, generate NEW concepts that complement them without redundancy
+4. Each generated concept should:
+   - Be directly relevant to the target concept within its hierarchical context
+   - Fit naturally within the existing knowledge structure
+   - Be 2-4 words long (clear and specific)
+   - Use professional, field-appropriate terminology
+   - Build upon the information provided by parent nodes
 
 Guidelines:
 - Generate exactly 5 related concepts, no more and no less
-- Each concept should be 2-4 words long
-- Make each concept clear and specific
-- Ensure direct relevance to the original topic within its hierarchical context
-- Use professional, field-appropriate terminology
+- Make each concept clear, specific, and actionable
+- Ensure concepts are contextually appropriate given the parent nodes and hierarchy
 - Avoid generic or redundant information
-- Consider the full context path from central node to this concept when generating related ideas
-- The expanded concepts should fit naturally within the existing hierarchy
+- Consider how parent concepts inform the scope and direction of child concepts
+- The expanded concepts should logically extend from the target concept while respecting the broader context
 
 Format:
 - Return only the 5 concepts, one per line
 - No prefixes, numbers, or bullet points
 - Just plain text, each on its own line
 
-Example for "Machine Learning":
+Example for "Machine Learning" (in context of "Artificial Intelligence"):
 Neural Network Architecture
 Training Data Preparation
 Model Optimization Techniques
@@ -1815,7 +2064,7 @@ Performance Metrics Analysis`
               },
               {
                 role: 'user',
-                content: `${contextString}Generate 5 key related concepts for: ${text}`
+                content: `${contextString}Based on the comprehensive context provided above, generate exactly 5 key related sub-concepts that expand upon the target concept. Ensure these concepts are informed by the hierarchical structure, parent context, and existing sibling concepts.`
               }
             ],
             temperature: 0.7,
@@ -1838,6 +2087,10 @@ Performance Metrics Analysis`
         const radius = 200; // Distance from center item
         const angleStep = (2 * Math.PI) / concepts.length;
         
+        // Get the center of the source item
+        const sourceCenterX = sourceItem.position.x + (sourceItem.width || 150) / 2;
+        const sourceCenterY = sourceItem.position.y + (sourceItem.height || 150) / 2;
+        
         // Create new items and connections
         const newItems = [];
         const newConnections = [];
@@ -1846,13 +2099,18 @@ Performance Metrics Analysis`
         concepts.forEach((concept, i) => {
           const angle = i * angleStep;
           const dimensions = calculateTextDimensions(concept, 'rectangle');
+          
+          // Calculate position from center of source item, then offset by half the new item's dimensions
+          const newItemCenterX = sourceCenterX + radius * Math.cos(angle);
+          const newItemCenterY = sourceCenterY + radius * Math.sin(angle);
+          
           const newItem = {
             id: Date.now() + i,
             type: 'rectangle',
             text: concept,
             position: {
-              x: sourceItem.position.x + radius * Math.cos(angle),
-              y: sourceItem.position.y + radius * Math.sin(angle)
+              x: newItemCenterX - dimensions.width / 2,
+              y: newItemCenterY - dimensions.height / 2
             },
             width: dimensions.width,
             height: dimensions.height,
@@ -1874,9 +2132,32 @@ Performance Metrics Analysis`
           });
         });
 
-        // Update state with new items and connections
-        setItems(prevItems => [...prevItems, ...newItems]);
-        setConnections(prevConnections => [...prevConnections, ...newConnections]);
+        // Update state with new items and connections, ensuring all referenced items exist
+        setItems(prevItems => {
+          const allItems = [...prevItems, ...newItems];
+          return allItems;
+        });
+        
+        // Filter connections to only include those where both from and to items exist
+        setConnections(prevConnections => {
+          const allItemIds = new Set([
+            String(itemId), // Source item that's being expanded
+            ...newItems.map(item => String(item.id))
+          ]);
+          
+          const validConnections = newConnections.filter(conn => {
+            const fromExists = allItemIds.has(String(conn.from));
+            const toExists = allItemIds.has(String(conn.to));
+            return fromExists && toExists;
+          });
+          
+          return [...prevConnections, ...validConnections];
+        });
+
+        // Increment usage counter for non-signed-in users
+        if (!user) {
+          incrementExpandCount();
+        }
 
       } catch (error) {
         alert(error.message || 'Failed to expand concept. Please try again.');
@@ -1889,7 +2170,7 @@ Performance Metrics Analysis`
     return () => {
       window.expandSelectedConcept = undefined;
     };
-  }, [items, user, getApiBaseUrl, findPathToCentralNode]);
+  }, [items, user, getApiBaseUrl, buildExpandContext]);
 
   const handleCloseMindMapPanel = () => {
     setIsMindMapPanelOpen(false);
@@ -2824,9 +3105,24 @@ Performance Metrics Analysis`
         }))
       }));
 
-      // Add new items and connections to the canvas
-      setItems(prevItems => [...prevItems, ...newItems]);
-      setConnections(prevConnections => [...prevConnections, ...newConnections]);
+      // Add new items and connections to the canvas, ensuring all referenced items exist
+      setItems(prevItems => {
+        const allItems = [...prevItems, ...newItems];
+        return allItems;
+      });
+      
+      // Filter connections to only include those where both from and to items exist
+      setConnections(prevConnections => {
+        const allItemIds = new Set(newItems.map(item => String(item.id)));
+        
+        const validConnections = newConnections.filter(conn => {
+          const fromExists = allItemIds.has(String(conn.from));
+          const toExists = allItemIds.has(String(conn.to));
+          return fromExists && toExists;
+        });
+        
+        return [...prevConnections, ...validConnections];
+      });
       
       // Select newly pasted items
       setSelectedItems(new Set(newItems.map(item => item.id)));
@@ -3090,70 +3386,64 @@ Performance Metrics Analysis`
       });
       
       
-      // Add new items and connections
-      setItems(prevItems => [...prevItems, ...newItems]);
-      setConnections(prevConnections => [...prevConnections, ...newConnections]);
+      // Add new items and connections, ensuring all referenced items exist
+      setItems(prevItems => {
+        const allItems = [...prevItems, ...newItems];
+        return allItems;
+      });
+      
+      // Filter connections to only include those where both from and to items exist
+      setConnections(prevConnections => {
+        const allItemIds = new Set([
+          String(centralNode.id),
+          ...newItems.map(item => String(item.id))
+        ]);
+        
+        const validConnections = newConnections.filter(conn => {
+          const fromExists = allItemIds.has(String(conn.from));
+          const toExists = allItemIds.has(String(conn.to));
+          return fromExists && toExists;
+        });
+        
+        return [...prevConnections, ...validConnections];
+      });
     }, 100);
   };
 
   const handleGenerateMindMap = async () => {
+    // Check usage limits for non-signed-in users
+    if (!user) {
+      if (!canGenerateMindMap()) {
+        alert(`You've reached the limit of 4 mind map generations. Please sign in to continue generating unlimited mind maps.`);
+        return;
+      }
+    }
+
     setIsGeneratingMindMap(true);
+    isGeneratingMindMapRef.current = true;
     try {
-      // Fetch the Groq API key from Firebase
-      if (!user?.uid) {
-        throw new Error('Please sign in to generate mind maps');
-      }
-
-      const settingsRef = doc(db, 'userSettings', user.uid);
-      const settingsSnap = await getDoc(settingsRef);
-      
-      if (!settingsSnap.exists() || !settingsSnap.data().groqApiKey) {
-        throw new Error('Please set your Groq API key in Settings first');
-      }
-
-      // Get the API key and decrypt it
-      const encryptedApiKey = settingsSnap.data().groqApiKey;
-      
-      let groqApiKey;
-
-      try {
-        // Try to decode base64 first (for development environment)
-        groqApiKey = atob(encryptedApiKey);
-      } catch (e) {
-        // If base64 decode fails, try the decryption endpoint
-        const decryptResponse = await fetch(`${getApiBaseUrl()}/decryptApiKey`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: user.uid,
-            encryptedData: encryptedApiKey
-          })
-        });
-
-        if (!decryptResponse.ok) {
-          throw new Error('Failed to decrypt API key');
-        }
-
-        const { decrypted } = await decryptResponse.json();
-        groqApiKey = decrypted;
-      }
-
-      if (!groqApiKey?.trim()) {
-        throw new Error('Invalid API key format');
-      }
-
-      if (!groqApiKey.startsWith('gsk_')) {
-        throw new Error('Invalid API key format. API key should start with "gsk_"');
-      }
+      // Get Groq API key from environment
+      const groqApiKey = getGroqApiKey();
 
       // Create a central node at the user's current viewport center (user-friendly positioning)
       const canvasEl = document.querySelector('.whiteboard-canvas');
+      if (!canvasEl) {
+        throw new Error('Canvas element not found');
+      }
       const canvasBounds = canvasEl.getBoundingClientRect();
-      const viewportCenterX = (canvasBounds.width / 2 - panOffset.x) / scale;
-      const viewportCenterY = (canvasBounds.height / 2 - panOffset.y) / scale;
+      const dpr = window.devicePixelRatio || 1;
+      const effectiveScale = scale * dpr;
+      
+      // Convert viewport center (screen coordinates) to canvas coordinates
+      // Formula: canvasX = (screenX - panOffset.x) / effectiveScale
+      const viewportCenterX = (canvasBounds.width / 2 - panOffset.x) / effectiveScale;
+      const viewportCenterY = (canvasBounds.height / 2 - panOffset.y) / effectiveScale;
+      
+      // Get base order for new items
+      const centralBaseOrder = items.length > 0 ? Math.max(...items.map((i, idx) => i.order !== undefined ? i.order : idx)) : -1;
       
       const centralNode = {
-        id: Date.now(),
+        id: `mindmap-central-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         type: 'circle',
         text: mindMapPrompt,
         position: { 
@@ -3161,7 +3451,8 @@ Performance Metrics Analysis`
           y: viewportCenterY - 75  // Center of current viewport minus half height
         },
         width: 150,
-        height: 150
+        height: 150,
+        order: centralBaseOrder + 1 // Assign order to central node
       };
       
       // Add the central node
@@ -3315,6 +3606,11 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
       const newItems = [];
       const newConnections = [];
 
+      // Calculate base order including the central node that was just added
+      const branchBaseOrder = items.length > 0 
+        ? Math.max(...items.map((i, idx) => i.order !== undefined ? i.order : idx), centralNode.order || 0)
+        : (centralNode.order || 0);
+
       // Use the central node's center position (not top-left)
       const centralNodeCenterX = centralNode.position.x + (centralNode.width || 150) / 2;
       const centralNodeCenterY = centralNode.position.y + (centralNode.height || 150) / 2;
@@ -3332,18 +3628,25 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
         };
         
         // Enhanced collision detection with better spacing and symmetry
-        const minSpacing = 60; // Increased minimum spacing for better separation
+        const minSpacing = 80; // Increased minimum spacing for better separation and to prevent overlap
         let attempts = 0;
-        const maxAttempts = 10;
+        const maxAttempts = 15; // Increased attempts to find a valid position
         
         while (attempts < maxAttempts) {
           let hasCollision = false;
           
+          // Check collision with central node first
+          if (checkCollision(position, dimensions, centralNode, minSpacing)) {
+            hasCollision = true;
+          }
+          
           // Check collision with all existing items using enhanced detection
-          for (const existingItem of newItems) {
-            if (checkCollision(position, dimensions, existingItem, minSpacing)) {
-              hasCollision = true;
-              break;
+          if (!hasCollision) {
+            for (const existingItem of newItems) {
+              if (checkCollision(position, dimensions, existingItem, minSpacing)) {
+                hasCollision = true;
+                break;
+              }
             }
           }
           
@@ -3360,13 +3663,16 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
         }
         
         // Improved positioning with better spacing
+        // Use a more unique ID generation to avoid collisions
+        const timestamp = Date.now();
         const mainBranchNode = {
-          id: Date.now() + index * 1000,
+          id: `mindmap-${timestamp}-${index}-${Math.random().toString(36).substr(2, 9)}`,
           type: 'rectangle',
           text: branch.text,
           position: position,
           width: dimensions.width,
-          height: dimensions.height
+          height: dimensions.height,
+          order: branchBaseOrder + 1 + index * 2 // Assign unique order values
         };
 
         newItems.push(mainBranchNode);
@@ -3406,19 +3712,31 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
           };
           
           // Enhanced collision detection for sub-branches
-          const subMinSpacing = 40; // Increased minimum spacing for sub-branches
+          const subMinSpacing = 50; // Increased minimum spacing for sub-branches to prevent overlap
           let subAttempts = 0;
-          const subMaxAttempts = 8;
+          const subMaxAttempts = 10;
           let subCurrentRadius = subRadius;
           
           while (subAttempts < subMaxAttempts) {
             let hasCollision = false;
             
+            // Check collision with central node first
+            if (checkCollision(subPosition, subDimensions, centralNode, subMinSpacing)) {
+              hasCollision = true;
+            }
+            
+            // Check collision with main branch node
+            if (!hasCollision && checkCollision(subPosition, subDimensions, mainBranchNode, subMinSpacing)) {
+              hasCollision = true;
+            }
+            
             // Check collision with all existing items using enhanced detection
-            for (const existingItem of newItems) {
-              if (checkCollision(subPosition, subDimensions, existingItem, subMinSpacing)) {
-                hasCollision = true;
-                break;
+            if (!hasCollision) {
+              for (const existingItem of newItems) {
+                if (checkCollision(subPosition, subDimensions, existingItem, subMinSpacing)) {
+                  hasCollision = true;
+                  break;
+                }
               }
             }
             
@@ -3435,12 +3753,13 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
           }
           
           const subBranchNode = {
-            id: Date.now() + index * 10000 + (subIndex + 1) * 1000,
+            id: `mindmap-${timestamp}-${index}-sub-${subIndex}-${Math.random().toString(36).substr(2, 9)}`,
             type: 'rectangle',
             text: subBranch.text,
             position: subPosition,
             width: subDimensions.width,
-            height: subDimensions.height
+            height: subDimensions.height,
+            order: branchBaseOrder + 1 + index * 2 + subIndex + 1 // Assign unique order values
           };
 
           newItems.push(subBranchNode);
@@ -3477,30 +3796,143 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
         console.warn(`Some nodes had invalid positions. Created ${validItems.length} out of ${newItems.length} nodes.`);
       }
 
-      // Add nodes and connections to canvas
-      setItems(prevItems => [...prevItems, ...validItems]);
-      setConnections(prevConnections => [...prevConnections, ...newConnections]);
+      // Store validItems in a variable accessible to setTimeout
+      const mindMapItemsForCentering = [centralNode, ...validItems];
+      
+      // Add nodes and connections together, ensuring all referenced items exist
+      // The central node was already added earlier, but we'll include it explicitly to be safe
+      setItems(prevItems => {
+        // Ensure central node is included (it should be in prevItems, but check explicitly)
+        const centralNodeInPrev = prevItems.find(item => String(item.id) === String(centralNode.id));
+        const allItems = centralNodeInPrev 
+          ? [...prevItems, ...validItems]
+          : [...prevItems, centralNode, ...validItems];
+        
+        
+        // Filter connections to only include those where both from and to items exist
+        // Use a Set with both string and number representations to handle type mismatches
+        const allItemIds = new Set();
+        
+        // Add central node ID in all possible formats
+        const centralIdStr = String(centralNode.id);
+        const centralIdNum = Number(centralNode.id);
+        allItemIds.add(centralIdStr);
+        if (!isNaN(centralIdNum)) {
+          allItemIds.add(centralIdNum);
+          allItemIds.add(centralNode.id);
+        }
+        
+        // Add all existing item IDs (including central node if it's there)
+        prevItems.forEach(item => {
+          const idStr = String(item.id);
+          const idNum = Number(item.id);
+          allItemIds.add(idStr);
+          if (!isNaN(idNum)) {
+            allItemIds.add(idNum);
+            allItemIds.add(item.id);
+          }
+        });
+        
+        // Add all new item IDs (branches)
+        validItems.forEach(item => {
+          const idStr = String(item.id);
+          const idNum = Number(item.id);
+          allItemIds.add(idStr);
+          if (!isNaN(idNum)) {
+            allItemIds.add(idNum);
+            allItemIds.add(item.id);
+          }
+        });
+        
+        // Filter connections and log for debugging
+        const validConnections = newConnections.filter(conn => {
+          const fromStr = String(conn.from);
+          const toStr = String(conn.to);
+          const fromNum = Number(conn.from);
+          const toNum = Number(conn.to);
+          
+          // Check in multiple formats to handle type mismatches
+          const fromExists = allItemIds.has(fromStr) || (!isNaN(fromNum) && allItemIds.has(fromNum)) || allItemIds.has(conn.from);
+          const toExists = allItemIds.has(toStr) || (!isNaN(toNum) && allItemIds.has(toNum)) || allItemIds.has(conn.to);
+          
+          if (!fromExists || !toExists) {
+            console.warn('Connection filtered out - missing item:', {
+              connection: { from: conn.from, to: conn.to, id: conn.id },
+              fromExists,
+              toExists,
+              fromStr,
+              toStr,
+              fromNum,
+              toNum,
+              centralNodeId: centralNode.id,
+              sampleItemIds: Array.from(allItemIds).slice(0, 5)
+            });
+          }
+          
+          return fromExists && toExists;
+        });
+        
+        
+        // Update connections in the same state update to ensure they're in sync
+        setConnections(prevConnections => [...prevConnections, ...validConnections]);
+        
+        // Increment usage counter for non-signed-in users
+        if (!user) {
+          incrementMindMapCount();
+        }
+        
+        return allItems;
+      });
       
       // Center view on the mind map after a short delay to ensure rendering
       setTimeout(() => {
-        if (centralNode && centralNode.position) {
-          // Pan to center the view on the central node
+        if (centralNode && centralNode.position && mindMapItemsForCentering.length > 0) {
+          // Pan to center the view on the mind map
           const canvasEl = document.querySelector('.whiteboard-canvas');
           if (canvasEl) {
             const canvasBounds = canvasEl.getBoundingClientRect();
-            const targetX = -centralNode.position.x * scale + canvasBounds.width / 2;
-            const targetY = -centralNode.position.y * scale + canvasBounds.height / 2;
+            const dpr = window.devicePixelRatio || 1;
+            const effectiveScale = scale * dpr;
+            
+            // Calculate the bounds of the entire mind map to center it properly
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            
+            mindMapItemsForCentering.forEach(item => {
+              if (item && item.position) {
+                minX = Math.min(minX, item.position.x);
+                minY = Math.min(minY, item.position.y);
+                maxX = Math.max(maxX, item.position.x + (item.width || 150));
+                maxY = Math.max(maxY, item.position.y + (item.height || 150));
+              }
+            });
+            
+            // Calculate center of the mind map
+            const mindMapCenterX = (minX + maxX) / 2;
+            const mindMapCenterY = (minY + maxY) / 2;
+            
+            // Calculate pan offset to center the mind map in the viewport
+            // Formula: panOffset = viewportCenter - (canvasPosition * scale)
+            const targetX = canvasBounds.width / 2 - mindMapCenterX * effectiveScale;
+            const targetY = canvasBounds.height / 2 - mindMapCenterY * effectiveScale;
+            
+            
             setPanOffset({ x: targetX, y: targetY });
           }
         }
-      }, 100);
+      }, 200); // Increased delay to ensure all items are rendered
       
-      setIsMindMapPanelOpen(false);
+      // Don't close the panel or clear the prompt - allow multiple generations
+      // User can manually close the panel if they want
     } catch (error) {
       alert(error.message || 'Failed to generate mind map. Please try again.');
+      // On error, we can optionally clear the prompt, but keep panel open
     } finally {
       setIsGeneratingMindMap(false);
-      setMindMapPrompt('');
+      // Prevent auto-save for a short period after mindmap generation to avoid saving to wrong board
+      setTimeout(() => {
+        isGeneratingMindMapRef.current = false;
+      }, 3000); // Wait 3 seconds after generation completes before allowing auto-save
+      // Don't clear the prompt - allow user to generate again with same or modified prompt
     }
   };
 
@@ -4000,18 +4432,20 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
       })()}
 
       {/* Color Wheel at top right */}
-      {selectedItem && selectedItem.type !== 'chart' && selectedItems.size === 1 && !isSearchPanelOpen && (
-        <div style={{
-          position: 'fixed',
-          top: 70,
-          right: 20,
-          zIndex: 2000,
-          background: 'white',
-          borderRadius: '12px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-          padding: '10px',
-          minWidth: 220,
-        }}>
+      {selectedItem && selectedItem.type !== 'chart' && selectedItem.type !== 'image' && selectedItems.size === 1 && !isSearchPanelOpen && showColorMenu && (
+        <div 
+          className="color-menu-panel"
+          style={{
+            position: 'fixed',
+            top: 70,
+            right: 20,
+            zIndex: 2000,
+            background: 'white',
+            borderRadius: '12px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            padding: '10px',
+            minWidth: 220,
+          }}>
           {/* Section Dropdown */}
           <div style={{ marginBottom: '10px' }}>
             <select
@@ -4030,7 +4464,6 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
               <option value="background">Background Color</option>
               <option value="border">Border Color</option>
               <option value="text">Text Styling</option>
-              <option value="layout">Layout Settings</option>
             </select>
           </div>
 
@@ -4318,79 +4751,6 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
               </div>
             </>
           )}
-
-          {/* Layout Settings Section */}
-          {activeColorSection === 'layout' && (
-            <>
-              <div style={{ fontSize: 13, marginBottom: 6 }}>Layout Settings</div>
-              
-              {/* Branch Distance Slider */}
-              <div style={{ marginBottom: '15px' }}>
-                <div style={{ fontSize: 11, marginBottom: 4 }}>Branch Distance: {branchDistance.toFixed(2)}x</div>
-                <input
-                  type="range"
-                  min="0.5"
-                  max="2.0"
-                  step="0.05"
-                  value={branchDistance}
-                  onChange={(e) => {
-                    const newDistance = parseFloat(e.target.value);
-                    setBranchDistance(newDistance);
-                    
-                    // Live update: regenerate mind map with new distance
-                    if (selectedItem && selectedItem.type === 'circle') {
-                      // Regenerate the mind map with new distance
-                      regenerateMindMapWithNewDistance(selectedItem, [], newDistance);
-                    }
-                  }}
-                  style={{
-                    width: '100%',
-                    height: '6px',
-                    borderRadius: '3px',
-                    background: '#ddd',
-                    outline: 'none',
-                    cursor: 'pointer',
-                  }}
-                />
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  fontSize: '10px', 
-                  color: '#666',
-                  marginTop: '4px'
-                }}>
-                  <span>Compact</span>
-                  <span>Default</span>
-                  <span>Spread Out</span>
-                </div>
-              </div>
-              
-              {/* Reset Layout Button */}
-              <button
-                onClick={() => {
-                  setBranchDistance(0.8);
-                  if (selectedItem && selectedItem.type === 'circle') {
-                    regenerateMindMapWithNewDistance(selectedItem, [], 0.8);
-                  }
-                }}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  backgroundColor: '#f5f5f5',
-                  border: '1px solid #ddd',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                  color: '#333',
-                  transition: 'background-color 0.2s',
-                }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = '#e9e9e9'}
-                onMouseLeave={(e) => e.target.style.backgroundColor = '#f5f5f5'}
-              >
-                Reset to Default
-              </button>
-            </>
-          )}
         </div>
       )}
       <div className="whiteboard-header">
@@ -4572,13 +4932,15 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
       </div>
 
       <div
-        ref={drop}
+        ref={(node) => {
+          drop(node);
+          canvasRef.current = node;
+        }}
         className={`whiteboard-canvas ${isPanning ? 'panning' : ''}`}
         onMouseMove={handleMouseMove}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
         onClick={handleCanvasClick}
         style={{
           cursor: isPanning ? 'grabbing' : (isSpacePressed || isAltPressed ? 'grab' : 'default'),
@@ -4787,6 +5149,7 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
                 isChartEditing={editingChartId === item.id}
                 onDragEnd={saveState}
                 onResizeEnd={saveState}
+                onShowColorMenu={handleShowColorMenu}
               />
             ))}
           {/* Render non-chart items after (in front), sorted by order */}
@@ -4817,6 +5180,7 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
                 onOrganize={organizeNodes}
                 onDragEnd={saveState}
                 onResizeEnd={saveState}
+                onShowColorMenu={handleShowColorMenu}
               />
             ))}
         </div>
@@ -4860,25 +5224,25 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
           {selectedItems.size === 1 && (
             <>
               <div className="context-menu-option" onClick={() => handleContextMenuAction('bringToFront')}>
-                ⬆️ Bring to Front
+                Bring to Front
               </div>
               <div className="context-menu-option" onClick={() => handleContextMenuAction('bringForward')}>
-                ⬆ Bring Forward
+                Bring Forward
               </div>
               <div className="context-menu-option" onClick={() => handleContextMenuAction('pushBackward')}>
-                ⬇ Push Backward
+                Push Backward
               </div>
               <div className="context-menu-option" onClick={() => handleContextMenuAction('pushToBack')}>
-                ⬇️ Push to Back
+                Push to Back
               </div>
               <div className="context-menu-divider"></div>
             </>
           )}
           <div className="context-menu-option" onClick={() => handleContextMenuAction('delete')}>
-            🗑️ Delete Selected ({selectedItems.size})
+            Delete Selected ({selectedItems.size})
           </div>
           <div className="context-menu-option" onClick={() => handleContextMenuAction('move')}>
-            🔄 Move Selected ({selectedItems.size})
+            Move Selected ({selectedItems.size})
           </div>
         </div>
       )}
@@ -4990,15 +5354,8 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
         </div>
       )}
 
-
-      {/* Temporarily removed publish modal
-      <PublishModal
-        isOpen={isPublishModalOpen}
-        onClose={() => setIsPublishModalOpen(false)}
-        onPublish={handlePublish}
-        isPublishing={isPublishing}
-      />
-      */}
+      {/* Usage Tracker for non-signed-in users */}
+      {!user && <UsageTracker key={user ? 'hidden' : 'visible'} />}
 
       {/* Add the help toggle button */}
       <button 

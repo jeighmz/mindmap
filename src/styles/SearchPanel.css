@@ -1,10 +1,11 @@
 .search-panel {
   position: fixed;
-  right: 80px;
+  right: 20px;
   top: 50%;
   transform: translateY(-50%);
   width: 400px;
-  height: calc(100vh - 250px);
+  max-width: calc(100vw - 40px);
+  height: calc(100vh - 240px);
   background-color: white;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   z-index: 2000;
@@ -423,7 +424,7 @@
 @keyframes slideInFromRight {
   from {
     opacity: 0;
-    transform: translate(calc(100% + 80px), -50%);
+    transform: translate(calc(100% + 20px), -50%);
   }
   to {
     opacity: 1;
@@ -458,9 +459,10 @@
 .search-panel.chat-focused {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 250px);
+  height: calc(100vh - 240px);
   top: 50%;
   transform: translateY(-50%);
+  right: 20px;
   background: #ffffff;
   border-left: 1px solid #e0e0e0;
   transition: opacity 0.3s ease, visibility 0.3s ease;
@@ -506,6 +508,7 @@
   cursor: pointer;
   color: #666;
   transition: all 0.2s ease;
+  position: relative;
 }
 
 .settings-button:hover,
@@ -1129,6 +1132,44 @@
   fill: none;
 }
 
+.settings-button.vision-model-prompt {
+  position: relative;
+  background-color: #fff3cd;
+  border: 1px solid #ffc107;
+}
+
+.settings-button.vision-model-prompt:hover {
+  background-color: #ffe69c;
+  border-color: #ffb300;
+}
+
+.vision-model-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background-color: #ff6b6b;
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  z-index: 10;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
 /* Remove these panel-open adjustments since they're not needed with floating panel */
 .panel-open .whiteboard-container {
   width: 100%;
@@ -1157,7 +1198,7 @@
 @keyframes slideInFromRight {
   from {
     opacity: 0;
-    transform: translate(calc(100% + 80px), -50%);
+    transform: translate(calc(100% + 20px), -50%);
   }
   to {
     opacity: 1;
@@ -1212,6 +1253,35 @@
 .remove-screenshot:active {
   background-color: #dee2e6;
   transform: translateY(1px);
+}
+
+.highlighted-images-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+}
+
+.image-preview-item {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #dee2e6;
+  background-color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.image-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .message-screenshot {

@@ -22,15 +22,41 @@ const initializeFirebase = () => {
     // Remove any surrounding quotes and spaces
     privateKey = privateKey.trim().replace(/^["']|["']$/g, '');
     
-    // Replace escaped newlines with actual newlines
+    // Replace escaped newlines with actual newlines (handle both \\n and \n)
     privateKey = privateKey.replace(/\\n/g, '\n');
     
-    // Ensure the key has the proper PEM format
-    if (!privateKey.startsWith('-----BEGIN PRIVATE KEY-----')) {
-      privateKey = '-----BEGIN PRIVATE KEY-----\n' + privateKey;
-    }
-    if (!privateKey.endsWith('-----END PRIVATE KEY-----')) {
-      privateKey = privateKey + '\n-----END PRIVATE KEY-----';
+    // If the key already has proper PEM headers, use it as-is
+    if (privateKey.includes('-----BEGIN PRIVATE KEY-----') && privateKey.includes('-----END PRIVATE KEY-----')) {
+      // Key already has headers, just ensure proper formatting
+      // Extract the key content between headers
+      const beginMatch = privateKey.match(/-----BEGIN PRIVATE KEY-----\s*/);
+      const endMatch = privateKey.match(/\s*-----END PRIVATE KEY-----/);
+      
+      if (beginMatch && endMatch) {
+        // Get the key content (base64 encoded part)
+        const keyContent = privateKey
+          .replace(/-----BEGIN PRIVATE KEY-----\s*/, '')
+          .replace(/\s*-----END PRIVATE KEY-----/, '')
+          .replace(/\s+/g, ''); // Remove all whitespace
+        
+        if (keyContent && keyContent.length > 0) {
+          // Reformat with proper PEM structure (64 chars per line)
+          const formattedContent = keyContent.match(/.{1,64}/g)?.join('\n') || keyContent;
+          privateKey = `-----BEGIN PRIVATE KEY-----\n${formattedContent}\n-----END PRIVATE KEY-----`;
+        }
+      }
+    } else {
+      // Key doesn't have headers, add them
+      // Remove any existing whitespace/newlines from the key content
+      const keyContent = privateKey.replace(/\s+/g, '');
+      
+      if (keyContent && keyContent.length > 0) {
+        // Format with proper PEM structure (64 chars per line)
+        const formattedContent = keyContent.match(/.{1,64}/g)?.join('\n') || keyContent;
+        privateKey = `-----BEGIN PRIVATE KEY-----\n${formattedContent}\n-----END PRIVATE KEY-----`;
+      } else {
+        throw new Error('Private key content is empty after formatting');
+      }
     }
 
     const serviceAccount = {
@@ -56,23 +82,32 @@ const initializeFirebase = () => {
 };
 
 exports.handler = async (event, context) => {
-  // CORS headers
+  // Set CORS headers - must be set for all responses including errors
   const headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS'
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Content-Type': 'application/json'
   };
 
-  // Handle preflight
+  // Handle preflight requests
   if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 204, headers };
+    return {
+      statusCode: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS'
+      }
+    };
   }
 
   try {
     console.log('Function started');
     
     // Initialize Firebase and get db instance
-    const db = await initializeFirebase();
+    initializeFirebase();
+    const db = admin.firestore();
     console.log('Firebase initialized');
 
     // Parse request

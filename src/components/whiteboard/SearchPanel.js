@@ -5,7 +5,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase-config';
 import { useAuth } from '../../contexts/AuthContext';
 import '../../styles/SearchPanel.css';
-import { getApiBaseUrl } from '../../utils/api';
+import { getApiBaseUrl, getGroqApiKey } from '../../utils/api';
 
 // SVG Icons as components
 const CloseIcon = () => (
@@ -68,7 +68,14 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
     name: 'Llama 3.3 70B Versatile',
     provider: 'Meta'
   });
-  const [screenshot, setScreenshot] = useState(null);
+  // Track which images have been sent
+  const [sentImageIds, setSentImageIds] = useState(new Set());
+  
+  // Get all highlighted images (for checking if we need to show vision model prompt)
+  const allHighlightedImages = highlightedItems.filter(item => item.type === 'image' && item.imageUrl);
+  
+  // Get highlighted images for preview (excluding already sent ones)
+  const highlightedImages = allHighlightedImages.filter(item => !sentImageIds.has(item.id));
 
   const availableModels = [
     // Production Models
@@ -97,6 +104,9 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
   ];
 
   const isVisionModel = visionModels.includes(selectedModel.id);
+  
+  // Check if we should show vision model prompt (must be after isVisionModel is defined)
+  const shouldShowVisionModelPrompt = allHighlightedImages.length > 0 && !isVisionModel;
 
   // System message that guides the AI's behavior
   const systemMessage = {
@@ -116,6 +126,20 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
   }, [isModelDropdownOpen]);
 
   useEffect(() => {
+    // Reset sent images when highlighted items change (images deselected)
+    const currentImageIds = new Set(
+      highlightedItems
+        .filter(item => item.type === 'image' && item.imageUrl)
+        .map(item => item.id)
+        .filter(id => id !== undefined)
+    );
+    
+    // Remove any sent image IDs that are no longer in highlighted items
+    setSentImageIds(prev => {
+      const filtered = Array.from(prev).filter(id => currentImageIds.has(id));
+      return new Set(filtered);
+    });
+    
     // Add or update message when items are selected (but don't override if user has already started chatting)
     if (highlightedItems.length > 0) {
       const activeTab = tabs.find(tab => tab.id === activeTabId);
@@ -181,36 +205,6 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
     }
   };
 
-  const handleScreenshot = async () => {
-    try {
-      const canvas = document.querySelector('.whiteboard-canvas');
-      if (!canvas) {
-        throw new Error('Could not find whiteboard canvas');
-      }
-
-      const html2canvas = (await import('html2canvas')).default;
-      const screenshot = await html2canvas(canvas, {
-        backgroundColor: '#f5f5f5',
-        scale: 2,
-        useCORS: true,
-        logging: true,
-        onclone: (clonedDoc) => {
-          const clonedContent = clonedDoc.querySelector('.canvas-content');
-          if (clonedContent) {
-            clonedContent.style.transform = 'none';
-            const grid = clonedContent.querySelector('.grid-background');
-            if (grid) grid.style.display = 'none';
-          }
-        }
-      });
-
-      const base64Image = screenshot.toDataURL('image/png');
-      setScreenshot(base64Image);
-    } catch (error) {
-      console.error('Error capturing screenshot:', error);
-      alert('Failed to capture screenshot. Please try again.');
-    }
-  };
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
@@ -223,25 +217,16 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
       const activeTab = tabs.find(tab => tab.id === activeTabId);
       const newMessages = [...activeTab.messages];
       
-      // Collect images from highlighted items (always collect for UI display)
-      const highlightedImages = highlightedItems.filter(item => item.type === 'image' && item.imageUrl);
+      // Add highlighted images as separate messages for UI display (always show in UI)
+      const imagesToSend = highlightedItems.filter(item => item.type === 'image' && item.imageUrl && !sentImageIds.has(item.id));
       
-      // Store screenshot before clearing (for API call)
-      const screenshotForApi = screenshot;
-      
-      // If there's a screenshot, add it as a separate message first
-      if (screenshot) {
-        newMessages.push({
-          role: 'user',
-          content: '',
-          image: screenshot,
-          imageAlt: 'Mindmap screenshot'
-        });
-        setScreenshot(null); // Clear the screenshot after sending
+      // Mark all images as sent at once
+      if (imagesToSend.length > 0) {
+        const newSentIds = imagesToSend.map(item => item.id).filter(id => id !== undefined);
+        setSentImageIds(prev => new Set([...prev, ...newSentIds]));
       }
       
-      // Add highlighted images as separate messages for UI display (always show in UI)
-      highlightedImages.forEach((imageItem, index) => {
+      imagesToSend.forEach((imageItem, index) => {
         newMessages.push({
           role: 'user',
           content: '',
@@ -265,7 +250,7 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
       // Prepare the full context for the AI
       const fullPrompt = `Context from whiteboard:\n${itemsContext}\n\nUser question: ${userMessage}`;
 
-      const apiKey = await getUserApiKey();
+      const apiKey = getUserApiKey();
 
       // Prepare messages array based on whether we're using a vision model and have images
       let messages = [systemMessage];
@@ -273,10 +258,8 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
       // Collect all images for API (only if model supports vision)
       const allImages = [];
       if (isVisionModel) {
-        if (screenshotForApi) {
-          allImages.push(screenshotForApi);
-        }
-        highlightedImages.forEach(imageItem => {
+        const imagesToSend = highlightedItems.filter(item => item.type === 'image' && item.imageUrl && !sentImageIds.has(item.id));
+        imagesToSend.forEach(imageItem => {
           if (imageItem.imageUrl) {
             allImages.push(imageItem.imageUrl);
           }
@@ -320,7 +303,6 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
               : msg.content
           })),
           isVisionModel,
-          hasScreenshot: !!screenshot,
           highlightedImageCount: highlightedImages.length
         });
       }
@@ -368,61 +350,9 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
     }
   };
 
-  // Function to get user's API key from settings
-  const getUserApiKey = async () => {
-    if (!user) {
-      throw new Error('Please sign in to use AI features');
-    }
-
-    const settingsRef = doc(db, 'userSettings', user.uid);
-    const settingsSnap = await getDoc(settingsRef);
-    const userSettings = settingsSnap.exists() ? settingsSnap.data() : {};
-    
-    if (!userSettings.groqApiKey) {
-      throw new Error('Please set your GROQ API key in Settings to use AI features');
-    }
-
-    try {
-      // First try base64 decoding
-      try {
-        const decoded = atob(userSettings.groqApiKey);
-        if (decoded.startsWith('gsk_')) {
-          return decoded;
-        }
-      } catch (e) {
-        // If not base64 encoded, continue to API attempt
-        console.log('Not a valid base64 encoded key, trying API...');
-      }
-
-      // If base64 decode failed or didn't return a valid key, try the API
-      const apiBaseUrl = getApiBaseUrl();
-      if (!apiBaseUrl) {
-        throw new Error('API base URL not configured');
-      }
-
-      const decryptResponse = await fetch(`${apiBaseUrl}/decryptApiKey`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.uid,
-          encryptedData: userSettings.groqApiKey
-        })
-      });
-
-      if (!decryptResponse.ok) {
-        // If API fails, try base64 one more time or return as-is for development
-        if (process.env.NODE_ENV === 'development') {
-          return userSettings.groqApiKey;
-        }
-        throw new Error('Failed to decrypt API key');
-      }
-
-      const { decrypted } = await decryptResponse.json();
-      return decrypted;
-    } catch (error) {
-      console.error('Error accessing API key:', error);
-      throw new Error('Failed to access API key. Please check your settings and try again.');
-    }
+  // Function to get Groq API key from environment
+  const getUserApiKey = () => {
+    return getGroqApiKey();
   };
 
   const activeTab = tabs.find(tab => tab.id === activeTabId);
@@ -461,9 +391,6 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
                         if (!model.disabled) {
                           setSelectedModel(model);
                           setIsModelDropdownOpen(false);
-                          if (!visionModels.includes(model.id)) {
-                            setScreenshot(null);
-                          }
                         }
                       }}
                     >
@@ -612,17 +539,13 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
       </div>
 
       <div className={isFullscreen ? "modal-chat-input" : "chat-input"}>
-        {screenshot && (
-          <div className="screenshot-preview-container">
-            <img src={screenshot} alt="Screenshot preview" />
-            <button 
-              className="remove-screenshot"
-              onClick={() => setScreenshot(null)}
-              title="Remove screenshot"
-            >
-              <RemoveIcon />
-              Remove
-            </button>
+        {isVisionModel && highlightedImages.length > 0 && (
+          <div className="highlighted-images-preview">
+            {highlightedImages.map((imageItem, index) => (
+              <div key={imageItem.id || index} className="image-preview-item">
+                <img src={imageItem.imageUrl} alt={`Preview ${index + 1}`} />
+              </div>
+            ))}
           </div>
         )}
         <div className="chat-input-controls">
@@ -660,18 +583,6 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
         <div className="chat-header">
           <h3>AI Analysis Chat</h3>
           <div className="header-actions">
-            {isVisionModel && (
-              <button 
-                className="settings-button"
-                onClick={handleScreenshot}
-                title="Capture mindmap screenshot"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" strokeLinecap="round" strokeLinejoin="round"/>
-                  <circle cx="12" cy="13" r="4" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </button>
-            )}
             <button 
               className="fullscreen-button"
               onClick={() => {
@@ -686,11 +597,14 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
               Full Screen
             </button>
             <button 
-              className="settings-button"
+              className={`settings-button ${shouldShowVisionModelPrompt ? 'vision-model-prompt' : ''}`}
               onClick={() => setShowSettings(!showSettings)}
-              title="Chat settings"
+              title={shouldShowVisionModelPrompt ? "Switch to a vision model to analyze images" : "Chat settings"}
             >
               <SettingsIcon />
+              {shouldShowVisionModelPrompt && (
+                <span className="vision-model-badge">Vision</span>
+              )}
             </button>
             <button className="close-button" onClick={onClose} title="Close panel">
               <CloseIcon />
@@ -706,24 +620,15 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
             <div className="modal-header">
               <h3>AI Analysis Chat</h3>
               <div className="header-actions">
-                {isVisionModel && (
-                  <button 
-                    className="settings-button"
-                    onClick={handleScreenshot}
-                    title="Capture mindmap screenshot"
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" strokeLinecap="round" strokeLinejoin="round"/>
-                      <circle cx="12" cy="13" r="4" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </button>
-                )}
                 <button 
-                  className="settings-button"
+                  className={`settings-button ${shouldShowVisionModelPrompt ? 'vision-model-prompt' : ''}`}
                   onClick={() => setShowSettings(!showSettings)}
-                  title="Chat settings"
+                  title={shouldShowVisionModelPrompt ? "Switch to a vision model to analyze images" : "Chat settings"}
                 >
                   <SettingsIcon />
+                  {shouldShowVisionModelPrompt && (
+                    <span className="vision-model-badge">Vision</span>
+                  )}
                 </button>
                 <button 
                   className="settings-button minimize-button"

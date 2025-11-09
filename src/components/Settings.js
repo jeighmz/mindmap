@@ -61,7 +61,6 @@ const SETTINGS_SECTIONS = {
 
 export default function Settings({ isOpen, onClose, onUpgradeClick }) {
   const { user, userTier, refreshUserData } = useAuth();
-  const [groqApiKey, setGroqApiKey] = useState('');
   const [notionApiKey, setNotionApiKey] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -108,34 +107,6 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
       if (settingsSnap.exists()) {
         const data = settingsSnap.data();
 
-        // Load Groq API key
-        if (data.groqApiKey) {
-          try {
-            const decodedKey = atob(data.groqApiKey);
-            setGroqApiKey(decodedKey);
-          } catch (e) {
-            if (process.env.NODE_ENV === 'development') {
-              setGroqApiKey(data.groqApiKey);
-            } else {
-              const response = await fetch(`${getApiBaseUrl()}/decryptApiKey`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  userId: currentUser.uid,
-                  encryptedData: data.groqApiKey
-                })
-              });
-
-              if (!response.ok) {
-                throw new Error('Failed to decrypt API key');
-              }
-
-              const { decrypted } = await response.json();
-              setGroqApiKey(decrypted);
-            }
-          }
-        }
-
         // Load Notion API key
         if (data.notionApiKey) {
           try {
@@ -165,11 +136,9 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
         }
       } else {
         await setDoc(settingsRef, {
-          groqApiKey: '',
           notionApiKey: '',
           updatedAt: new Date().toISOString()
         });
-        setGroqApiKey('');
         setNotionApiKey('');
       }
     } catch (error) {
@@ -274,63 +243,45 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
       }
 
       // Handle API keys update
-      const trimmedGroqKey = groqApiKey.trim();
       const trimmedNotionKey = notionApiKey.trim();
       let settingsData = {};
 
-      // Process Groq API key
-      if (trimmedGroqKey) {
-        if (!trimmedGroqKey.startsWith('gsk_')) {
-          setMessage({ type: 'error', text: 'Invalid Groq API key format. Keys should start with "gsk_"' });
-          return;
-        }
-
-        if (process.env.NODE_ENV === 'development') {
-          settingsData.groqApiKey = btoa(trimmedGroqKey);
-        } else {
-          const response = await fetch(`${getApiBaseUrl()}/encryptApiKey`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: user.uid,
-              apiKey: trimmedGroqKey
-            })
-          });
-
-          if (!response.ok) {
-            throw new Error('Failed to encrypt Groq API key');
-          }
-
-          const { encrypted } = await response.json();
-          settingsData.groqApiKey = encrypted;
-        }
-      }
-
       // Process Notion API key
       if (trimmedNotionKey) {
+        // Warn but don't block - let the API call validate the key
         if (!trimmedNotionKey.startsWith('secret_')) {
-          setMessage({ type: 'error', text: 'Invalid Notion API key format. Keys should start with "secret_"' });
-          return;
+          console.warn('Notion API key does not start with "secret_" - this may be invalid, but proceeding anyway');
         }
 
         if (process.env.NODE_ENV === 'development') {
           settingsData.notionApiKey = btoa(trimmedNotionKey);
         } else {
-          const response = await fetch(`${getApiBaseUrl()}/encryptApiKey`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: user.uid,
-              apiKey: trimmedNotionKey
-            })
-          });
+          try {
+            const response = await fetch(`${getApiBaseUrl()}/encryptApiKey`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: user.uid,
+                apiKey: trimmedNotionKey
+              })
+            });
 
-          if (!response.ok) {
-            throw new Error('Failed to encrypt Notion API key');
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              throw new Error(errorData.error || 'Failed to encrypt Notion API key');
+            }
+
+            const { encrypted } = await response.json();
+            settingsData.notionApiKey = encrypted;
+          } catch (error) {
+            // If encryption fails, still allow saving in development mode
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('Encryption failed, using base64 encoding as fallback:', error);
+              settingsData.notionApiKey = btoa(trimmedNotionKey);
+            } else {
+              throw error;
+            }
           }
-
-          const { encrypted } = await response.json();
-          settingsData.notionApiKey = encrypted;
         }
       }
 
@@ -387,27 +338,6 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
         <small>Your name will be visible to other users</small>
       </div>
 
-      <div className="form-group">
-        <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px'}}>
-          <label htmlFor="groqApiKey" style={{ marginBottom: 0 }}>GROQ API Key</label>
-          <a 
-            href="https://console.groq.com/keys" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="groq-dashboard-link"
-          >
-            Get API Key
-          </a>
-        </div>
-        <input
-          type="password"
-          id="groqApiKey"
-          value={groqApiKey}
-          onChange={(e) => setGroqApiKey(e.target.value)}
-          placeholder="Enter your GROQ API key"
-        />
-        <small>Your API key is stored securely and used for AI features</small>
-      </div>
     </div>
   );
 
@@ -592,76 +522,7 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
   const renderIntegrationsSection = () => (
     <div className="settings-section">
       <h3>Integrations</h3>
-      
-      <div className="integrations-search-container">
-        <div className="integrations-search-wrapper">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="search-icon">
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
-          <input
-            type="text"
-            placeholder="Search integrations..."
-            value={integrationSearch}
-            onChange={(e) => setIntegrationSearch(e.target.value)}
-            className="integrations-search-input"
-          />
-        </div>
-      </div>
-
-      <div className="integrations-grid">
-        {filteredIntegrations.map((integration) => (
-          <div
-            key={integration.id}
-            className={`integration-card ${integration.enabled ? 'enabled' : ''}`}
-            onClick={() => handleIntegrationClick(integration)}
-          >
-            <div className="integration-icon" style={{ backgroundColor: `${integration.color}15` }}>
-              <span className="integration-emoji">{integration.icon}</span>
-            </div>
-            <div className="integration-info">
-              <h4>{integration.name}</h4>
-              <p>{integration.description}</p>
-            </div>
-            <div className="integration-status">
-              {integration.enabled ? (
-                <span className="status-badge connected">Connected</span>
-              ) : (
-                <span className="status-badge available">Available</span>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {filteredIntegrations.length === 0 && (
-        <div className="integrations-empty">
-          <p>No integrations found matching "{integrationSearch}"</p>
-        </div>
-      )}
-
-      {/* Notion API Key Input (shown when Notion is selected or always visible) */}
-      <div className="form-group" style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid #e9ecef' }}>
-        <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px'}}>
-          <label htmlFor="notionApiKey" style={{ marginBottom: 0 }}>Notion API Key</label>
-          <a 
-            href="https://www.notion.so/my-integrations" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="notion-dashboard-link"
-          >
-            Get API Key
-          </a>
-        </div>
-        <input
-          type="password"
-          id="notionApiKey"
-          value={notionApiKey}
-          onChange={(e) => setNotionApiKey(e.target.value)}
-          placeholder="Enter your Notion API key"
-        />
-        <small>Your API key is stored securely and used for Notion integration</small>
-      </div>
+      <p>Coming soon...</p>
     </div>
   );
 

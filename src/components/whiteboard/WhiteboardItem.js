@@ -102,7 +102,8 @@ const WhiteboardItem = ({
   isChartEditing,
   panOffset = { x: 0, y: 0 },
   onDragEnd,
-  onResizeEnd
+  onResizeEnd,
+  onShowColorMenu
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
@@ -185,7 +186,16 @@ const WhiteboardItem = ({
     if (e.target.closest('.edit-control, .connector-control, .expand-control')) {
       return;
     }
+    
+    // Stop propagation to prevent multiple items from being selected
     e.stopPropagation();
+    e.preventDefault();
+    
+    // Also stop immediate propagation to prevent event bubbling
+    if (e.nativeEvent) {
+      e.nativeEvent.stopImmediatePropagation();
+    }
+    
     if (!isEditing && !isResizing) {
       onSelect(item.id, e);
     }
@@ -1326,7 +1336,7 @@ const WhiteboardItem = ({
         }}
       >
         {isExpanding ? (
-          <div className="spinner" style={{ width: '7px', height: '7px' }}></div>
+          <div className="spinner" style={{ pointerEvents: 'none' }}></div>
         ) : (
           <svg 
             width="8" 
@@ -1337,7 +1347,7 @@ const WhiteboardItem = ({
             strokeWidth="2.5"
             strokeLinecap="round"
             strokeLinejoin="round"
-            style={{ pointerEvents: 'none' }}
+            style={{ pointerEvents: 'none', display: 'block' }}
           >
             <path d="M12 2v20M2 12h20" />
           </svg>
@@ -1367,7 +1377,8 @@ const WhiteboardItem = ({
         height: item.height,
         cursor: isDragging ? 'grabbing' : (isConnecting ? 'not-allowed' : (isValidTarget ? 'pointer' : 'default')),
         transition: isDragging ? 'none' : 'all 0.15s ease',
-        zIndex: item.type === 'chart' ? 1 : (isSelected ? 1000 : 100),
+        zIndex: item.type === 'chart' ? 1 : (isSelected ? 1000 : (item.order !== undefined ? 100 + item.order : 100)),
+        pointerEvents: 'auto',
         userSelect: 'none',
         border: isValidTarget ? '2px dashed #4CAF50' : 'none',
         ...(item.type === 'sticky' ? { backgroundColor: item.backgroundColor || '#fff740' } : {}),
@@ -1423,7 +1434,10 @@ const WhiteboardItem = ({
             <>
               <EditButton 
                 onStartEditing={() => {
-                  setIsEditing(true);
+                  // Show color menu instead of editing for non-image, non-chart items
+                  if (onShowColorMenu) {
+                    onShowColorMenu();
+                  }
                 }}
                 scale={scale}
               />

@@ -45,7 +45,13 @@ const SavedWhiteboardsMenu = ({
     setError(null);
     try {
       const boards = await getUserBoards(user.uid);
-      setUserBoards(boards);
+      // Sort by savedAt descending (most recent first)
+      const sortedBoards = [...boards].sort((a, b) => {
+        const dateA = new Date(a.savedAt || 0);
+        const dateB = new Date(b.savedAt || 0);
+        return dateB - dateA;
+      });
+      setUserBoards(sortedBoards);
     } catch (error) {
       setError(error.message || 'Failed to load boards');
       setUserBoards([]);
@@ -220,13 +226,29 @@ const SavedWhiteboardsMenu = ({
       const savedBoard = await saveBoard(boardData, user.uid);
       
       if (existingBoardId) {
-        // Update existing board in the list
-        setUserBoards(prev => prev.map(board => 
-          board.id === existingBoardId ? savedBoard : board
-        ));
+        // Update existing board in the list and re-sort by savedAt
+        setUserBoards(prev => {
+          const updated = prev.map(board => 
+            board.id === existingBoardId ? savedBoard : board
+          );
+          // Sort by savedAt descending (most recent first)
+          return updated.sort((a, b) => {
+            const dateA = new Date(a.savedAt || 0);
+            const dateB = new Date(b.savedAt || 0);
+            return dateB - dateA;
+          });
+        });
       } else {
-        // Add new board to the list
-        setUserBoards(prev => [savedBoard, ...prev]);
+        // Add new board to the list and re-sort
+        setUserBoards(prev => {
+          const updated = [savedBoard, ...prev];
+          // Sort by savedAt descending (most recent first)
+          return updated.sort((a, b) => {
+            const dateA = new Date(a.savedAt || 0);
+            const dateB = new Date(b.savedAt || 0);
+            return dateB - dateA;
+          });
+        });
         setNewBoardName('');
       }
       onToggle(); // Close menu after save
@@ -270,9 +292,18 @@ const SavedWhiteboardsMenu = ({
     );
   };
 
+  // Sort boards by savedAt descending (most recent first)
+  const sortBoardsByDate = (boards) => {
+    return [...boards].sort((a, b) => {
+      const dateA = new Date(a.savedAt || 0);
+      const dateB = new Date(b.savedAt || 0);
+      return dateB - dateA;
+    });
+  };
+
   const displayedBoards = activeTab === 'demo' 
-    ? savedWhiteboards 
-    : getFilteredBoards(userBoards);
+    ? sortBoardsByDate(savedWhiteboards)
+    : sortBoardsByDate(getFilteredBoards(userBoards));
 
   const styles = {
     menuContainer: {

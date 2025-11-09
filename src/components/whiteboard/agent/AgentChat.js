@@ -5,6 +5,7 @@ import '../../../styles/AgentChat.css';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../firebase-config';
 import { useAuth } from '../../../contexts/AuthContext';
+import { getGroqApiKey } from '../../../utils/api';
 import {
   notionTool,
   createNotionDatabase,
@@ -93,10 +94,6 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
       if (!trimmedKey.startsWith('secret_') && !trimmedKey.startsWith('ntn_')) {
         console.warn('Notion API key may be invalid - should start with "secret_" or "ntn_"');
       }
-      console.log('Notion API key loaded from:', 
-        window?.env?.REACT_APP_NOTION_API_KEY ? 'window.env' : 
-        process.env.REACT_APP_NOTION_API_KEY ? 'REACT_APP' : 'process.env'
-      );
       setNotionApiKey(trimmedKey);
     } else {
       console.error('No Notion API key found in environment variables');
@@ -104,17 +101,12 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
     
     if (dbId) {
       setNotionDatabaseId(dbId);
-      console.log('Notion database ID loaded');
     }
   }, []);
 
   // Listen for updates to highlightedItems and update context
   useEffect(() => {
-    if (highlightedItems && highlightedItems.length > 0) {
-      // Optionally add a system message about the highlighted items
-      // This helps the AI understand what context is available
-      console.log('Highlighted items updated:', highlightedItems.length);
-    }
+    // Highlighted items are available for context
   }, [highlightedItems]);
 
   const analyzeMindMap = () => {
@@ -142,10 +134,7 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
 
   const toggleTool = (toolId) => {
     if (toolId === 'notion') {
-      console.log('Toggling Notion tool:', {
-        apiKey: notionApiKey ? 'Present' : 'Missing',
-        databaseId: notionDatabaseId
-      });
+      // Notion tool toggle logic
     }
     
     if (toolId === 'reference') {
@@ -197,14 +186,8 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
   };
 
   const handleNotionDatabase = async () => {
-    console.log('Initializing Notion database with:', {
-      hasApiKey: !!notionApiKey,
-      hasDatabaseId: !!notionDatabaseId
-    });
-
     const databaseId = await createNotionDatabase(notionApiKey, notionDatabaseId, addMessage);
     if (databaseId) {
-      console.log('Successfully connected to database:', databaseId);
       setNotionDatabaseId(databaseId);
       return databaseId;
     }
@@ -279,7 +262,7 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
     const mindMapAnalysis = analyzeMindMap();
     
     try {
-      const apiKey = await getUserApiKey();
+      const apiKey = getUserApiKey();
       const model = process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
 
       // Create system prompt for action planning
@@ -439,14 +422,6 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
     addMessage('system', '🔄 Starting Notion integration process...');
     
     try {
-      // Log the current state
-      console.log('Executing Notion actions with:', {
-        apiKey: notionApiKey ? 'Present' : 'Missing',
-        databaseId: notionDatabaseId,
-        actionItems: actionItems,
-        currentStep
-      });
-
       // Ensure we have action items to process
       if (!actionItems || actionItems.length === 0) {
         addMessage('assistant', '❌ No action items to create. Please generate an action plan first.');
@@ -464,15 +439,12 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
       }
       
       // Write all action items to Notion using the new function
-      console.log('Writing action items to Notion:', actionItems);
       const results = await writeActionItemsToNotion(
         notionApiKey,
         notionDatabaseId,
         actionItems,
         addMessage
       );
-      
-      console.log('Results from writing to Notion:', results);
 
       if (results && results.length > 0) {
         // Store the created page IDs for future reference
@@ -767,7 +739,7 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
         const mindMapAnalysis = analyzeMindMap();
         
         try {
-          const apiKey = await getUserApiKey();
+          const apiKey = getUserApiKey();
           const model = process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
 
           // Create system prompt for action planning
@@ -1117,21 +1089,9 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
     }
   };
 
-  // Function to get user's API key from settings
-  const getUserApiKey = async () => {
-    if (!user) {
-      throw new Error('Please sign in to use AI features');
-    }
-
-    const settingsRef = doc(db, 'userSettings', user.uid);
-    const settingsSnap = await getDoc(settingsRef);
-    const userSettings = settingsSnap.exists() ? settingsSnap.data() : {};
-    
-    if (!userSettings.groqApiKey) {
-      throw new Error('Please set your GROQ API key in Settings to use AI features');
-    }
-    
-    return userSettings.groqApiKey;
+  // Function to get Groq API key from environment
+  const getUserApiKey = () => {
+    return getGroqApiKey();
   };
 
   // Function to identify tools based on user intent
@@ -1206,7 +1166,7 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
   // Function to execute tools in an agentic, conversational manner
   const executeToolAgentChat = async (userInput) => {
     try {
-      const apiKey = await getUserApiKey();
+      const apiKey = getUserApiKey();
       const model = process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
       
       // Identify tools based on user intent
@@ -1380,7 +1340,7 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
         // If no tools were executed, proceed with regular chat
         if (!toolExecuted) {
           // Regular chat processing
-          const apiKey = await getUserApiKey();
+          const apiKey = getUserApiKey();
           const model = process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
 
           // Analyze mind map

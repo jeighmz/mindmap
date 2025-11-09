@@ -555,17 +555,11 @@ const writeActionItemsToNotion = async (
     return [];
   }
 
-  console.log('Starting to write action items to Notion:', {
-    databaseId: notionDatabaseId,
-    itemCount: actionItems.length,
-    firstItem: actionItems[0]
-  });
 
   const results = [];
   addMessage("system", `🔄 Writing ${actionItems.length} action items to Notion...`);
 
   for (const item of actionItems) {
-    console.log('Processing action item:', item);
     try {
       const pageId = await writeToNotionDatabase(
         notionApiKey,
@@ -581,7 +575,6 @@ const writeActionItemsToNotion = async (
       );
 
       if (pageId) {
-        console.log('Successfully created Notion page:', pageId);
         results.push({
           id: pageId,
           title: item.action,
@@ -602,13 +595,6 @@ const writeActionItemsToNotion = async (
 
   const successCount = results.length;
   const failCount = actionItems.length - successCount;
-
-  console.log('Finished writing to Notion:', {
-    totalItems: actionItems.length,
-    successCount,
-    failCount,
-    results
-  });
 
   addMessage(
     "assistant",
@@ -654,7 +640,6 @@ const writeToNotionDatabase = async (
 
     // First, verify the database exists and is accessible
     addMessage("system", "🔄 Verifying database access...");
-    console.log('Verifying database access with ID:', notionDatabaseId);
 
     const verifyResponse = await fetch(`${API_BASE_URL}/databases/${notionDatabaseId}`, {
       method: "GET",
@@ -676,10 +661,6 @@ const writeToNotionDatabase = async (
     }
 
     const dbData = await verifyResponse.json();
-    console.log('Database schema:', {
-      id: dbData.id,
-      properties: Object.keys(dbData.properties)
-    });
 
     // Validate that required properties exist in the database
     const requiredProperties = ['Name', 'Status', 'Priority', 'Category', 'Notes'];
@@ -753,13 +734,6 @@ const writeToNotionDatabase = async (
       }
     }
 
-    console.log('Sending request to Notion API:', {
-      endpoint: `${API_BASE_URL}/pages`,
-      method: 'POST',
-      databaseId: notionDatabaseId,
-      properties: Object.keys(requestBody.properties)
-    });
-
     const response = await fetch(`${API_BASE_URL}/pages`, {
       method: "POST",
       headers: {
@@ -785,11 +759,6 @@ const writeToNotionDatabase = async (
     }
 
     const data = await response.json();
-    console.log('Successfully created Notion page:', {
-      id: data.id,
-      url: data.url,
-      created_time: data.created_time
-    });
     
     addMessage("assistant", `✅ Successfully created Notion page: "${title}"\nView it here: ${data.url}`);
 
