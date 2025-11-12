@@ -46,6 +46,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
+  const [isRightClickSelecting, setIsRightClickSelecting] = useState(false);
   const [selectionBox, setSelectionBox] = useState(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState(null);
@@ -312,6 +313,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       }
 
       setIsSelecting(false);
+      setIsRightClickSelecting(false);
       setSelectionBox(null);
       setSelectionStart(null);
     }
@@ -355,7 +357,9 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }
     
     // Don't handle if clicking on a whiteboard item (let WhiteboardItem handle it)
+    // For right-click on items, let the context menu handler deal with it
     if (e.target.closest('.whiteboard-item')) {
+      // Only allow right-click selection if clicking on canvas background, not on items
       return;
     }
     
@@ -383,8 +387,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         y: e.clientY - panOffset.y
       });
       e.preventDefault();
-    } else if (e.button === 0 && isSpacePressed) {
-      // Space + drag = selection box (group highlight)
+    } else if ((e.button === 0 && isSpacePressed) || e.button === 2) {
+      // Space + drag OR right-click drag = selection box (group highlight)
       // Don't start if clicking from header, instructions panel, or chat panel
       if (e.target.closest('.whiteboard-header, .whiteboard-controls-overlay, .help-toggle-button, .search-panel, .agent-chat, .chat-modal')) {
         return;
@@ -406,9 +410,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         const y = (clickY - rect.top - panOffset.y) / (scale * dpr);
         
         setIsSelecting(true);
+        setIsRightClickSelecting(e.button === 2);
         setSelectionStart({ x, y });
         setSelectionBox({ x, y, width: 0, height: 0 });
         setSelectedItems(new Set());
+        e.preventDefault(); // Prevent context menu when right-click dragging
       }
     }
   }, [panOffset, scale, isSpacePressed]);
@@ -432,10 +438,18 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       if (isPanning) {
         setIsPanning(false);
       }
+      if (isSelecting || isRightClickSelecting) {
+        setIsSelecting(false);
+        setIsRightClickSelecting(false);
+        setSelectionBox(null);
+        setSelectionStart(null);
+      }
     };
 
-    if (isPanning) {
-      window.addEventListener('mousemove', handleGlobalMouseMove);
+    if (isPanning || isSelecting || isRightClickSelecting) {
+      if (isPanning) {
+        window.addEventListener('mousemove', handleGlobalMouseMove);
+      }
       window.addEventListener('mouseup', handleGlobalMouseUp);
     }
 
@@ -443,7 +457,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       window.removeEventListener('mousemove', handleGlobalMouseMove);
       window.removeEventListener('mouseup', handleGlobalMouseUp);
     };
-  }, [isPanning, panStart]);
+  }, [isPanning, panStart, isSelecting, isRightClickSelecting]);
 
   // Undo functionality
   const saveState = useCallback(() => {
@@ -5048,8 +5062,14 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onClick={handleCanvasClick}
+        onContextMenu={(e) => {
+          // Prevent context menu when right-click dragging for selection
+          if (isRightClickSelecting || isSelecting) {
+            e.preventDefault();
+          }
+        }}
         style={{
-          cursor: isPanning ? 'grabbing' : (isSpacePressed ? 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'20\' height=\'20\' viewBox=\'0 0 32 32\'%3E%3Ccircle cx=\'13\' cy=\'13\' r=\'8\' stroke=\'%23000000\' stroke-width=\'2.5\' fill=\'none\'/%3E%3Cline x1=\'20\' y1=\'20\' x2=\'28\' y2=\'28\' stroke=\'%23000000\' stroke-width=\'2.5\' stroke-linecap=\'round\'/%3E%3C/svg%3E") 10 10, crosshair' : 'grab'),
+          cursor: isPanning ? 'grabbing' : (isSpacePressed || isRightClickSelecting ? 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'20\' height=\'20\' viewBox=\'0 0 32 32\'%3E%3Ccircle cx=\'13\' cy=\'13\' r=\'8\' stroke=\'%23000000\' stroke-width=\'2.5\' fill=\'none\'/%3E%3Cline x1=\'20\' y1=\'20\' x2=\'28\' y2=\'28\' stroke=\'%23000000\' stroke-width=\'2.5\' stroke-linecap=\'round\'/%3E%3C/svg%3E") 10 10, crosshair' : 'grab'),
           position: 'relative',
           overflow: 'hidden',
           width: '100%',
@@ -5396,7 +5416,15 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
               harmonics: editingChart.harmonics || 1,
               enableModulation: editingChart.enableModulation || false,
               modulationDepth: editingChart.modulationDepth || 0.5,
-              chartType: editingChart.chartType
+              chartType: editingChart.chartType,
+              // Data plotting settings (for XY charts)
+              dataMode: editingChart.dataMode || 'none',
+              dataPoints: editingChart.dataPoints || '',
+              dataEquation: editingChart.dataEquation || '',
+              dataPointCount: editingChart.dataPointCount || 100,
+              showDataLine: editingChart.showDataLine !== false,
+              showDataPoints: editingChart.showDataPoints !== false,
+              dataColor: editingChart.dataColor || '#FF5722'
             }}
             onConfigUpdate={(newConfig) => {
               const updatedItem = {

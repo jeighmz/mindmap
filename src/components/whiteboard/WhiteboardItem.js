@@ -139,7 +139,15 @@ const WhiteboardItem = ({
     phaseShift: item.phaseShift || 0,
     harmonics: item.harmonics || 1,
     enableModulation: item.enableModulation || false,
-    modulationDepth: item.modulationDepth || 0.5
+    modulationDepth: item.modulationDepth || 0.5,
+    // Data plotting settings (for XY charts)
+    dataMode: item.dataMode || 'none',
+    dataPoints: item.dataPoints || '',
+    dataEquation: item.dataEquation || '',
+    dataPointCount: item.dataPointCount || 100,
+    showDataLine: item.showDataLine !== false,
+    showDataPoints: item.showDataPoints !== false,
+    dataColor: item.dataColor || '#FF5722'
   });
 
   const [chartConfig, setChartConfig] = useState(getInitialChartConfig());
@@ -176,7 +184,14 @@ const WhiteboardItem = ({
     item.harmonics,
     item.enableModulation,
     item.modulationDepth,
-    item.chartType
+    item.chartType,
+    item.dataMode,
+    item.dataPoints,
+    item.dataEquation,
+    item.dataPointCount,
+    item.showDataLine,
+    item.showDataPoints,
+    item.dataColor
   ]);
 
   const itemRef = useRef(null);
@@ -554,6 +569,80 @@ const WhiteboardItem = ({
 
       const effectivePadding = padding;
 
+      // Parse and generate data points for XY charts
+      const parseDataPoints = (dataPointsString) => {
+        if (!dataPointsString || dataPointsString.trim() === '') return [];
+        try {
+          return dataPointsString.split(';')
+            .map(pair => {
+              const trimmed = pair.trim();
+              if (!trimmed) return null;
+              const [x, y] = trimmed.split(',').map(v => parseFloat(v.trim()));
+              if (isNaN(x) || isNaN(y)) return null;
+              return { x, y };
+            })
+            .filter(point => point !== null);
+        } catch (error) {
+          console.error('Error parsing data points:', error);
+          return [];
+        }
+      };
+
+      // Evaluate equation/formula
+      const evaluateEquation = (equation, x) => {
+        if (!equation || equation.trim() === '') return null;
+        try {
+          // Replace ^ with ** for exponentiation
+          let expr = equation.replace(/\^/g, '**');
+          // Replace 'x' with the actual x value
+          expr = expr.replace(/\bx\b/g, `(${x})`);
+          // Replace common math functions
+          expr = expr.replace(/\bsin\b/g, 'Math.sin');
+          expr = expr.replace(/\bcos\b/g, 'Math.cos');
+          expr = expr.replace(/\btan\b/g, 'Math.tan');
+          expr = expr.replace(/\blog\b/g, 'Math.log');
+          expr = expr.replace(/\bexp\b/g, 'Math.exp');
+          expr = expr.replace(/\bsqrt\b/g, 'Math.sqrt');
+          expr = expr.replace(/\babs\b/g, 'Math.abs');
+          // Replace PI and E
+          expr = expr.replace(/\bPI\b/g, 'Math.PI');
+          expr = expr.replace(/\bE\b/g, 'Math.E');
+          
+          // Use Function constructor for safe evaluation
+          const func = new Function('Math', 'return ' + expr);
+          return func(Math);
+        } catch (error) {
+          console.error('Error evaluating equation:', error);
+          return null;
+        }
+      };
+
+      // Generate data points based on mode
+      const getDataPoints = () => {
+        if (chartConfig.dataMode === 'none' || item.chartType !== 'xy') return [];
+        
+        if (chartConfig.dataMode === 'points') {
+          return parseDataPoints(chartConfig.dataPoints);
+        } else if (chartConfig.dataMode === 'equation') {
+          const points = [];
+          const xStart = chartConfig.xAxisStart;
+          const xEnd = chartConfig.xAxisEnd;
+          const pointCount = chartConfig.dataPointCount || 100;
+          
+          for (let i = 0; i < pointCount; i++) {
+            const x = xStart + (xEnd - xStart) * (i / (pointCount - 1));
+            const y = evaluateEquation(chartConfig.dataEquation, x);
+            if (y !== null && !isNaN(y) && isFinite(y)) {
+              points.push({ x, y });
+            }
+          }
+          return points;
+        }
+        return [];
+      };
+
+      const dataPoints = getDataPoints();
+
       // Calculate scale values based on configuration and mode
       const xScale = calculateScale(
         chartConfig.xAxisStart,
@@ -738,6 +827,57 @@ const WhiteboardItem = ({
                   points={`${effectivePadding},${padding - 5} ${effectivePadding - 5},${padding + 5} ${effectivePadding + 5},${padding + 5}`} 
                   fill="#2196F3"
                 />
+
+                {/* Data Plotting */}
+                {dataPoints.length > 0 && (() => {
+                  // Convert data points to chart coordinates
+                  const xRange = chartConfig.xAxisEnd - chartConfig.xAxisStart;
+                  const yRange = chartConfig.yAxisEnd - chartConfig.yAxisStart;
+                  
+                  if (xRange === 0 || yRange === 0) return null;
+                  
+                  const chartPoints = dataPoints.map(point => {
+                    const normalizedX = (point.x - chartConfig.xAxisStart) / xRange;
+                    const normalizedY = (point.y - chartConfig.yAxisStart) / yRange;
+                    const chartX = effectivePadding + (normalizedX * chartWidth);
+                    const chartY = height - effectivePadding - (normalizedY * chartHeight);
+                    return { x: chartX, y: chartY, dataX: point.x, dataY: point.y };
+                  }).filter(p => 
+                    p.x >= effectivePadding && p.x <= width - effectivePadding &&
+                    p.y >= effectivePadding && p.y <= height - effectivePadding
+                  );
+
+                  if (chartPoints.length === 0) return null;
+
+                  return (
+                    <g key="data-plot">
+                      {/* Data line */}
+                      {chartConfig.showDataLine && chartPoints.length > 1 && (
+                        <polyline
+                          points={chartPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                          fill="none"
+                          stroke={chartConfig.dataColor || '#FF5722'}
+                          strokeWidth={Math.min(width, height) * 0.004}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      )}
+                      
+                      {/* Data points */}
+                      {chartConfig.showDataPoints && chartPoints.map((point, i) => (
+                        <circle
+                          key={`data-point-${i}`}
+                          cx={point.x}
+                          cy={point.y}
+                          r={Math.min(width, height) * 0.008}
+                          fill={chartConfig.dataColor || '#FF5722'}
+                          stroke="white"
+                          strokeWidth={Math.min(width, height) * 0.002}
+                        />
+                      ))}
+                    </g>
+                  );
+                })()}
               </>
             )}
             {item.chartType === 'sine' && (

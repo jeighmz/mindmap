@@ -46,6 +46,17 @@ const ChartConfigPanel = React.memo(({
       modulationDepth: initialConfig.modulationDepth || 0.5
     } : {}),
     
+    // Data plotting settings (only for XY charts)
+    ...(initialConfig.chartType === 'xy' ? {
+      dataMode: initialConfig.dataMode || 'none', // 'none', 'points', 'equation'
+      dataPoints: initialConfig.dataPoints || '', // "x1,y1; x2,y2; ..." or JSON array
+      dataEquation: initialConfig.dataEquation || '', // e.g., "x^2 + 2*x + 1" or "sin(x)"
+      dataPointCount: initialConfig.dataPointCount || 100, // For equation mode
+      showDataLine: initialConfig.showDataLine !== false,
+      showDataPoints: initialConfig.showDataPoints !== false,
+      dataColor: initialConfig.dataColor || '#FF5722'
+    } : {}),
+    
     // UI state
     expandedSection: null
   }));
@@ -149,6 +160,19 @@ const ChartConfigPanel = React.memo(({
         modulationDepth: parseFloat(formData.modulationDepth || 0.5),
         // Automatically set xAxisEnd based on periods (2π per period)
         xAxisEnd: 2 * Math.PI * periods
+      });
+    }
+
+    // If it's an XY chart, include the data plotting settings
+    if (initialConfig.chartType === 'xy') {
+      Object.assign(processedData, {
+        dataMode: formData.dataMode || 'none',
+        dataPoints: formData.dataPoints || '',
+        dataEquation: formData.dataEquation || '',
+        dataPointCount: parseInt(formData.dataPointCount || 100),
+        showDataLine: Boolean(formData.showDataLine !== false),
+        showDataPoints: Boolean(formData.showDataPoints !== false),
+        dataColor: formData.dataColor || '#FF5722'
       });
     }
 
@@ -523,6 +547,129 @@ const ChartConfigPanel = React.memo(({
     );
   };
 
+  const renderDataPlottingSection = () => {
+    const isExpanded = formData.expandedSection === 'data';
+    
+    return (
+      <div className="chart-config-section">
+        <div 
+          className="chart-settings-header"
+          onClick={() => setFormData(prev => ({ ...prev, expandedSection: isExpanded ? null : 'data' }))}
+        >
+          <div className="chart-settings-title">
+            <span>Data Plotting</span>
+          </div>
+          <svg 
+            className={`chart-settings-arrow ${isExpanded ? 'expanded' : ''}`}
+            viewBox="0 0 24 24" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="2"
+          >
+            <path d="M6 9l6 6 6-6"/>
+          </svg>
+        </div>
+
+        {isExpanded && (
+          <div className="chart-settings-nested">
+            <div className="chart-config-section">
+              <label>Data Mode:</label>
+              <select
+                name="dataMode"
+                value={formData.dataMode || 'none'}
+                onChange={handleChange}
+              >
+                <option value="none">None</option>
+                <option value="points">Data Points</option>
+                <option value="equation">Equation/Formula</option>
+              </select>
+            </div>
+
+            {formData.dataMode === 'points' && (
+              <>
+                <div className="input-container">
+                  <label>Data Points (x,y pairs):</label>
+                  <textarea
+                    name="dataPoints"
+                    value={formData.dataPoints || ''}
+                    onChange={handleChange}
+                    placeholder="1,2; 2,4; 3,6; 4,8"
+                    rows={4}
+                  />
+                  <small className="help-text">
+                    Format: x1,y1; x2,y2; x3,y3; ... (semicolon-separated)
+                  </small>
+                </div>
+              </>
+            )}
+
+            {formData.dataMode === 'equation' && (
+              <>
+                <div className="input-container">
+                  <label>Equation/Formula:</label>
+                  <input
+                    type="text"
+                    name="dataEquation"
+                    value={formData.dataEquation || ''}
+                    onChange={handleChange}
+                    placeholder="x^2 + 2*x + 1"
+                  />
+                  <small className="help-text">
+                    Use 'x' as variable. Supports: +, -, *, /, ^, sin, cos, tan, log, exp, sqrt, abs, Math.PI, Math.E
+                  </small>
+                </div>
+                <div className="input-container">
+                  <label>Number of Points:</label>
+                  <input
+                    type="number"
+                    name="dataPointCount"
+                    value={formData.dataPointCount || 100}
+                    onChange={handleChange}
+                    min="10"
+                    max="1000"
+                    step="10"
+                  />
+                </div>
+              </>
+            )}
+
+            {formData.dataMode !== 'none' && (
+              <>
+                <div className="checkbox-section">
+                  <input
+                    type="checkbox"
+                    name="showDataLine"
+                    checked={formData.showDataLine !== false}
+                    onChange={handleChange}
+                  />
+                  <label>Show Line</label>
+                </div>
+                <div className="checkbox-section">
+                  <input
+                    type="checkbox"
+                    name="showDataPoints"
+                    checked={formData.showDataPoints !== false}
+                    onChange={handleChange}
+                  />
+                  <label>Show Points</label>
+                </div>
+                <div className="input-container">
+                  <label>Data Color:</label>
+                  <input
+                    type="color"
+                    name="dataColor"
+                    value={formData.dataColor || '#FF5722'}
+                    onChange={handleChange}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ==================== Main Render ====================
   return (
     <div
@@ -594,6 +741,9 @@ const ChartConfigPanel = React.memo(({
           </select>
         </div>
         {renderYAxisInputs()}
+
+        {/* Data Plotting Section (only for XY charts) */}
+        {initialConfig.chartType === 'xy' && renderDataPlottingSection()}
 
         <div className="button-group">
           <button
