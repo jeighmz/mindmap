@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Modal from './Modal';
 import '../styles/Pricing.css';
 import { useAuth } from '../contexts/AuthContext';
@@ -67,6 +68,7 @@ const plans = [
 ];
 
 export default function PricingTable({ isOpen, onClose }) {
+  const navigate = useNavigate();
   const { user, userTier } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -83,11 +85,9 @@ export default function PricingTable({ isOpen, onClose }) {
       }
 
       if (!user) {
-        setError({
-          message: 'Please log in to upgrade your plan',
-          action: 'login',
-          tier: plan.tier
-        });
+        // Close modal and redirect to landing page with login query param to open login modal
+        onClose();
+        navigate('/?login=true');
         return;
       }
 
@@ -122,7 +122,9 @@ export default function PricingTable({ isOpen, onClose }) {
   const handleErrorAction = async (error) => {
     switch (error.action) {
       case 'login':
-        window.location.href = '/login?redirect=pricing&plan=' + error.tier;
+        // Close modal and redirect to landing page with login query param to open login modal
+        onClose();
+        navigate('/?login=true');
         break;
       case 'manage':
         try {

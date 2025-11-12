@@ -87,11 +87,8 @@ export default function PricingPage() {
       }
 
       if (!user) {
-        setError({
-          message: 'Please log in to upgrade your plan',
-          action: 'login',
-          tier: plan.tier
-        });
+        // Redirect to landing page with login query param to open login modal
+        navigate('/?login=true');
         return;
       }
 
@@ -130,7 +127,8 @@ export default function PricingPage() {
   const handleErrorAction = async (error) => {
     switch (error.action) {
       case 'login':
-        window.location.href = '/login?redirect=pricing&plan=' + error.tier;
+        // Redirect to landing page with login query param to open login modal
+        navigate('/?login=true');
         break;
       case 'manage':
         try {
@@ -191,7 +189,7 @@ export default function PricingPage() {
               key={plan.name} 
               className={`pricing-card ${plan.popular ? 'popular' : ''} ${plan.tier === userTier ? 'current' : ''}`}
             >
-              {plan.popular && <div className="badge">Most Popular</div>}
+              {plan.popular && plan.tier !== userTier && <div className="badge">Most Popular</div>}
               {plan.tier === userTier && <div className="badge current">Current Plan</div>}
               <h3>{plan.name}</h3>
               <div className="price">${plan.price}</div>

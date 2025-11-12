@@ -10,7 +10,7 @@ export default function UserMenu({ onSettingsOpen }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
-  const isLandingPage = location.pathname === '/';
+  const isWhiteboardPage = location.pathname === '/whiteboard' || location.pathname.startsWith('/whiteboard/');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -71,7 +71,7 @@ export default function UserMenu({ onSettingsOpen }) {
                   </div>
                 </div>
                 <div className="menu-divider" />
-                {!isLandingPage && (
+                {isWhiteboardPage && (
                   <button 
                     className="menu-item"
                     onClick={() => {

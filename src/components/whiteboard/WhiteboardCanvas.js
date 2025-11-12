@@ -13,7 +13,7 @@ import { db, storage } from '../../firebase-config';
 /* eslint-disable-next-line no-unused-vars */
 import { useAuth } from '../../contexts/AuthContext';
 import UserMenu from '../UserMenu';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTierPermissions } from '../../hooks/useTierPermissions';
 import { saveBoard, getDemoBoards } from '../../services/boardService';
 import { getApiBaseUrl, getGroqApiKey } from '../../utils/api';
@@ -54,6 +54,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [isMindMapPanelOpen, setIsMindMapPanelOpen] = useState(false);
   const [mindMapPrompt, setMindMapPrompt] = useState('');
   const [isGeneratingMindMap, setIsGeneratingMindMap] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [contextMenu, setContextMenu] = useState({
     visible: false,
     x: 0,
@@ -181,6 +182,20 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       setIsMindMapPanelOpen(externalIsMindMapPanelOpen);
     }
   }, [externalIsMindMapPanelOpen]);
+
+  // Check for prompt in URL params and set it
+  useEffect(() => {
+    const prompt = searchParams.get('prompt');
+    if (prompt) {
+      setMindMapPrompt(prompt);
+      setIsMindMapPanelOpen(true);
+      if (onMindMapPanelOpen) {
+        onMindMapPanelOpen();
+      }
+      // Remove the prompt from URL after setting it
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams, onMindMapPanelOpen]);
 
   // Expose methods to parent through ref
   useImperativeHandle(ref, () => ({
