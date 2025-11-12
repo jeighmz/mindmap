@@ -45,6 +45,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const groupDragStartPositionsRef = useRef(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isSpacePressed, setIsSpacePressed] = useState(false);
+  const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [selectionBox, setSelectionBox] = useState(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState(null);
@@ -251,7 +252,46 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
     if (isSelecting && selectionBox) {
       const dpr = window.devicePixelRatio || 1;
+      const canvas = document.querySelector('.whiteboard-canvas');
+      
+      // Get canvas bounds to constrain selection
+      let canvasBounds = null;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        canvasBounds = {
+          left: 0,
+          top: 0,
+          right: rect.width / (scale * dpr),
+          bottom: rect.height / (scale * dpr)
+        };
+      }
+      
       const selectedItems = items.filter(item => {
+        // Only select items that are actual whiteboard items (not UI elements)
+        // Ensure item has valid position and dimensions
+        if (!item.position || typeof item.position.x !== 'number' || typeof item.position.y !== 'number') {
+          return false;
+        }
+        
+        // Ensure item has valid dimensions
+        if (!item.width || !item.height || item.width <= 0 || item.height <= 0) {
+          return false;
+        }
+        
+        // Constrain selection to canvas bounds if available
+        if (canvasBounds) {
+          const itemRight = item.position.x + item.width;
+          const itemBottom = item.position.y + item.height;
+          
+          // Skip items that are completely outside canvas bounds
+          if (itemRight < canvasBounds.left || 
+              item.position.x > canvasBounds.right ||
+              itemBottom < canvasBounds.top || 
+              item.position.y > canvasBounds.bottom) {
+            return false;
+          }
+        }
+        
         const itemRight = item.position.x + item.width;
         const itemBottom = item.position.y + item.height;
         const boxRight = selectionBox.x + selectionBox.width;
@@ -275,7 +315,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       setSelectionBox(null);
       setSelectionStart(null);
     }
-  }, [isPanning, isSelecting, selectionBox, items]);
+  }, [isPanning, isSelecting, selectionBox, items, scale]);
 
   const handleMouseMove = useCallback((e) => {
     if (isPanning) {
@@ -314,7 +354,23 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       return;
     }
     
-    if (e.button === 1 || (e.button === 0 && isSpacePressed) || (e.button === 0 && e.altKey)) {
+    // Don't handle if clicking on a whiteboard item (let WhiteboardItem handle it)
+    if (e.target.closest('.whiteboard-item')) {
+      return;
+    }
+    
+    // Don't handle if clicking on zoom controls
+    if (e.target.closest('.zoom-controls')) {
+      return;
+    }
+    
+    // Don't start selection box if clicking from header or instructions panel
+    if (e.target.closest('.whiteboard-header, .whiteboard-controls-overlay, .help-toggle-button')) {
+      return;
+    }
+    
+    if (e.button === 1 || (e.button === 0 && !isSpacePressed)) {
+      // Regular drag (or middle mouse button) = pan
       // Clear any active button states when starting to pan
       setConnectingFrom(null);
       setSelectedConnection(null);
@@ -327,13 +383,27 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         y: e.clientY - panOffset.y
       });
       e.preventDefault();
-    } else if (e.button === 0 && !isSpacePressed && !e.altKey && !e.target.closest('.whiteboard-item') && !e.target.closest('.zoom-controls')) {
+    } else if (e.button === 0 && isSpacePressed) {
+      // Space + drag = selection box (group highlight)
+      // Don't start if clicking from header, instructions panel, or chat panel
+      if (e.target.closest('.whiteboard-header, .whiteboard-controls-overlay, .help-toggle-button, .search-panel, .agent-chat, .chat-modal')) {
+        return;
+      }
+      
       const canvas = document.querySelector('.whiteboard-canvas');
       if (canvas) {
         const rect = canvas.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
-        const x = (e.clientX - rect.left - panOffset.x) / (scale * dpr);
-        const y = (e.clientY - rect.top - panOffset.y) / (scale * dpr);
+        
+        // Check if click is actually within canvas bounds
+        const clickX = e.clientX;
+        const clickY = e.clientY;
+        if (clickX < rect.left || clickX > rect.right || clickY < rect.top || clickY > rect.bottom) {
+          return; // Click is outside canvas bounds
+        }
+        
+        const x = (clickX - rect.left - panOffset.x) / (scale * dpr);
+        const y = (clickY - rect.top - panOffset.y) / (scale * dpr);
         
         setIsSelecting(true);
         setSelectionStart({ x, y });
@@ -341,7 +411,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         setSelectedItems(new Set());
       }
     }
-  }, [panOffset, isSpacePressed, scale]);
+  }, [panOffset, scale, isSpacePressed]);
 
   const handleCloseSearchPanel = () => {
     setIsSearchPanelOpen(false);
@@ -433,10 +503,13 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       if (e.code === 'Space' && !e.repeat && 
           !(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
         setIsSpacePressed(true);
+        window.isSpacePressed = true;
         e.preventDefault();
       } else if (e.code === 'AltLeft' || e.code === 'AltRight') {
         setIsAltPressed(true);
         e.preventDefault();
+      } else if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        setIsShiftPressed(true);
       } else if (e.ctrlKey && e.key === 'z' && !e.shiftKey && 
           !(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
         e.preventDefault();
@@ -451,8 +524,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     const handleKeyUp = (e) => {
       if (e.code === 'Space') {
         setIsSpacePressed(false);
+        window.isSpacePressed = false;
       } else if (e.code === 'AltLeft' || e.code === 'AltRight') {
         setIsAltPressed(false);
+      } else if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        setIsShiftPressed(false);
       }
     };
 
@@ -464,6 +540,13 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, [handleUndo, handleRedo]);
+
+  // Initialize window property for Space key state (used by WhiteboardItem)
+  useEffect(() => {
+    if (typeof window.isSpacePressed === 'undefined') {
+      window.isSpacePressed = false;
+    }
+  }, []);
 
   const [, drop] = useDrop(() => ({
     accept: 'WHITEBOARD_ITEM',
@@ -3160,9 +3243,10 @@ Performance Metrics Analysis`
       else if ((e.metaKey || e.ctrlKey) && e.key === 'v') {
         handlePaste(e);
       }
-      // Space for panning
+      // Space for selection box
       else if (e.code === 'Space' && !e.repeat) {
         setIsSpacePressed(true);
+        window.isSpacePressed = true;
         e.preventDefault();
       }
       // Alt for alternative actions
@@ -3170,13 +3254,20 @@ Performance Metrics Analysis`
         setIsAltPressed(true);
         e.preventDefault();
       }
+      // Shift key tracking (no longer used for selection box, but kept for other features)
+      else if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        setIsShiftPressed(true);
+      }
     };
 
     const handleKeyUp = (e) => {
       if (e.code === 'Space') {
         setIsSpacePressed(false);
+        window.isSpacePressed = false;
       } else if (e.code === 'AltLeft' || e.code === 'AltRight') {
         setIsAltPressed(false);
+      } else if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        setIsShiftPressed(false);
       }
     };
 
@@ -4958,7 +5049,7 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
         onMouseLeave={handleMouseUp}
         onClick={handleCanvasClick}
         style={{
-          cursor: isPanning ? 'grabbing' : (isSpacePressed || isAltPressed ? 'grab' : 'default'),
+          cursor: isPanning ? 'grabbing' : (isSpacePressed ? 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'20\' height=\'20\' viewBox=\'0 0 32 32\'%3E%3Ccircle cx=\'13\' cy=\'13\' r=\'8\' stroke=\'%23000000\' stroke-width=\'2.5\' fill=\'none\'/%3E%3Cline x1=\'20\' y1=\'20\' x2=\'28\' y2=\'28\' stroke=\'%23000000\' stroke-width=\'2.5\' stroke-linecap=\'round\'/%3E%3C/svg%3E") 10 10, crosshair' : 'grab'),
           position: 'relative',
           overflow: 'hidden',
           width: '100%',
@@ -5098,14 +5189,14 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
             </div>
             <div className="control-tip-container">
             <div className="control-tip">
-              <span className="keyboard-key">Space</span> + <span className="mouse-action">Drag</span> to pan
+              <span className="mouse-action">Drag</span> to pan
               <span className="touch-tip">• Use two fingers to pan on touch devices</span>
             </div>
             <div className="control-tip">
-              <span className="keyboard-key">SHIFT</span> + <span className="mouse-action">Drag</span> an object to move it
+              <span className="mouse-action">Drag</span> an object to move it
             </div>
             <div className="control-tip">
-              Group highlight for AI insights
+              <span className="keyboard-key">SPACE</span> + <span className="mouse-action">Drag</span> to group highlight for AI insights
             </div>
             </div>
           </div>
@@ -5370,7 +5461,7 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
       )}
 
       {/* Usage Tracker for non-signed-in users */}
-      {!user && <UsageTracker key={user ? 'hidden' : 'visible'} />}
+      {!user && <UsageTracker key={user ? 'hidden' : 'visible'} isSearchPanelOpen={isSearchPanelOpen} />}
 
       {/* Add the help toggle button */}
       <button 

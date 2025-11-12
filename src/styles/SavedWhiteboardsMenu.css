@@ -33,6 +33,7 @@
   -ms-overflow-style: none; /* IE and Edge */
   max-height: 400px;
   overflow-y: auto;
+  pointer-events: auto;
 }
 
 .saved-whiteboards-menu::-webkit-scrollbar {
@@ -299,9 +300,16 @@ input.search-input:disabled {
   margin-bottom: 12px;
 }
 
-/* Desktop - hide overlay and close button */
+/* Desktop - show overlay for click-outside detection */
 .saved-whiteboards-menu-overlay {
-  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: transparent;
+  z-index: 999;
+  display: block;
 }
 
 .saved-whiteboards-menu-close {

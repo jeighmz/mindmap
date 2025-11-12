@@ -10,6 +10,12 @@
   z-index: 1501;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   border: 1px solid #e0e0e0;
+  transition: right 0.3s ease;
+}
+
+/* Push out when search panel (AI analysis chat) is open */
+.usage-tracker.panel-open {
+  right: 440px; /* 400px panel width + 20px spacing + 20px original right */
 }
 
 .usage-tracker-header {
@@ -90,6 +96,10 @@
     right: 10px;
     min-width: 240px;
     padding: 12px;
+  }
+  
+  .usage-tracker.panel-open {
+    right: 10px; /* Keep at right edge on mobile when panel is open */
   }
 }
 

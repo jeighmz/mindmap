@@ -150,7 +150,17 @@ const LandingPage = () => {
           <div className="hero-visual">
             <div className="hero-visual-wrapper">
               <div className="hero-visual-glow"></div>
-              <img src="/mindmap-screenshot.png" alt="Mind Map Application Screenshot" className="hero-screenshot" /> 
+              <video 
+                src="/videos/Generate-button.mov" 
+                className="hero-screenshot"
+                autoPlay
+                loop
+                muted
+                playsInline
+                preload="auto"
+              >
+                Your browser does not support the video tag.
+              </video>
             </div>
           </div>
         </div>

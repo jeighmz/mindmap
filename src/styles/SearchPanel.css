@@ -1,11 +1,10 @@
 .search-panel {
   position: fixed;
   right: 20px;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 80px; /* Align with usage tracker top */
   width: 400px;
   max-width: calc(100vw - 40px);
-  height: calc(100vh - 240px);
+  height: calc(100vh - 100px); /* Adjust height to account for top position */
   background-color: white;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   z-index: 2000;
@@ -16,6 +15,17 @@
   will-change: transform;
   overflow: hidden;
   animation: slideInFromRight 0.3s ease;
+}
+
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(calc(100% + 20px));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .search-panel-header {
@@ -421,37 +431,25 @@
   font-style: italic;
 }
 
-@keyframes slideInFromRight {
-  from {
-    opacity: 0;
-    transform: translate(calc(100% + 20px), -50%);
-  }
-  to {
-    opacity: 1;
-    transform: translate(0, -50%);
-  }
-}
-
 /* Mobile adjustments */
 @media (max-width: 768px) {
   .search-panel {
     right: 40px;
     left: 40px;
     width: auto;
-    top: 50%;
-    transform: translateY(-50%);
-    height: calc(100vh - 180px);
-    max-height: 70vh;
+    top: 70px; /* Align with usage tracker top on mobile */
+    height: calc(100vh - 90px); /* Adjust height to account for top position */
+    max-height: calc(100vh - 90px);
   }
 
   @keyframes slideInFromRight {
     from {
       opacity: 0;
-      transform: translate(calc(100% + 40px), -50%);
+      transform: translate(calc(100% + 40px), 0);
     }
     to {
       opacity: 1;
-      transform: translate(0, -50%);
+      transform: translate(0, 0);
     }
   }
 }
@@ -459,9 +457,8 @@
 .search-panel.chat-focused {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 240px);
-  top: 50%;
-  transform: translateY(-50%);
+  height: calc(100vh - 100px); /* Adjust height to account for top position */
+  top: 80px; /* Align with usage tracker top */
   right: 20px;
   background: #ffffff;
   border-left: 1px solid #e0e0e0;
@@ -1181,34 +1178,7 @@
   right: 20px;
 }
 
-/* Update mobile styles */
-@media (max-width: 768px) {
-  .search-panel {
-    right: 10px;
-    left: 10px;
-    width: auto;
-    top: 50%;
-    transform: translateY(-50%);
-    height: calc(100vh - 180px);
-    max-height: 70vh;
-  }
-}
-
-/* Add a subtle animation for the panel */
-@keyframes slideInFromRight {
-  from {
-    opacity: 0;
-    transform: translate(calc(100% + 20px), -50%);
-  }
-  to {
-    opacity: 1;
-    transform: translate(0, -50%);
-  }
-}
-
-.search-panel {
-  animation: slideInFromRight 0.3s ease;
-}
+/* Update mobile styles - already handled above */
 
 .screenshot-preview {
   margin-top: 12px;

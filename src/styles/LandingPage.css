@@ -105,11 +105,11 @@ a:hover {
 
 /* Hero container with grid layout */
 .hero-container {
-  max-width: 1400px;
+  max-width: 1600px;
   width: 100%;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1.2fr;
   gap: 60px;
   align-items: center;
   position: relative;
@@ -313,6 +313,10 @@ a:hover {
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   padding: 8px;
+  min-width: 700px;
+  max-width: 900px;
+  display: inline-block;
+  height: fit-content;
 }
 
 .hero-visual-glow {
@@ -346,11 +350,7 @@ a:hover {
   border-radius: 12px;
   position: relative;
   z-index: 1;
-  transition: transform 0.3s ease;
-}
-
-.hero-visual-wrapper:hover .hero-screenshot {
-  transform: scale(1.02);
+  object-fit: contain;
 }
 
 /* Animations */
@@ -890,6 +890,12 @@ a:hover {
   .hero-screenshot {
     width: 100%;
     height: auto;
+    min-height: 400px;
+  }
+  
+  .hero-visual-wrapper {
+    min-width: 100%;
+    max-width: 100%;
   }
 
   .hero-gradient-orb-1,

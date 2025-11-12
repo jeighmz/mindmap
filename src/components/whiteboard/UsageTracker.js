@@ -3,7 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { getUsageStats } from '../../utils/usageTracker';
 import '../../styles/UsageTracker.css';
 
-const UsageTracker = () => {
+const UsageTracker = ({ isSearchPanelOpen = false }) => {
   const { user } = useAuth();
   const [usageStats, setUsageStats] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -96,10 +96,10 @@ const UsageTracker = () => {
     return null;
   }
 
-  const { mindMapsGenerated, conceptsExpanded, mindMapLimit, expandLimit, remainingMindMaps, remainingExpands } = usageStats;
+  const { mindMapsGenerated, conceptsExpanded, queriesSent, mindMapLimit, expandLimit, queryLimit, remainingMindMaps, remainingExpands, remainingQueries } = usageStats;
 
   return (
-    <div className="usage-tracker">
+    <div className={`usage-tracker ${isSearchPanelOpen ? 'panel-open' : ''}`}>
       <div className="usage-tracker-header">
         <span className="usage-tracker-title">Usage Limit</span>
         <span className="usage-tracker-signin-hint">Sign in for unlimited access</span>
@@ -139,6 +139,24 @@ const UsageTracker = () => {
           </div>
           <div className="usage-stat-remaining">
             {remainingExpands > 0 ? `${remainingExpands} remaining` : 'Limit reached'}
+          </div>
+        </div>
+        <div className="usage-stat">
+          <div className="usage-stat-label">
+            <span>AI Queries</span>
+            <span className="usage-stat-count">{queriesSent}/{queryLimit}</span>
+          </div>
+          <div className="usage-stat-bar">
+            <div 
+              className="usage-stat-fill" 
+              style={{ 
+                width: `${(queriesSent / queryLimit) * 100}%`,
+                backgroundColor: remainingQueries === 0 ? '#f44336' : remainingQueries <= 1 ? '#ff9800' : '#4caf50'
+              }}
+            />
+          </div>
+          <div className="usage-stat-remaining">
+            {remainingQueries > 0 ? `${remainingQueries} remaining` : 'Limit reached'}
           </div>
         </div>
       </div>

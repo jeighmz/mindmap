@@ -6,6 +6,7 @@ import { db } from '../../firebase-config';
 import { useAuth } from '../../contexts/AuthContext';
 import '../../styles/SearchPanel.css';
 import { getApiBaseUrl, getGroqApiKey } from '../../utils/api';
+import { canSendQuery, incrementQueryCount, getRemainingQueries, getUsageStats } from '../../utils/usageTracker';
 
 // SVG Icons as components
 const CloseIcon = () => (
@@ -70,6 +71,7 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
   });
   // Track which images have been sent
   const [sentImageIds, setSentImageIds] = useState(new Set());
+  const [queryLimitError, setQueryLimitError] = useState(null);
   
   // Get all highlighted images (for checking if we need to show vision model prompt)
   const allHighlightedImages = highlightedItems.filter(item => item.type === 'image' && item.imageUrl);
@@ -209,10 +211,24 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
 
+    // Check query limit for non-signed-in users
+    if (!user && !canSendQuery()) {
+      const { queryLimit } = getUsageStats();
+      setQueryLimitError(`Query limit reached. You've used all ${queryLimit} queries. Sign in for unlimited access.`);
+      setTimeout(() => setQueryLimitError(null), 5000);
+      return;
+    }
+
     try {
       setIsLoading(true);
+      setQueryLimitError(null);
       const userMessage = inputMessage.trim();
       setInputMessage('');
+      
+      // Increment query count for non-signed-in users
+      if (!user) {
+        incrementQueryCount();
+      }
 
       const activeTab = tabs.find(tab => tab.id === activeTabId);
       const newMessages = [...activeTab.messages];
@@ -539,6 +555,19 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
       </div>
 
       <div className={isFullscreen ? "modal-chat-input" : "chat-input"}>
+        {queryLimitError && (
+          <div className="query-limit-error" style={{
+            padding: '8px 12px',
+            marginBottom: '8px',
+            backgroundColor: '#ffebee',
+            border: '1px solid #f44336',
+            borderRadius: '4px',
+            color: '#c62828',
+            fontSize: '13px'
+          }}>
+            {queryLimitError}
+          </div>
+        )}
         {isVisionModel && highlightedImages.length > 0 && (
           <div className="highlighted-images-preview">
             {highlightedImages.map((imageItem, index) => (
@@ -559,15 +588,17 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange }) => {
               }
             }}
             placeholder={
-              highlightedItems.length > 0
+              !user && !canSendQuery()
+                ? "Query limit reached. Sign in for unlimited access."
+                : highlightedItems.length > 0
                 ? "Ask me about the selected items..."
                 : "Select items on the whiteboard to analyze them"
             }
-            disabled={isLoading}
+            disabled={isLoading || (!user && !canSendQuery())}
           />
           <button 
             onClick={handleSendMessage}
-            disabled={!inputMessage.trim() || isLoading}
+            disabled={!inputMessage.trim() || isLoading || (!user && !canSendQuery())}
             className="send-button"
           >
             <SendIcon />

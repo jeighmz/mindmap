@@ -356,7 +356,10 @@ const SavedWhiteboardsMenu = ({
             className="saved-whiteboards-menu-overlay"
             onClick={onToggle}
           />
-          <div className="saved-whiteboards-menu">
+          <div 
+            className="saved-whiteboards-menu"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button 
               className="saved-whiteboards-menu-close"
               onClick={onToggle}

@@ -3,6 +3,7 @@
 const STORAGE_KEY = 'mindmap_usage_tracker';
 const MIND_MAP_LIMIT = 4;
 const EXPAND_LIMIT = 4;
+const QUERY_LIMIT = 4;
 
 // Get current usage data from localStorage
 export const getUsageData = () => {
@@ -19,6 +20,7 @@ export const getUsageData = () => {
   return {
     mindMapsGenerated: 0,
     conceptsExpanded: 0,
+    queriesSent: 0,
     lastReset: Date.now()
   };
 };
@@ -48,6 +50,14 @@ export const incrementExpandCount = () => {
   return data.conceptsExpanded;
 };
 
+// Increment query count
+export const incrementQueryCount = () => {
+  const data = getUsageData();
+  data.queriesSent = (data.queriesSent || 0) + 1;
+  saveUsageData(data);
+  return data.queriesSent;
+};
+
 // Check if mind map generation is allowed
 export const canGenerateMindMap = () => {
   const data = getUsageData();
@@ -58,6 +68,12 @@ export const canGenerateMindMap = () => {
 export const canExpandConcept = () => {
   const data = getUsageData();
   return (data.conceptsExpanded || 0) < EXPAND_LIMIT;
+};
+
+// Check if query is allowed
+export const canSendQuery = () => {
+  const data = getUsageData();
+  return (data.queriesSent || 0) < QUERY_LIMIT;
 };
 
 // Get remaining mind map generations
@@ -74,16 +90,26 @@ export const getRemainingExpands = () => {
   return Math.max(0, EXPAND_LIMIT - used);
 };
 
+// Get remaining queries
+export const getRemainingQueries = () => {
+  const data = getUsageData();
+  const used = data.queriesSent || 0;
+  return Math.max(0, QUERY_LIMIT - used);
+};
+
 // Get usage statistics
 export const getUsageStats = () => {
   const data = getUsageData();
   return {
     mindMapsGenerated: data.mindMapsGenerated || 0,
     conceptsExpanded: data.conceptsExpanded || 0,
+    queriesSent: data.queriesSent || 0,
     mindMapLimit: MIND_MAP_LIMIT,
     expandLimit: EXPAND_LIMIT,
+    queryLimit: QUERY_LIMIT,
     remainingMindMaps: getRemainingMindMaps(),
-    remainingExpands: getRemainingExpands()
+    remainingExpands: getRemainingExpands(),
+    remainingQueries: getRemainingQueries()
   };
 };
 

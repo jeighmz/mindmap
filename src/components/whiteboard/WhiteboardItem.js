@@ -309,8 +309,13 @@ const WhiteboardItem = ({
       return;
     }
     
-    // Allow moving without SHIFT when in group select mode
-    if ((e.shiftKey || (isGroupSelectMode && isSelected)) && e.button === 0) {
+    // Don't start drag if space is pressed (let canvas handle selection box)
+    if (window.isSpacePressed) {
+      return;
+    }
+    
+    // Regular drag to move items (no shift required)
+    if (e.button === 0) {
       // In group select mode, only allow one item to be the primary dragger
       // If another item is already dragging, don't start a new drag
       if (isGroupSelectMode && isSelected) {
