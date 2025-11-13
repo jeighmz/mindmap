@@ -7,7 +7,52 @@ import { useAuth } from '../../contexts/AuthContext';
 
 import AgentChat from './agent/AgentChat';
 
-const ToolbarItem = ({ type, icon, chartType }) => {
+const ChartMenuItem = ({ chartType, icon, title, onChartMenuToggle }) => {
+  const [{ isDragging }, drag] = useDrag(() => ({
+    type: 'WHITEBOARD_ITEM',
+    item: { type: 'chart', chartType },
+    collect: monitor => ({
+      isDragging: monitor.isDragging()
+    })
+  }), [chartType]);
+
+  return (
+    <div
+      ref={drag}
+      onClick={(e) => {
+        e.stopPropagation();
+        onChartMenuToggle?.();
+      }}
+      style={{
+        width: '44px',
+        height: '44px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#f8f9fa',
+        border: '1px solid #dee2e6',
+        borderRadius: '6px',
+        cursor: isDragging ? 'grabbing' : 'grab',
+        color: '#333',
+        transition: 'all 0.2s',
+        opacity: isDragging ? 0.5 : 1,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.backgroundColor = '#e9ecef';
+        e.currentTarget.style.borderColor = '#adb5bd';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = '#f8f9fa';
+        e.currentTarget.style.borderColor = '#dee2e6';
+      }}
+      title={title}
+    >
+      {icon}
+    </div>
+  );
+};
+
+const ToolbarItem = ({ type, icon, chartType, isChartMenuOpen, onChartMenuToggle }) => {
   const { user } = useAuth();
   const [isUploading, setIsUploading] = useState(false);
 
@@ -17,7 +62,7 @@ const ToolbarItem = ({ type, icon, chartType }) => {
     collect: monitor => ({
       isDragging: monitor.isDragging()
     })
-  }));
+  }), [type, chartType]);
 
   const handleImageClick = async () => {
     if (!user) {
@@ -185,11 +230,82 @@ const ToolbarItem = ({ type, icon, chartType }) => {
     }
   };
 
+  if (type === 'chart-menu') {
+    return (
+      <div style={{ position: 'relative' }}>
+        <div
+          className="toolbar-item"
+          style={{ cursor: 'pointer', position: 'relative' }}
+          onClick={onChartMenuToggle}
+          title="Select Chart Type"
+        >
+          {icon}
+        </div>
+        {isChartMenuOpen && (
+          <div style={{
+            position: 'absolute',
+            right: '-190px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            background: 'white',
+            border: '1px solid #ddd',
+            borderRadius: '8px',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+            zIndex: 1001,
+            padding: '8px',
+            display: 'flex',
+            gap: '8px',
+            overflow: 'hidden'
+          }}>
+            <ChartMenuItem
+              chartType="xy"
+              title="XY Chart"
+              onChartMenuToggle={onChartMenuToggle}
+              icon={
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="4" y1="20" x2="20" y2="20" />
+                  <line x1="4" y1="20" x2="4" y2="4" />
+                  <path d="M7 14l3-3 4 4 4-8" />
+                </svg>
+              }
+            />
+            <ChartMenuItem
+              chartType="sine"
+              title="Sine Wave"
+              onChartMenuToggle={onChartMenuToggle}
+              icon={
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M4 12c2-2.67 4-4 6-4s4 1.33 6 4c2 2.67 4 4 6 4s4-1.33 6-4" />
+                </svg>
+              }
+            />
+            <ChartMenuItem
+              chartType="sankey"
+              title="Sankey"
+              onChartMenuToggle={onChartMenuToggle}
+              icon={
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                  <rect x="2" y="5" width="3.5" height="14" rx="0.5" fill="currentColor" opacity="0.85" />
+                  <rect x="18.5" y="4" width="3.5" height="5.5" rx="0.5" fill="currentColor" opacity="0.85" />
+                  <rect x="18.5" y="10.5" width="3.5" height="4" rx="0.5" fill="currentColor" opacity="0.85" />
+                  <rect x="18.5" y="15.5" width="3.5" height="4.5" rx="0.5" fill="currentColor" opacity="0.85" />
+                  <path d="M5.5 6.5 Q9 6 12.5 5.5 Q16 5 18.5 5.5 L18.5 9.5 Q16 9 12.5 8.5 Q9 8 5.5 8.5 Z" fill="currentColor" opacity="0.6" />
+                  <path d="M5.5 11 Q9 10.5 12.5 10 Q16 9.5 18.5 10 L18.5 13.5 Q16 13 12.5 12.5 Q9 12 5.5 12.5 Z" fill="currentColor" opacity="0.6" />
+                  <path d="M5.5 15.5 Q9 15 12.5 14.5 Q16 14 18.5 14.5 L18.5 19 Q16 18.5 12.5 18 Q9 17.5 5.5 18 Z" fill="currentColor" opacity="0.6" />
+                </svg>
+              }
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
-      ref={type === 'image' ? null : drag}
+      ref={type === 'image' || type === 'chart-menu' ? null : drag}
       className={`toolbar-item ${isUploading ? 'uploading' : ''}`}
-      style={{ opacity: isDragging ? 0.5 : 1, cursor: type === 'image' ? 'pointer' : 'grab' }}
+      style={{ opacity: isDragging ? 0.5 : 1, cursor: type === 'image' ? 'pointer' : (type === 'chart-menu' ? 'pointer' : 'grab') }}
       onClick={type === 'image' ? handleImageClick : undefined}
     >
       {icon}
@@ -201,6 +317,7 @@ const ToolbarItem = ({ type, icon, chartType }) => {
 const WhiteboardToolbar = ({ onOpenMindMapPanel, onOpenSearchPanel, items, connections, highlightedItems = [], isLibraryOpen = false }) => {
   const [buttonMouseDown, setButtonMouseDown] = useState(null);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
+  const [isChartMenuOpen, setIsChartMenuOpen] = useState(false);
 
   // Track space key state
   React.useEffect(() => {
@@ -277,6 +394,16 @@ const WhiteboardToolbar = ({ onOpenMindMapPanel, onOpenSearchPanel, items, conne
       )
     },
     { 
+      type: 'text', 
+      icon: (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 20h16" />
+          <path d="M6 16l6-12 6 12" />
+          <path d="M8 12h8" />
+        </svg>
+      )
+    },
+    { 
       type: 'rectangle', 
       icon: (
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -293,22 +420,12 @@ const WhiteboardToolbar = ({ onOpenMindMapPanel, onOpenSearchPanel, items, conne
       )
     },
     { 
-      type: 'chart', 
-      chartType: 'xy',
+      type: 'chart-menu',
       icon: (
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <line x1="4" y1="20" x2="20" y2="20" />
           <line x1="4" y1="20" x2="4" y2="4" />
           <path d="M7 14l3-3 4 4 4-8" />
-        </svg>
-      )
-    },
-    { 
-      type: 'chart', 
-      chartType: 'sine',
-      icon: (
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M4 12c2-2.67 4-4 6-4s4 1.33 6 4c2 2.67 4 4 6 4s4-1.33 6-4" />
         </svg>
       )
     },
@@ -334,6 +451,8 @@ const WhiteboardToolbar = ({ onOpenMindMapPanel, onOpenSearchPanel, items, conne
           type={tool.type}
           icon={tool.icon}
           chartType={tool.chartType}
+          isChartMenuOpen={isChartMenuOpen}
+          onChartMenuToggle={() => setIsChartMenuOpen(!isChartMenuOpen)}
         />
       ))}
       <div className="toolbar-item separator"></div>

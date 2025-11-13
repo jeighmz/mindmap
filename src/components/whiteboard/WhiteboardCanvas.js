@@ -56,6 +56,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [isMindMapPanelOpen, setIsMindMapPanelOpen] = useState(false);
   const [mindMapPrompt, setMindMapPrompt] = useState('');
   const [isGeneratingMindMap, setIsGeneratingMindMap] = useState(false);
+  const [chartGenerationType, setChartGenerationType] = useState('mindmap'); // 'mindmap', 'xy', 'sine', 'sankey'
   const [searchParams, setSearchParams] = useSearchParams();
   const [contextMenu, setContextMenu] = useState({
     visible: false,
@@ -252,21 +253,9 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }
 
     if (isSelecting && selectionBox) {
-      const dpr = window.devicePixelRatio || 1;
       const canvas = document.querySelector('.whiteboard-canvas');
       
-      // Get canvas bounds to constrain selection
-      let canvasBounds = null;
-      if (canvas) {
-        const rect = canvas.getBoundingClientRect();
-        canvasBounds = {
-          left: 0,
-          top: 0,
-          right: rect.width / (scale * dpr),
-          bottom: rect.height / (scale * dpr)
-        };
-      }
-      
+      // We no longer constrain selection to viewport bounds; selection operates in canvas space
       const selectedItems = items.filter(item => {
         // Only select items that are actual whiteboard items (not UI elements)
         // Ensure item has valid position and dimensions
@@ -279,20 +268,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           return false;
         }
         
-        // Constrain selection to canvas bounds if available
-        if (canvasBounds) {
-          const itemRight = item.position.x + item.width;
-          const itemBottom = item.position.y + item.height;
-          
-          // Skip items that are completely outside canvas bounds
-          if (itemRight < canvasBounds.left || 
-              item.position.x > canvasBounds.right ||
-              itemBottom < canvasBounds.top || 
-              item.position.y > canvasBounds.bottom) {
-            return false;
-          }
-        }
-        
+        // Do not constrain by viewport; items can be anywhere in canvas space
         const itemRight = item.position.x + item.width;
         const itemBottom = item.position.y + item.height;
         const boxRight = selectionBox.x + selectionBox.width;
@@ -332,8 +308,9 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     if (canvas) {
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      const x = (e.clientX - rect.left - panOffset.x) / (scale * dpr);
-      const y = (e.clientY - rect.top - panOffset.y) / (scale * dpr);
+      const effectiveScale = scale * dpr;
+      const x = (e.clientX - rect.left - panOffset.x) / effectiveScale;
+      const y = (e.clientY - rect.top - panOffset.y) / effectiveScale;
       setMousePosition({ x, y });
 
       if (isSelecting && selectionStart) {
@@ -398,16 +375,9 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       if (canvas) {
         const rect = canvas.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
-        
-        // Check if click is actually within canvas bounds
-        const clickX = e.clientX;
-        const clickY = e.clientY;
-        if (clickX < rect.left || clickX > rect.right || clickY < rect.top || clickY > rect.bottom) {
-          return; // Click is outside canvas bounds
-        }
-        
-        const x = (clickX - rect.left - panOffset.x) / (scale * dpr);
-        const y = (clickY - rect.top - panOffset.y) / (scale * dpr);
+        const effectiveScale = scale * dpr;
+        const x = (e.clientX - rect.left - panOffset.x) / effectiveScale;
+        const y = (e.clientY - rect.top - panOffset.y) / effectiveScale;
         
         setIsSelecting(true);
         setIsRightClickSelecting(e.button === 2);
@@ -601,13 +571,13 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           position,
           width,
           height,
-          text: item.type === 'sticky' ? 'New note' : '',
+          text: item.type === 'sticky' ? 'New note' : (item.type === 'text' ? '' : ''),
           order: maxOrder + 1,
           // Add default chart configuration for better initial appearance
           ...(item.type === 'chart' && {
             title: 'New Chart',
-            xAxisTitle: 'X Axis',
-            yAxisTitle: 'Y Axis',
+            xAxisTitle: 'X',
+            yAxisTitle: 'Y',
             showXAxisLabels: true,
             showYAxisLabels: true,
             xAxisUnit: 1,
@@ -626,6 +596,14 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
               yAxisStart: -3,
               yAxisEnd: 3
             })
+          }),
+          ...(item.type === 'text' && {
+            backgroundColor: 'transparent',
+            borderColor: 'transparent',
+            textColor: '#000000',
+            fontSize: 16,
+            fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif',
+            isNewText: true
           })
         };
         saveState();
@@ -2292,6 +2270,100 @@ Performance Metrics Analysis`
     }
   };
 
+  const cycleChartType = () => {
+    const types = ['mindmap', 'xy', 'sine', 'sankey', 'flowchart'];
+    const currentIndex = types.indexOf(chartGenerationType);
+    const nextIndex = (currentIndex + 1) % types.length;
+    setChartGenerationType(types[nextIndex]);
+  };
+
+  const getChartTypeIcon = () => {
+    switch (chartGenerationType) {
+      case 'mindmap':
+        return (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 4v4" />
+            <path d="M12 16v4" />
+            <path d="M4 12h4" />
+            <path d="M16 12h4" />
+          </svg>
+        );
+      case 'xy':
+        return (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="4" y1="20" x2="20" y2="20" />
+            <line x1="4" y1="20" x2="4" y2="4" />
+            <path d="M7 14l3-3 4 4 4-8" />
+          </svg>
+        );
+      case 'sine':
+        return (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M4 12c2-2.67 4-4 6-4s4 1.33 6 4c2 2.67 4 4 6 4s4-1.33 6-4" />
+          </svg>
+        );
+      case 'sankey':
+        return (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+            <rect x="2" y="5" width="3.5" height="14" rx="0.5" fill="currentColor" opacity="0.85" />
+            <rect x="18.5" y="4" width="3.5" height="5.5" rx="0.5" fill="currentColor" opacity="0.85" />
+            <rect x="18.5" y="10.5" width="3.5" height="4" rx="0.5" fill="currentColor" opacity="0.85" />
+            <rect x="18.5" y="15.5" width="3.5" height="4.5" rx="0.5" fill="currentColor" opacity="0.85" />
+            <path d="M5.5 6.5 Q9 6 12.5 5.5 Q16 5 18.5 5.5 L18.5 9.5 Q16 9 12.5 8.5 Q9 8 5.5 8.5 Z" fill="currentColor" opacity="0.6" />
+            <path d="M5.5 11 Q9 10.5 12.5 10 Q16 9.5 18.5 10 L18.5 13.5 Q16 13 12.5 12.5 Q9 12 5.5 12.5 Z" fill="currentColor" opacity="0.6" />
+            <path d="M5.5 15.5 Q9 15 12.5 14.5 Q16 14 18.5 14.5 L18.5 19 Q16 18.5 12.5 18 Q9 17.5 5.5 18 Z" fill="currentColor" opacity="0.6" />
+          </svg>
+        );
+      case 'flowchart':
+        return (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="6" cy="6" r="2.5" fill="currentColor" opacity="0.8" />
+            <rect x="4" y="12" width="4" height="3" rx="0.5" fill="currentColor" opacity="0.6" />
+            <circle cx="14" cy="9" r="2.5" fill="currentColor" opacity="0.8" />
+            <path d="M8.5 7 L11 11" stroke="currentColor" strokeWidth="1" opacity="0.6" />
+            <path d="M6 13.5 L12 16" stroke="currentColor" strokeWidth="1" opacity="0.6" />
+          </svg>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const getPlaceholderText = () => {
+    switch (chartGenerationType) {
+      case 'mindmap':
+        return 'Generate a mind map...';
+      case 'xy':
+        return 'Generate an XY chart... (e.g., "x^2+2*x+4", "parabola function")';
+      case 'sine':
+        return 'Generate a sine wave... (e.g., "sin(x)*cos(x)", "combined waves")';
+      case 'sankey':
+        return 'Generate a Sankey chart... (e.g., "energy flow", "budget allocation")';
+      case 'flowchart':
+        return 'Generate a flowchart... (e.g., "order processing flow", "bug fix workflow")';
+      default:
+        return 'Generate...';
+    }
+  };
+
+  const getButtonTitle = () => {
+    switch (chartGenerationType) {
+      case 'mindmap':
+        return 'Generate Mind Map';
+      case 'xy':
+        return 'Generate XY Chart';
+      case 'sine':
+        return 'Generate Sine Wave';
+      case 'sankey':
+        return 'Generate Sankey Chart';
+      case 'flowchart':
+        return 'Generate Flowchart';
+      default:
+        return 'Generate';
+    }
+  };
+
   // Calculate bounds of all items on the canvas
   const calculateContentBounds = useCallback(() => {
     const padding = 50;
@@ -3146,7 +3218,8 @@ Performance Metrics Analysis`
         .filter(item => selectedItems.has(item.id))
         .map(item => ({
           ...item,
-          id: undefined, // Remove ID so new ones will be generated on paste
+          originalId: item.id, // preserve original id for mapping
+          id: undefined, // new id generated on paste
           position: {
             x: item.position.x,
             y: item.position.y
@@ -3154,12 +3227,15 @@ Performance Metrics Analysis`
         }));
 
       // Get connections between selected items
-      const connectionsToCopy = connections.filter(conn => 
-        selectedItems.has(conn.from) && selectedItems.has(conn.to)
-      ).map(conn => ({
-        ...conn,
-        id: undefined // Remove ID so new ones will be generated on paste
-      }));
+      const connectionsToCopy = connections
+        .filter(conn => selectedItems.has(conn.from) && selectedItems.has(conn.to))
+        .map(conn => ({
+          // Keep only mapping-relevant fields to avoid stale ids
+          label: conn.label || '',
+          fromOriginal: conn.from,
+          toOriginal: conn.to,
+          id: undefined
+        }));
 
       // Store in clipboard state
       setClipboardData({
@@ -3181,7 +3257,8 @@ Performance Metrics Analysis`
       
       // Create new items with offset positions
       const newItems = clipboardData.items.map((item, index) => {
-        const newId = Date.now() + index;
+        if (!item || !item.position) return null;
+        const newId = `item-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 6)}`;
         return {
           ...item,
           id: newId,
@@ -3190,20 +3267,31 @@ Performance Metrics Analysis`
             y: item.position.y + PASTE_OFFSET
           }
         };
+      }).filter(Boolean);
+
+      // Build original->new id mapping
+      const originalToNewId = new Map();
+      clipboardData.items.forEach((item, index) => {
+        if (item && item.originalId && newItems[index]) {
+          originalToNewId.set(item.originalId, newItems[index].id);
+        }
       });
 
-      // Create new connections with updated IDs
-      const newConnections = clipboardData.connections.map(conn => {
-        const fromIndex = clipboardData.items.findIndex(item => item.id === conn.from);
-        const toIndex = clipboardData.items.findIndex(item => item.id === conn.to);
-        
-        return {
-          ...conn,
-          id: `connection-${Date.now()}-${fromIndex}-${toIndex}`,
-          from: newItems[fromIndex].id,
-          to: newItems[toIndex].id
-        };
-      });
+      // Create new connections with updated IDs using original mapping
+      const newConnections = clipboardData.connections
+        .map(conn => {
+          if (!conn) return null;
+          const newFrom = originalToNewId.get(conn.fromOriginal);
+          const newTo = originalToNewId.get(conn.toOriginal);
+          if (!newFrom || !newTo) return null; // skip if any missing
+          return {
+            id: `connection-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+            from: newFrom,
+            to: newTo,
+            label: conn.label || ''
+          };
+        })
+        .filter(Boolean);
 
       // Update clipboard data with new offset for next paste
       setClipboardData(prev => ({
@@ -4053,6 +4141,495 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
         isGeneratingMindMapRef.current = false;
       }, 3000); // Wait 3 seconds after generation completes before allowing auto-save
       // Don't clear the prompt - allow user to generate again with same or modified prompt
+    }
+  };
+
+  const handleGenerateChart = async () => {
+    // Check usage limits for non-signed-in users
+    if (!user) {
+      if (!canGenerateMindMap()) {
+        alert(`You've reached the limit of 4 generations. Please sign in to continue generating unlimited charts.`);
+        return;
+      }
+    }
+
+    setIsGeneratingMindMap(true);
+    isGeneratingMindMapRef.current = true;
+    try {
+      // Get Groq API key from environment
+      const groqApiKey = getGroqApiKey();
+
+      // Get viewport center for positioning
+      const canvasEl = document.querySelector('.whiteboard-canvas');
+      if (!canvasEl) {
+        throw new Error('Canvas element not found');
+      }
+      const canvasBounds = canvasEl.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const effectiveScale = scale * dpr;
+      
+      const viewportCenterX = (canvasBounds.width / 2 - panOffset.x) / effectiveScale;
+      const viewportCenterY = (canvasBounds.height / 2 - panOffset.y) / effectiveScale;
+      
+      // Get base order for new items
+      const baseOrder = items.length > 0 ? Math.max(...items.map((i, idx) => i.order !== undefined ? i.order : idx)) : -1;
+      
+      // Model configuration
+      const MODEL_ID = 'llama-3.3-70b-versatile';
+      
+      // Create chart-specific prompts
+      let systemPrompt = '';
+      let userPrompt = '';
+      
+      if (chartGenerationType === 'xy') {
+        systemPrompt = `You are an AI chart generator specializing in creating XY charts (line, bar, or scatter plots). 
+Analyze the user's request and generate a complete chart configuration in JSON format.
+
+Return ONLY valid JSON with the following structure:
+{
+  "title": "Chart title (descriptive, max 50 chars)",
+  "xAxisTitle": "X",
+  "yAxisTitle": "Y",
+  "xAxisStart": 0,
+  "xAxisEnd": 10,
+  "yAxisStart": 0,
+  "yAxisEnd": 100,
+  "xAxisMode": "number",
+  "yAxisMode": "number",
+  "dataMode": "equation",
+  "dataEquation": "x^2+2*x+4",
+  "xyChartDisplayType": "line",
+  "showDataLine": true,
+  "showDataPoints": true,
+  "dataColor": "#FF5722"
+}
+
+Guidelines:
+- Choose appropriate axis ranges based on the data
+- Generate realistic data points or equations that match the user's description
+- Use "line" for trends over time, "bar" for categories, "scatter" for correlations
+- For equations, use formats like: x^2, sin(x), x^3-2*x, sqrt(x), etc.
+- Ensure data points/equations fit within the axis ranges
+- Keep axis titles simple (X, Y) unless the user specifies domain-specific labels`;
+
+        userPrompt = `Generate an XY chart configuration for: ${mindMapPrompt}`;
+      } else if (chartGenerationType === 'sine') {
+        systemPrompt = `You are an AI chart generator specializing in creating sine wave charts.
+Analyze the user's request and generate a complete sine wave configuration in JSON format.
+
+Return ONLY valid JSON with the following structure:
+{
+  "title": "Chart title (descriptive, max 50 chars)",
+  "frequency": 1.0,
+  "amplitude": 1.0,
+  "periods": 2,
+  "waveType": "sine",
+  "phaseShift": 0,
+  "harmonics": 1,
+  "enableModulation": false,
+  "modulationDepth": 0.5,
+  "xAxisStart": 0,
+  "xAxisEnd": 6.28,
+  "yAxisStart": -3,
+  "yAxisEnd": 3
+}
+
+Guidelines:
+- frequency: waves per period (typically 0.5 to 5)
+- amplitude: peak value (typically 0.5 to 3)
+- periods: number of complete cycles (typically 1 to 4)
+- waveType: "sine" (e.g., sin(x)*cos(x)), "cosine", or "tangent"
+- phaseShift: offset in radians (0 to 6.28)
+- harmonics: number of harmonic components (1 to 5)
+- xAxisEnd should be approximately 2π * periods
+- yAxisEnd should be at least amplitude + 1`;
+
+        userPrompt = `Generate a sine wave chart configuration for: ${mindMapPrompt}`;
+      } else if (chartGenerationType === 'sankey') {
+        systemPrompt = `You are an AI chart generator specializing in creating Sankey flow diagrams.
+Analyze the user's request and generate a complete Sankey chart configuration in JSON format.
+
+Return ONLY valid JSON with the following structure:
+{
+  "title": "Chart title (descriptive, max 50 chars)",
+  "sankeyData": "source1,target1,value1; source2,target2,value2; source1,target3,value3; ...",
+  "dataColor": "#4CAF50"
+}
+
+CRITICAL FORMAT REQUIREMENTS:
+- Each flow entry must be in the format: "source,target,value"
+- Multiple flows must be separated by semicolon and space: "; "
+- NO spaces before commas within a flow entry
+- Example: "Energy Production,Residential Use,500; Energy Production,Commercial Use,300; Solar Power,Energy Production,200;"
+- The sankeyData string must end with a semicolon after the last entry
+
+Guidelines:
+- Generate 5-15 flow connections
+- Use descriptive source and target names (2-4 words each, no commas in names)
+- Values should be positive numbers (typically 10-1000)
+- Ensure logical flow relationships (e.g., "Energy Production,Residential Use,500")
+- Create a meaningful flow diagram that represents the user's request
+- Format: "source,target,value; source,target,value; ..." (with semicolon after each entry including the last one)`;
+
+        userPrompt = `Generate a Sankey chart configuration for: ${mindMapPrompt}`;
+      } else if (chartGenerationType === 'flowchart') {
+        systemPrompt = `You are an expert Flowchart Architect. Convert the user's request into a clear, actionable flowchart using ONLY circle and square nodes connected by arrows.
+Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
++{
++  "title": string, // concise (<= 50 chars)
++  "nodes": [
++    {
++      "id": string,            // unique, kebab-case [a-z0-9-], no spaces
++      "type": "circle"|"square", // circle = start/end/decision; square = process/action
++      "label": string,         // <= 24 chars, Title Case
++      "description": string,   // <= 80 chars, succinct
++      "phase": string|null,    // optional human label (e.g., Research, Strategy, Activation, Launch, Growth)
++      "phaseIndex": number|null, // optional 1-based ordering for phases (1..N); contiguous if present
++      "parentId": string|null, // optional; use for substeps of a step; max depth = 2
++      "order": number|null     // optional global reading order within same phase/level
++    }
++  ],
++  "connections": [
++    { "from": string, "to": string, "label": string|null } // label <= 18 chars
++  ]
++}
++
++Hard Requirements:
++- Use ONLY these shapes: circle (start/end/decision) and square (process/action).
++- Exactly 1 Start (circle) and at least 1 End (circle). Prefer 1 End unless parallel endings are necessary.
++- 6–15 total nodes. Up to 2 nested substep levels via parentId.
++- All ids must be referenced by at least one connection, no orphans.
++- Graph should be a DAG (no cycles). Ensure clear progression left-to-right by phaseIndex/order.
++- If parentId is used for substeps, connect the parent to the first substep, and connect substeps sequentially if needed.
++- If the request implies phases, set phase names and contiguous phaseIndex values (1..N). Within a phase, set increasing order.
++- Keep labels and descriptions crisp and non-redundant. No commas in ids. No extra keys.
++
++Conventions:
++- Start/End nodes must be type circle with labels "Start" and "End" (or variants like "Go Live" for end if appropriate).
++- Decision points (if any) must be type circle with short question labels (e.g., "Product-Market Fit?").
++- Process steps should be type square.
++
++Go-To-Market (GTM) Hint (if applicable to the request): use phases and indices like:
++  1 Research, 2 Strategy, 3 Enablement, 4 Activation, 5 Launch, 6 Growth.
++
++Self-reflection before drafting (answer silently; do not output this reasoning):
++- What are the major milestones of this process?
++- For each decision or event, what are the possible outcomes and the subsequent paths?
++- Is the flowchart as in-depth and tailored to the user's specific request and domain as it should be? If not, revise phases, nodes, and connections accordingly before producing the final output.
++
++Validation before returning:
++- Ensure ids are unique and referenced by connections. Ensure every connection's from/to exists.
++- Ensure exactly one Start and at least one End. Ensure phaseIndex values (if present) are contiguous starting at 1.
++- Ensure node count between 6 and 15. Ensure connection labels (if present) are <= 18 chars.
++
++Output a single JSON object conforming to the schema above.`;
+
+        userPrompt = `Generate a flowchart configuration for: ${mindMapPrompt}`;
+      }
+
+      // Call Groq API
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${groqApiKey}`
+        },
+        body: JSON.stringify({
+          model: MODEL_ID,
+          messages: [
+            {
+              role: 'system',
+              content: systemPrompt
+            },
+            {
+              role: 'user',
+              content: userPrompt
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 2000,
+          response_format: { type: "json_object" }
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || 'Failed to generate chart configuration');
+      }
+
+      const data = await response.json();
+      const rawContent = data.choices[0].message.content;
+      
+      // Parse JSON response
+      let chartConfig;
+      try {
+        chartConfig = JSON.parse(rawContent);
+      } catch (parseError) {
+        // Try to extract JSON from markdown code blocks
+        const jsonMatch = rawContent.match(/```json\s*([\s\S]*?)\s*```/) || rawContent.match(/```\s*([\s\S]*?)\s*```/);
+        if (jsonMatch) {
+          chartConfig = JSON.parse(jsonMatch[1]);
+        } else {
+          throw new Error('Invalid JSON response from AI');
+        }
+      }
+
+      // For flowcharts, generate individual nodes and connections
+      if (chartGenerationType === 'flowchart') {
+        const nodes = chartConfig.nodes || [];
+        const connections = chartConfig.connections || [];
+        
+        if (nodes.length === 0) {
+          throw new Error('No nodes generated for flowchart');
+        }
+
+        // Determine start/end by indegree/outdegree for coloring
+        const inCount = new Map();
+        const outCount = new Map();
+        nodes.forEach(n => {
+          if (n && n.id) {
+            inCount.set(n.id, 0);
+            outCount.set(n.id, 0);
+          }
+        });
+        connections.forEach(conn => {
+          if (conn && conn.from) {
+            outCount.set(conn.from, (outCount.get(conn.from) || 0) + 1);
+          }
+          if (conn && conn.to) {
+            inCount.set(conn.to, (inCount.get(conn.to) || 0) + 1);
+          }
+        });
+
+        const START_END_COLOR = '#f0f0f0';
+        const MIDDLE_COLOR = '#ffffff';
+        const getBgColor = (n) => {
+          const indeg = inCount.get(n.id) || 0;
+          const outdeg = outCount.get(n.id) || 0;
+          const isStartNode = n.type === 'circle' && indeg === 0;
+          const isEndNode = n.type === 'circle' && outdeg === 0;
+          return (isStartNode || isEndNode) ? START_END_COLOR : MIDDLE_COLOR;
+        };
+
+        // Layout parameters
+        const nodeSpacingX = 220;
+        const nodeSpacingY = 140;
+        const childOffsetX = 150;
+        const childOffsetY = 110;
+        const baseY = viewportCenterY - 120;
+
+        // Phase grouping: determine column per phaseIndex (1..N) or inferred by first-seen order of phase
+        const phaseOrderMap = new Map();
+        let phaseCount = 0;
+        nodes.forEach(n => {
+          if (n && (n.phaseIndex || n.phase)) {
+            if (typeof n.phaseIndex === 'number' && Number.isFinite(n.phaseIndex)) {
+              phaseOrderMap.set(`idx-${n.phaseIndex}`, n.phaseIndex);
+            } else if (n.phase && !phaseOrderMap.has(n.phase)) {
+              phaseCount += 1;
+              phaseOrderMap.set(n.phase, phaseCount);
+            }
+          }
+        });
+
+        // If no phases defined, fall back to a single column sequence
+        const getPhaseIndex = (n, fallbackIndex) => {
+          if (typeof n.phaseIndex === 'number' && Number.isFinite(n.phaseIndex)) return n.phaseIndex;
+          if (n.phase && phaseOrderMap.has(n.phase)) return phaseOrderMap.get(n.phase);
+          return fallbackIndex;
+        };
+
+        // Build parent->children map for substeps
+        const childrenMap = new Map();
+        nodes.forEach(n => {
+          if (n.parentId) {
+            if (!childrenMap.has(n.parentId)) childrenMap.set(n.parentId, []);
+            childrenMap.get(n.parentId).push(n);
+          }
+        });
+
+        // Top-level nodes are those without parentId; group them by phase
+        const topLevelByPhase = new Map();
+        let fallbackPhaseCounter = 1;
+        nodes.filter(n => !n.parentId).forEach(n => {
+          const phaseIdx = getPhaseIndex(n, fallbackPhaseCounter);
+          if (phaseIdx === fallbackPhaseCounter) fallbackPhaseCounter += 1;
+          if (!topLevelByPhase.has(phaseIdx)) topLevelByPhase.set(phaseIdx, []);
+          topLevelByPhase.get(phaseIdx).push(n);
+        });
+
+        // Sort phases
+        const sortedPhaseIndices = Array.from(topLevelByPhase.keys()).sort((a, b) => a - b);
+        const numPhases = Math.max(1, sortedPhaseIndices.length);
+        const totalWidth = (numPhases - 1) * nodeSpacingX;
+        const leftmostX = viewportCenterX - totalWidth / 2;
+
+        // Create items for each node
+        const flowchartTitle = chartConfig.title || 'Flowchart';
+        const newItems = [];
+        const nodeIdMap = {}; // Map AI node IDs to created item IDs
+
+        // Calculate node size based on label length
+        const getNodeSize = (label, type) => {
+          if (type === 'circle') {
+            return { width: 100, height: 100 };
+          } else {
+            return { width: 120, height: 80 };
+          }
+        };
+
+        // Position nodes: columns by phase, rows within phase; children near parent
+        let globalIdx = 0;
+        const placed = new Map(); // aiId -> {x,y}
+
+        const placeNode = (node, baseX, topY, rowIndex) => {
+          const nodeSize = getNodeSize(node.label, node.type);
+          const x = baseX;
+          const y = topY + rowIndex * nodeSpacingY;
+          const itemId = `flowchart-${Date.now()}-${globalIdx}-${Math.random().toString(36).substr(2, 9)}`;
+          nodeIdMap[node.id] = itemId;
+          placed.set(node.id, { x, y });
+          const newItem = {
+            id: itemId,
+            type: node.type === 'circle' ? 'circle' : 'rectangle',
+            position: { x, y },
+            width: nodeSize.width,
+            height: nodeSize.height,
+            text: node.label,
+            backgroundColor: getBgColor(node),
+            order: baseOrder + globalIdx + 1
+          };
+          globalIdx += 1;
+          newItems.push(newItem);
+        };
+
+        // Place top-level nodes per phase and then place children relative to parents
+        sortedPhaseIndices.forEach((phaseIdx, phaseColumnIndex) => {
+          const columnX = leftmostX + phaseColumnIndex * nodeSpacingX;
+          const topNodes = (topLevelByPhase.get(phaseIdx) || []).slice().sort((a, b) => {
+            const ao = (typeof a.order === 'number' ? a.order : 0);
+            const bo = (typeof b.order === 'number' ? b.order : 0);
+            return ao - bo;
+          });
+
+          topNodes.forEach((node, i) => {
+            // Place the parent/top-level node
+            placeNode(node, columnX, baseY, i);
+
+            // Place direct children (if any) to the right of the parent
+            const kids = (childrenMap.get(node.id) || []).slice().sort((a, b) => {
+              const ao = (typeof a.order === 'number' ? a.order : 0);
+              const bo = (typeof b.order === 'number' ? b.order : 0);
+              return ao - bo;
+            });
+            kids.forEach((child, cIdx) => {
+              const parentPos = placed.get(node.id);
+              if (!parentPos) return;
+              const childX = columnX + childOffsetX;
+              const childY = parentPos.y + cIdx * childOffsetY;
+              const nodeSize = getNodeSize(child.label, child.type);
+              const itemId = `flowchart-${Date.now()}-${globalIdx}-${Math.random().toString(36).substr(2, 9)}`;
+              nodeIdMap[child.id] = itemId;
+              placed.set(child.id, { x: childX, y: childY });
+              const newItem = {
+                id: itemId,
+                type: child.type === 'circle' ? 'circle' : 'rectangle',
+                position: { x: childX, y: childY },
+                width: nodeSize.width,
+                height: nodeSize.height,
+                text: child.label,
+                backgroundColor: getBgColor(child),
+                order: baseOrder + globalIdx + 1
+              };
+              globalIdx += 1;
+              newItems.push(newItem);
+            });
+          });
+        });
+
+        // Create connections
+        const newConnections = connections
+          .filter(conn => nodeIdMap[conn.from] && nodeIdMap[conn.to])
+          .map(conn => ({
+            id: `conn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            from: nodeIdMap[conn.from],
+            to: nodeIdMap[conn.to],
+            label: conn.label || ''
+          }));
+
+        // Add all items to canvas
+        setItems(prevItems => [...prevItems, ...newItems]);
+        setConnections(prevConnections => [...prevConnections, ...newConnections]);
+      } else {
+        // Regular chart generation (xy, sine, sankey)
+        const chartItem = {
+          id: `chart-${chartGenerationType}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          type: 'chart',
+          chartType: chartGenerationType,
+          position: {
+            x: viewportCenterX - 200, // Center minus half width
+            y: viewportCenterY - 150  // Center minus half height
+          },
+          width: 400,
+          height: 300,
+          order: baseOrder + 1,
+          // Apply AI-generated configuration
+          title: chartConfig.title || `${chartGenerationType.toUpperCase()} Chart`,
+          ...(chartGenerationType === 'xy' ? {
+            xAxisTitle: chartConfig.xAxisTitle || 'X',
+            yAxisTitle: chartConfig.yAxisTitle || 'Y',
+            xAxisStart: chartConfig.xAxisStart !== undefined ? chartConfig.xAxisStart : 0,
+            xAxisEnd: chartConfig.xAxisEnd !== undefined ? chartConfig.xAxisEnd : 10,
+            yAxisStart: chartConfig.yAxisStart !== undefined ? chartConfig.yAxisStart : 0,
+            yAxisEnd: chartConfig.yAxisEnd !== undefined ? chartConfig.yAxisEnd : 100,
+            xAxisMode: chartConfig.xAxisMode || 'number',
+            yAxisMode: chartConfig.yAxisMode || 'number',
+            dataMode: chartConfig.dataMode || 'points',
+            dataPoints: chartConfig.dataPoints || '',
+            dataEquation: chartConfig.dataEquation || '',
+            xyChartDisplayType: chartConfig.xyChartDisplayType || 'line',
+            showDataLine: chartConfig.showDataLine !== undefined ? chartConfig.showDataLine : true,
+            showDataPoints: chartConfig.showDataPoints !== undefined ? chartConfig.showDataPoints : true,
+            dataColor: chartConfig.dataColor || '#FF5722'
+          } : {}),
+          ...(chartGenerationType === 'sine' ? {
+            frequency: chartConfig.frequency !== undefined ? chartConfig.frequency : 1,
+            amplitude: chartConfig.amplitude !== undefined ? chartConfig.amplitude : 1,
+            periods: chartConfig.periods !== undefined ? chartConfig.periods : 1,
+            waveType: chartConfig.waveType || 'sine',
+            phaseShift: chartConfig.phaseShift !== undefined ? chartConfig.phaseShift : 0,
+            harmonics: chartConfig.harmonics !== undefined ? chartConfig.harmonics : 1,
+            enableModulation: chartConfig.enableModulation !== undefined ? chartConfig.enableModulation : false,
+            modulationDepth: chartConfig.modulationDepth !== undefined ? chartConfig.modulationDepth : 0.5,
+            xAxisStart: chartConfig.xAxisStart !== undefined ? chartConfig.xAxisStart : 0,
+            xAxisEnd: chartConfig.xAxisEnd !== undefined ? chartConfig.xAxisEnd : (2 * Math.PI * (chartConfig.periods || 1)),
+            yAxisStart: chartConfig.yAxisStart !== undefined ? chartConfig.yAxisStart : -3,
+            yAxisEnd: chartConfig.yAxisEnd !== undefined ? chartConfig.yAxisEnd : 3
+          } : {}),
+          ...(chartGenerationType === 'sankey' ? {
+            sankeyData: chartConfig.sankeyData || '',
+            dataColor: chartConfig.dataColor || '#4CAF50'
+          } : {})
+        };
+
+        // Add chart to canvas
+        setItems(prevItems => [...prevItems, chartItem]);
+      }
+
+      // Increment usage count
+      if (!user) {
+        incrementMindMapCount();
+      }
+
+      // Don't clear the prompt - allow user to generate again
+    } catch (error) {
+      console.error('Error generating chart:', error);
+      alert(error.message || 'Failed to generate chart. Please try again.');
+    } finally {
+      setIsGeneratingMindMap(false);
+      setTimeout(() => {
+        isGeneratingMindMapRef.current = false;
+      }, 3000);
     }
   };
 
@@ -5316,10 +5893,10 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
             className="selection-box"
             style={{
               position: 'absolute',
-              left: selectionBox.x * scale * (window.devicePixelRatio || 1) + panOffset.x,
-              top: selectionBox.y * scale * (window.devicePixelRatio || 1) + panOffset.y,
-              width: selectionBox.width * scale * (window.devicePixelRatio || 1),
-              height: selectionBox.height * scale * (window.devicePixelRatio || 1),
+              left: selectionBox.x * (scale * (window.devicePixelRatio || 1)) + panOffset.x,
+              top: selectionBox.y * (scale * (window.devicePixelRatio || 1)) + panOffset.y,
+              width: selectionBox.width * (scale * (window.devicePixelRatio || 1)),
+              height: selectionBox.height * (scale * (window.devicePixelRatio || 1)),
               border: '2px solid #007bff',
               backgroundColor: 'rgba(0, 123, 255, 0.1)',
               pointerEvents: 'none',
@@ -5424,7 +6001,11 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
               dataPointCount: editingChart.dataPointCount || 100,
               showDataLine: editingChart.showDataLine !== false,
               showDataPoints: editingChart.showDataPoints !== false,
-              dataColor: editingChart.dataColor || '#FF5722'
+              dataColor: editingChart.dataColor || '#FF5722',
+              xyChartDisplayType: editingChart.xyChartDisplayType || 'line',
+              // Sankey chart settings
+              sankeyData: editingChart.sankeyData || '',
+              sankeyFileName: editingChart.sankeyFileName || ''
             }}
             onConfigUpdate={(newConfig) => {
               const updatedItem = {
@@ -5450,21 +6031,39 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !isGeneratingMindMap && mindMapPrompt.trim()) {
                   e.preventDefault();
-                  handleGenerateMindMap();
+                  if (chartGenerationType === 'mindmap') {
+                    handleGenerateMindMap();
+                  } else {
+                    handleGenerateChart();
+                  }
                 }
                 if (e.key === 'Escape') {
                   handleCloseMindMapPanel();
                 }
               }}
-              placeholder="Generate a mind map..."
+              placeholder={getPlaceholderText()}
               autoFocus
               disabled={isGeneratingMindMap}
             />
             <button 
+              className="mind-map-prompt-chart-type"
+              onClick={cycleChartType}
+              title={`Switch chart type (Current: ${getButtonTitle()})`}
+              disabled={isGeneratingMindMap}
+            >
+              {getChartTypeIcon()}
+            </button>
+            <button 
               className="mind-map-prompt-button"
-              onClick={handleGenerateMindMap}
+              onClick={() => {
+                if (chartGenerationType === 'mindmap') {
+                  handleGenerateMindMap();
+                } else {
+                  handleGenerateChart();
+                }
+              }}
               disabled={isGeneratingMindMap || !mindMapPrompt.trim()}
-              title="Generate Mind Map"
+              title={getButtonTitle()}
             >
               {isGeneratingMindMap ? (
                 <span className="loading-spinner"></span>

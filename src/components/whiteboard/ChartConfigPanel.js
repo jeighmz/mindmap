@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import '../../styles/ChartConfigPanel.css';
 
 const ChartConfigPanel = React.memo(({ 
@@ -46,15 +47,23 @@ const ChartConfigPanel = React.memo(({
       modulationDepth: initialConfig.modulationDepth || 0.5
     } : {}),
     
-    // Data plotting settings (only for XY charts)
-    ...(initialConfig.chartType === 'xy' ? {
+    // Data plotting settings (for XY, bar, and scatter charts)
+    ...(['xy', 'bar', 'scatter'].includes(initialConfig.chartType) ? {
       dataMode: initialConfig.dataMode || 'none', // 'none', 'points', 'equation'
       dataPoints: initialConfig.dataPoints || '', // "x1,y1; x2,y2; ..." or JSON array
       dataEquation: initialConfig.dataEquation || '', // e.g., "x^2 + 2*x + 1" or "sin(x)"
       dataPointCount: initialConfig.dataPointCount || 100, // For equation mode
       showDataLine: initialConfig.showDataLine !== false,
       showDataPoints: initialConfig.showDataPoints !== false,
-      dataColor: initialConfig.dataColor || '#FF5722'
+      dataColor: initialConfig.dataColor || '#FF5722',
+      xyChartDisplayType: initialConfig.xyChartDisplayType || 'line' // 'line', 'bar', 'scatter' - for XY charts
+    } : {}),
+    
+    // Sankey chart settings
+    ...(initialConfig.chartType === 'sankey' ? {
+      sankeyData: initialConfig.sankeyData || '', // "source1,target1,value1; source2,target2,value2; ..."
+      sankeyFileName: initialConfig.sankeyFileName || '', // Filename of uploaded file
+      dataColor: initialConfig.dataColor || '#4CAF50'
     } : {}),
     
     // UI state
@@ -163,8 +172,8 @@ const ChartConfigPanel = React.memo(({
       });
     }
 
-    // If it's an XY chart, include the data plotting settings
-    if (initialConfig.chartType === 'xy') {
+    // If it's an XY, bar, or scatter chart, include the data plotting settings
+    if (['xy', 'bar', 'scatter'].includes(initialConfig.chartType)) {
       Object.assign(processedData, {
         dataMode: formData.dataMode || 'none',
         dataPoints: formData.dataPoints || '',
@@ -172,7 +181,17 @@ const ChartConfigPanel = React.memo(({
         dataPointCount: parseInt(formData.dataPointCount || 100),
         showDataLine: Boolean(formData.showDataLine !== false),
         showDataPoints: Boolean(formData.showDataPoints !== false),
-        dataColor: formData.dataColor || '#FF5722'
+        dataColor: formData.dataColor || '#FF5722',
+        xyChartDisplayType: formData.xyChartDisplayType || 'line' // For XY charts
+      });
+    }
+
+    // If it's a Sankey chart, include the Sankey settings
+    if (initialConfig.chartType === 'sankey') {
+      Object.assign(processedData, {
+        sankeyData: formData.sankeyData || '',
+        sankeyFileName: formData.sankeyFileName || '',
+        dataColor: formData.dataColor || '#4CAF50'
       });
     }
 
@@ -547,6 +566,229 @@ const ChartConfigPanel = React.memo(({
     );
   };
 
+  const renderSankeyDataSection = () => {
+    const isExpanded = formData.expandedSection === 'sankey';
+    
+    const handleFileUpload = (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      
+      if (file.name.endsWith('.csv')) {
+        // Handle CSV files
+        reader.onload = (event) => {
+          try {
+            const text = event.target.result;
+            // Parse CSV file
+            const lines = text.split('\n').filter(line => line.trim());
+            const rows = lines.map(line => {
+              // Handle CSV with potential quotes and commas
+              const values = [];
+              let current = '';
+              let inQuotes = false;
+              
+              for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                if (char === '"') {
+                  inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                  values.push(current.trim());
+                  current = '';
+                } else {
+                  current += char;
+                }
+              }
+              values.push(current.trim());
+              return values;
+            });
+            
+            // Convert to sankey format: source,target,value
+            // Assume first row is header, skip it
+            // Expect columns: source, target, value (or similar)
+            const dataRows = rows.slice(1).filter(row => row.length >= 3);
+            const parsedData = dataRows
+              .map(row => {
+                const source = row[0]?.trim() || '';
+                const target = row[1]?.trim() || '';
+                const value = row[2]?.trim() || '0';
+                return `${source},${target},${value}`;
+              })
+              .filter(link => link.split(',')[0] && link.split(',')[1]) // Filter out empty rows
+              .join('; ');
+            
+            if (parsedData) {
+              setFormData(prev => ({ ...prev, sankeyData: parsedData, sankeyFileName: file.name }));
+            } else {
+              alert('No valid data found in the file. Please ensure the file has Source, Target, and Value columns.');
+            }
+          } catch (error) {
+            console.error('Error parsing CSV file:', error);
+            alert('Error parsing CSV file. Please check the format and try again.');
+          }
+          
+          // Reset file input
+          e.target.value = '';
+        };
+        
+        reader.readAsText(file);
+      } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        // Handle XLSX/XLS files
+        reader.onload = (event) => {
+          try {
+            const data = new Uint8Array(event.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            
+            // Get first sheet
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            
+            // Convert to JSON array
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            
+            // Convert to sankey format: source,target,value
+            // Assume first row is header, skip it
+            // Expect columns: source, target, value (or similar)
+            const dataRows = jsonData.slice(1).filter(row => row.length >= 3 && row[0] && row[1]);
+            const parsedData = dataRows
+              .map(row => {
+                const source = String(row[0] || '').trim();
+                const target = String(row[1] || '').trim();
+                const value = String(row[2] || '0').trim();
+                return `${source},${target},${value}`;
+              })
+              .filter(link => {
+                const parts = link.split(',');
+                return parts[0] && parts[1]; // Filter out empty rows
+              })
+              .join('; ');
+            
+            if (parsedData) {
+              setFormData(prev => ({ ...prev, sankeyData: parsedData, sankeyFileName: file.name }));
+            } else {
+              alert('No valid data found in the file. Please ensure the file has Source, Target, and Value columns.');
+            }
+          } catch (error) {
+            console.error('Error parsing XLSX file:', error);
+            alert('Error parsing XLSX file. Please check the format and try again.');
+          }
+          
+          // Reset file input
+          e.target.value = '';
+        };
+        
+        reader.readAsArrayBuffer(file);
+      } else {
+        alert('Please upload a CSV or XLSX file.');
+        e.target.value = '';
+      }
+    };
+    
+    return (
+      <div className="chart-config-section">
+        <div 
+          className="chart-settings-header"
+          onClick={() => setFormData(prev => ({ ...prev, expandedSection: isExpanded ? null : 'sankey' }))}
+        >
+          <div className="chart-settings-title">
+            <span>Sankey Data</span>
+          </div>
+          <svg 
+            className={`chart-settings-arrow ${isExpanded ? 'expanded' : ''}`}
+            viewBox="0 0 24 24" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="2"
+          >
+            <path d="M6 9l6 6 6-6"/>
+          </svg>
+        </div>
+
+        {isExpanded && (
+          <div className="chart-settings-nested">
+            <div className="input-container">
+              <label>Upload CSV File:</label>
+              <input
+                type="file"
+                accept=".csv,.xlsx"
+                onChange={handleFileUpload}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  marginBottom: '8px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px'
+                }}
+              />
+              {formData.sankeyFileName && (
+                <div style={{
+                  marginBottom: '8px',
+                  padding: '6px 10px',
+                  backgroundColor: '#e8f5e9',
+                  border: '1px solid #4CAF50',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  color: '#2e7d32'
+                }}>
+                  <strong>File loaded:</strong> {formData.sankeyFileName}
+                </div>
+              )}
+              <small className="help-text" style={{ display: 'block', marginBottom: '12px', color: '#666' }}>
+                <strong>File Format:</strong> Upload CSV or XLSX files with the following structure:
+                <br />
+                <strong>Required columns:</strong> Source, Target, Value (first row should be headers)
+                <br />
+                <br />
+                <strong>Example CSV/XLSX content:</strong>
+                <br />
+                <code style={{ fontSize: '11px', display: 'block', marginTop: '4px', padding: '6px', background: '#f5f5f5', borderRadius: '2px', lineHeight: '1.6' }}>
+                  Source,Target,Value<br />
+                  A,B,100<br />
+                  A,C,50<br />
+                  B,D,80<br />
+                  C,D,20
+                </code>
+                <br />
+                <strong>Notes:</strong>
+                <br />
+                • First row is treated as headers and will be skipped
+                <br />
+                • Column order: Source (column 1), Target (column 2), Value (column 3)
+                <br />
+                • Empty rows are automatically filtered out
+              </small>
+            </div>
+            
+            <div className="input-container">
+              <label>Sankey Flow Data:</label>
+              <textarea
+                name="sankeyData"
+                value={formData.sankeyData || ''}
+                onChange={handleChange}
+                placeholder="Source1,Target1,100; Source2,Target2,50; Source1,Target2,30"
+                rows={6}
+              />
+              <small className="help-text">
+                Format: source,target,value; source,target,value; ... (semicolon-separated)
+                <br />
+                Example: A,B,100; A,C,50; B,D,80; C,D,20
+              </small>
+            </div>
+            <div className="input-container">
+              <label>Flow Color:</label>
+              <input
+                type="color"
+                name="dataColor"
+                value={formData.dataColor || '#4CAF50'}
+                onChange={handleChange}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderDataPlottingSection = () => {
     const isExpanded = formData.expandedSection === 'data';
     
@@ -635,24 +877,29 @@ const ChartConfigPanel = React.memo(({
 
             {formData.dataMode !== 'none' && (
               <>
-                <div className="checkbox-section">
-                  <input
-                    type="checkbox"
-                    name="showDataLine"
-                    checked={formData.showDataLine !== false}
-                    onChange={handleChange}
-                  />
-                  <label>Show Line</label>
-                </div>
-                <div className="checkbox-section">
-                  <input
-                    type="checkbox"
-                    name="showDataPoints"
-                    checked={formData.showDataPoints !== false}
-                    onChange={handleChange}
-                  />
-                  <label>Show Points</label>
-                </div>
+                {/* Only show line/points options for XY charts with line display type */}
+                {initialConfig.chartType === 'xy' && formData.xyChartDisplayType === 'line' && (
+                  <>
+                    <div className="checkbox-section">
+                      <input
+                        type="checkbox"
+                        name="showDataLine"
+                        checked={formData.showDataLine !== false}
+                        onChange={handleChange}
+                      />
+                      <label>Show Line</label>
+                    </div>
+                    <div className="checkbox-section">
+                      <input
+                        type="checkbox"
+                        name="showDataPoints"
+                        checked={formData.showDataPoints !== false}
+                        onChange={handleChange}
+                      />
+                      <label>Show Points</label>
+                    </div>
+                  </>
+                )}
                 <div className="input-container">
                   <label>Data Color:</label>
                   <input
@@ -692,28 +939,31 @@ const ChartConfigPanel = React.memo(({
           />
         </div>
 
-        <div className="chart-config-section">
-          <label>X-Axis Title:</label>
-          <input
-            type="text"
-            name="xAxisTitle"
-            value={formData.xAxisTitle}
-            onChange={handleChange}
-          />
-        </div>
+        {/* X-Axis and Y-Axis configuration - hidden for Sankey charts */}
+        {initialConfig.chartType !== 'sankey' && (
+          <>
+            <div className="chart-config-section">
+              <label>X-Axis Title:</label>
+              <input
+                type="text"
+                name="xAxisTitle"
+                value={formData.xAxisTitle}
+                onChange={handleChange}
+              />
+            </div>
 
-        <div className="chart-config-section">
-          <label>Y-Axis Title:</label>
-          <input
-            type="text"
-            name="yAxisTitle"
-            value={formData.yAxisTitle}
-            onChange={handleChange}
-          />
-        </div>
+            <div className="chart-config-section">
+              <label>Y-Axis Title:</label>
+              <input
+                type="text"
+                name="yAxisTitle"
+                value={formData.yAxisTitle}
+                onChange={handleChange}
+              />
+            </div>
 
-        {/* X-Axis Configuration */}
-        <div className="chart-config-section">
+            {/* X-Axis Configuration */}
+            <div className="chart-config-section">
           <label>X-Axis Type:</label>
           <select
             name="xAxisMode"
@@ -724,26 +974,47 @@ const ChartConfigPanel = React.memo(({
             <option value="date">Date</option>
             <option value="custom">Custom Values</option>
           </select>
-        </div>
-        {renderXAxisInputs()}
+            </div>
+            {renderXAxisInputs()}
 
-        {/* Y-Axis Configuration */}
-        <div className="chart-config-section">
-          <label>Y-Axis Type:</label>
-          <select
-            name="yAxisMode"
-            value={formData.yAxisMode}
-            onChange={handleChange}
-          >
-            <option value="number">Number</option>
-            <option value="date">Date</option>
-            <option value="custom">Custom Values</option>
-          </select>
-        </div>
-        {renderYAxisInputs()}
+            {/* Y-Axis Configuration */}
+            <div className="chart-config-section">
+              <label>Y-Axis Type:</label>
+              <select
+                name="yAxisMode"
+                value={formData.yAxisMode}
+                onChange={handleChange}
+              >
+                <option value="number">Number</option>
+                <option value="date">Date</option>
+                <option value="custom">Custom Values</option>
+              </select>
+            </div>
+            {renderYAxisInputs()}
+          </>
+        )}
 
-        {/* Data Plotting Section (only for XY charts) */}
-        {initialConfig.chartType === 'xy' && renderDataPlottingSection()}
+        {/* Chart Type Selector (for XY charts) */}
+        {initialConfig.chartType === 'xy' && (
+          <div className="chart-config-section">
+            <label>Chart Display Type:</label>
+            <select
+              name="xyChartDisplayType"
+              value={formData.xyChartDisplayType || 'line'}
+              onChange={handleChange}
+            >
+              <option value="line">Line Chart</option>
+              <option value="bar">Bar Chart</option>
+              <option value="scatter">Scatter Plot</option>
+            </select>
+          </div>
+        )}
+
+        {/* Data Plotting Section (for XY, bar, and scatter charts) */}
+        {['xy', 'bar', 'scatter'].includes(initialConfig.chartType) && renderDataPlottingSection()}
+
+        {/* Sankey Chart Data Section */}
+        {initialConfig.chartType === 'sankey' && renderSankeyDataSection()}
 
         <div className="button-group">
           <button
