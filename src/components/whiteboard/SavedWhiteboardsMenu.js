@@ -136,9 +136,14 @@ const SavedWhiteboardsMenu = ({
         height: Number(item.height || 300)
       };
 
-      // Always preserve the storageRef for images
+      // Preserve storageRef for Firebase Storage images
       if (item.storageRef) {
         cleanedImage.storageRef = String(item.storageRef);
+      }
+
+      // Preserve imageUrl for data URLs (local images)
+      if (item.imageUrl && item.imageUrl.startsWith('data:')) {
+        cleanedImage.imageUrl = String(item.imageUrl);
       }
 
       return cleanedImage;

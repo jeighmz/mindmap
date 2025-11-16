@@ -1134,8 +1134,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           let cleanedItem = { ...item };
           
           if (item.type === 'image') {
-            // All images should already be uploaded and have a storageRef
-            if (!item.storageRef) {
+            // For data URLs, we don't need storageRef - just preserve the imageUrl
+            if (item.imageUrl && item.imageUrl.startsWith('data:')) {
+              // Data URL images don't need storageRef, just keep the imageUrl
+              cleanedItem = { ...item };
+            } else if (!item.storageRef) {
               // If image URL exists but no storageRef, keep the imageUrl
               if (!item.imageUrl) {
                 throw new Error('Invalid image item: missing both storage reference and image URL');
@@ -1250,6 +1253,17 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       // Process items to restore image URLs
       const processedItems = await Promise.all(boardData.content.items.map(async (item) => {
         if (item.type === 'image') {
+          // If imageUrl is a data URL, use it directly (no storageRef needed)
+          if (item.imageUrl && item.imageUrl.startsWith('data:')) {
+            return {
+              ...item,
+              imageUrl: item.imageUrl,
+              loadError: null,
+              errorOverlay: false
+            };
+          }
+
+          // If no storageRef and no data URL, show error
           if (!item.storageRef) {
             return {
               ...item,
