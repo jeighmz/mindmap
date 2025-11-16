@@ -2486,13 +2486,61 @@ Performance Metrics Analysis`
 
   // --- Export Functions --- 
 
-  const exportToPNG = useCallback(() => {
+  // Helper function to convert blob URL to data URL
+  const blobToDataURL = useCallback((blobUrl) => {
+    return new Promise((resolve) => {
+      if (!blobUrl || !blobUrl.startsWith('blob:')) {
+        resolve(blobUrl); // Return as-is if not a blob URL
+        return;
+      }
+      
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL('image/png'));
+        } catch (error) {
+          console.warn('Failed to convert blob URL to data URL:', error);
+          resolve(blobUrl); // Fallback to original URL
+        }
+      };
+      img.onerror = () => {
+        console.warn('Failed to load blob URL for conversion:', blobUrl);
+        resolve(blobUrl); // Fallback to original URL
+      };
+      img.src = blobUrl;
+    });
+  }, []);
+
+  const exportToPNG = useCallback(async () => {
     const contentElement = document.querySelector('.canvas-content');
     if (!contentElement) return;
 
     // Calculate bounds including padding
     const bounds = calculateContentBounds();
     const exportPadding = 20;
+
+    // Convert all blob URLs to data URLs before export
+    const images = contentElement.querySelectorAll('img[src^="blob:"]');
+    const imagePromises = Array.from(images).map(async (img) => {
+      // Wait for image to load first
+      if (!img.complete) {
+        await new Promise((resolve) => {
+          img.onload = resolve;
+          img.onerror = resolve; // Resolve even on error to continue
+        });
+      }
+      const dataUrl = await blobToDataURL(img.src);
+      img.src = dataUrl;
+      // Wait a bit for the new src to be applied
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+    await Promise.all(imagePromises);
 
     html2canvas(contentElement, {
       backgroundColor: '#f5f5f5',
@@ -2502,7 +2550,8 @@ Performance Metrics Analysis`
       height: bounds.height + exportPadding * 2,
       scale: 2,
       useCORS: true,
-      logging: true,
+      logging: false,
+      allowTaint: false,
       onclone: (clonedDoc) => {
         const clonedContent = clonedDoc.querySelector('.canvas-content');
         if (clonedContent) {
@@ -2559,7 +2608,7 @@ Performance Metrics Analysis`
     }).catch(err => {
       alert("Could not export to PNG.");
     });
-  }, [calculateContentBounds]);
+  }, [calculateContentBounds, blobToDataURL]);
 
   const exportToJSON = useCallback(() => {
     const data = {
@@ -2658,6 +2707,23 @@ Performance Metrics Analysis`
     const bounds = calculateContentBounds();
     const exportPadding = 20;
 
+    // Convert all blob URLs to data URLs before export
+    const images = contentElement.querySelectorAll('img[src^="blob:"]');
+    const imagePromises = Array.from(images).map(async (img) => {
+      // Wait for image to load first
+      if (!img.complete) {
+        await new Promise((resolve) => {
+          img.onload = resolve;
+          img.onerror = resolve; // Resolve even on error to continue
+        });
+      }
+      const dataUrl = await blobToDataURL(img.src);
+      img.src = dataUrl;
+      // Wait a bit for the new src to be applied
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+    await Promise.all(imagePromises);
+
     try {
       const canvas = await html2canvas(contentElement, {
         backgroundColor: '#f5f5f5',
@@ -2667,6 +2733,7 @@ Performance Metrics Analysis`
         height: bounds.height + exportPadding * 2,
         scale: scale,
         useCORS: true,
+        allowTaint: false,
         onclone: (clonedDoc) => {
           const clonedContent = clonedDoc.querySelector('.canvas-content');
           if (clonedContent) {
@@ -2681,7 +2748,7 @@ Performance Metrics Analysis`
     } catch (err) {
       return null;
     }
-  }, [calculateContentBounds, scale]);
+  }, [calculateContentBounds, scale, blobToDataURL]);
 
   const exportToNotion = useCallback(async () => {
     if (!canExport('notion')) {
