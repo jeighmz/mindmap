@@ -1,9 +1,5 @@
 import React, { useState } from 'react';
 import { useDrag } from 'react-dnd';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { getAuth } from 'firebase/auth';
-import { storage } from '../../firebase-config';
-import { useAuth } from '../../contexts/AuthContext';
 
 import AgentChat from './agent/AgentChat';
 
@@ -53,8 +49,6 @@ const ChartMenuItem = ({ chartType, icon, title, onChartMenuToggle }) => {
 };
 
 const ToolbarItem = ({ type, icon, chartType, isChartMenuOpen, onChartMenuToggle }) => {
-  const { user } = useAuth();
-  const [isUploading, setIsUploading] = useState(false);
 
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'WHITEBOARD_ITEM',
@@ -65,163 +59,93 @@ const ToolbarItem = ({ type, icon, chartType, isChartMenuOpen, onChartMenuToggle
   }), [type, chartType]);
 
   const handleImageClick = async () => {
-    if (!user) {
-      alert('Please sign in to add images');
-      return;
-    }
-
     try {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
+      input.multiple = true; // Support multiple file selection
       
       input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        try {
-          setIsUploading(true);
-          
-          // Validate file type and size
-          if (!file.type.startsWith('image/')) {
-            throw new Error('Please select an image file');
-          }
-          if (file.size > 10 * 1024 * 1024) { // 10MB limit
-            throw new Error('Image size must be less than 10MB');
-          }
+        const files = Array.from(e.target.files).filter(file => file.type.startsWith('image/'));
+        
+        if (files.length === 0) {
+          return;
+        }
 
-          // Create temporary URL for preview
-          const tempUrl = URL.createObjectURL(file);
-          
-          // Create a new image element to get dimensions
+        // Get viewport center position
+        const canvasEl = document.querySelector('.whiteboard-canvas');
+        if (!canvasEl) {
+          alert('Canvas not found');
+          return;
+        }
+
+        const canvasRect = canvasEl.getBoundingClientRect();
+        const viewportCenterX = canvasRect.left + canvasRect.width / 2;
+        const viewportCenterY = canvasRect.top + canvasRect.height / 2;
+
+        // Get current pan and scale from the canvas (we'll need to pass this or get it from event)
+        // For now, we'll calculate a reasonable center position
+        // The canvas will handle positioning based on its current pan/scale state
+        
+        files.forEach((file, index) => {
+          const imageUrl = URL.createObjectURL(file);
           const img = new Image();
-          img.onload = async () => {
-            try {
-              // Calculate dimensions while maintaining aspect ratio
-              const maxWidth = 400;
-              const maxHeight = 300;
-              let width = img.width;
-              let height = img.height;
-              
-              if (width > maxWidth) {
-                height = (maxWidth / width) * height;
-                width = maxWidth;
+          
+          img.onload = () => {
+            // Calculate dimensions while maintaining aspect ratio
+            const maxWidth = 400;
+            const maxHeight = 300;
+            let width = img.width;
+            let height = img.height;
+            
+            if (width > maxWidth) {
+              height = (maxWidth / width) * height;
+              width = maxWidth;
+            }
+            if (height > maxHeight) {
+              width = (maxHeight / height) * width;
+              height = maxHeight;
+            }
+
+            // Calculate center position - offset multiple images in a grid pattern
+            const cols = Math.ceil(Math.sqrt(files.length));
+            const row = Math.floor(index / cols);
+            const col = index % cols;
+            const offsetX = (col - (cols - 1) / 2) * (width + 20);
+            const offsetY = (row - (Math.ceil(files.length / cols) - 1) / 2) * (height + 20);
+            
+            // Dispatch event with viewport center coordinates
+            // The canvas will convert these to canvas coordinates
+            const newItem = {
+              type: 'image',
+              imageUrl,
+              width,
+              height,
+              position: { 
+                viewportX: viewportCenterX + offsetX, 
+                viewportY: viewportCenterY + offsetY 
               }
-              if (height > maxHeight) {
-                width = (maxHeight / height) * width;
-                height = maxHeight;
-              }
+            };
 
-              // Create sanitized filename
-              const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-              const storagePath = `mindmap-images/${user.uid}/${fileName}`;
-              
-              // Verify storage is properly initialized
-              if (!storage) {
-                throw new Error('Firebase Storage is not properly initialized');
-              }
-
-              // Verify storage bucket is configured
-              const storageBucket = storage.app?.options?.storageBucket;
-              if (!storageBucket) {
-                throw new Error('Storage bucket is not configured. Please check your Firebase configuration.');
-              }
-
-              const imageRef = ref(storage, storagePath);
-
-              // Upload with better error handling
-              // A 412 error can occur due to metadata issues or auth token problems
-              let uploadResult;
-              try {
-                // Get the Firebase user from auth to access getIdToken method
-                const auth = getAuth();
-                const firebaseUser = auth.currentUser;
-                
-                if (firebaseUser) {
-                  // Verify user auth token is still valid before upload
-                  try {
-                    await firebaseUser.getIdToken(true); // Force refresh
-                  } catch (tokenError) {
-                    // Continue with upload even if token refresh fails
-                  }
-                }
-                
-                // Try upload with just contentType (metadata can cause 412 errors)
-                uploadResult = await uploadBytes(imageRef, file, {
-                  contentType: file.type
-                });
-              } catch (uploadError) {
-                throw uploadError;
-              }
-
-              if (!uploadResult || !uploadResult.ref) {
-                throw new Error('Storage upload failed - no reference returned');
-              }
-
-              // Get the download URL with error handling
-              const downloadUrl = await getDownloadURL(imageRef).catch(error => {
-                throw new Error(`Failed to get download URL: ${error.message}`);
-              });
-
-              const newItem = {
-                type: 'image',
-                imageUrl: downloadUrl,
-                width,
-                height,
-                position: { x: 100, y: 100 },
-                storageRef: storagePath
-              };
-
-              // Dispatch event to add image to canvas
+            // Use setTimeout to ensure each image gets processed with unique timing
+            setTimeout(() => {
               const event = new CustomEvent('addImageItem', { detail: newItem });
               window.dispatchEvent(event);
-            } catch (error) {
-              // Provide more specific error messages
-              let errorMessage = 'Failed to upload image';
-              if (error.code === 'storage/unauthorized') {
-                errorMessage = 'You are not authorized to upload images. Please check your permissions.';
-              } else if (error.code === 'storage/quota-exceeded') {
-                errorMessage = 'Storage quota exceeded. Please try a smaller image or contact support.';
-              } else if (error.code === 'storage/unauthenticated') {
-                errorMessage = 'Please sign in again to upload images.';
-              } else if (error.code === 'storage/unknown') {
-                // Check if it's a 412 error specifically
-                if (error.message && error.message.includes('412')) {
-                  errorMessage = 'Upload failed due to authentication or permissions. Please try signing out and signing back in, or contact support if the issue persists.';
-                } else {
-                  errorMessage = 'An unknown storage error occurred. Please check your internet connection and try again.';
-                }
-              } else {
-                errorMessage = `Upload failed: ${error.message}`;
-              }
-              
-              alert(errorMessage);
-              URL.revokeObjectURL(tempUrl);
-            }
+            }, index * 10);
           };
           
           img.onerror = () => {
-            alert('Failed to process image. Please try a different image file.');
-            setIsUploading(false);
+            URL.revokeObjectURL(imageUrl);
+            alert(`Failed to load image "${file.name}"`);
           };
           
-          img.src = tempUrl;
-        } catch (error) {
-          alert('Failed to add image: ' + error.message);
-        } finally {
-          setIsUploading(false);
-        }
-      }
-    };
+          img.src = imageUrl;
+        });
+      };
     
     // Add error handler for file input
     input.onerror = (e) => {
-      setIsUploading(false);
       alert('Error opening file picker. Please try again.');
-    };
-    
-    // Add cancel handler (when user closes file picker without selecting)
-    input.oncancel = () => {
-      setIsUploading(false);
     };
     
     input.click();
@@ -304,12 +228,11 @@ const ToolbarItem = ({ type, icon, chartType, isChartMenuOpen, onChartMenuToggle
   return (
     <div
       ref={type === 'image' || type === 'chart-menu' ? null : drag}
-      className={`toolbar-item ${isUploading ? 'uploading' : ''}`}
+      className="toolbar-item"
       style={{ opacity: isDragging ? 0.5 : 1, cursor: type === 'image' ? 'pointer' : (type === 'chart-menu' ? 'pointer' : 'grab') }}
       onClick={type === 'image' ? handleImageClick : undefined}
     >
       {icon}
-      {isUploading && <div className="upload-spinner"></div>}
     </div>
   );
 };

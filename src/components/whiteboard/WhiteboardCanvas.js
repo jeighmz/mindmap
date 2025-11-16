@@ -9,6 +9,7 @@ import ChartConfigPanel from './ChartConfigPanel';
 // import PublishModal from './PublishModal';  // Temporarily removed
 import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref as storageRef, uploadString, getDownloadURL, getStorage, uploadBytes, getMetadata } from 'firebase/storage';
+import { getAuth } from 'firebase/auth';
 import { db, storage } from '../../firebase-config';
 /* eslint-disable-next-line no-unused-vars */
 import { useAuth } from '../../contexts/AuthContext';
@@ -119,6 +120,9 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [zoomOverlayVisible, setZoomOverlayVisible] = useState(true);
   const zoomOverlayTimeoutRef = useRef(null);
   const canvasRef = useRef(null);
+  // Add state for drag and drop
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   
   // Add undo functionality
   const [undoStack, setUndoStack] = useState([]);
@@ -1572,10 +1576,27 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   // Add image item event listener
   useEffect(() => {
     const handleAddImageItem = (e) => {
-      const newItemId = Date.now();
+      const canvasEl = canvasRef.current || document.querySelector('.whiteboard-canvas');
+      if (!canvasEl) return;
+
+      const canvasRect = canvasEl.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      
+      // Convert viewport coordinates to canvas coordinates if provided
+      let position = e.detail.position;
+      if (position.viewportX !== undefined && position.viewportY !== undefined) {
+        // Convert viewport center to canvas coordinates
+        position = {
+          x: Math.round(((position.viewportX - canvasRect.left - panOffset.x) / (scale * dpr) - (e.detail.width || 400) / 2) / 10) * 10,
+          y: Math.round(((position.viewportY - canvasRect.top - panOffset.y) / (scale * dpr) - (e.detail.height || 300) / 2) / 10) * 10
+        };
+      }
+
+      const newItemId = Date.now() + Math.random();
       setItems(prevItems => {
         const newItem = {
           ...e.detail,
+          position,
           id: newItemId,
           order: prevItems.length > 0 ? Math.max(...prevItems.map((i, idx) => i.order !== undefined ? i.order : idx)) + 1 : 0
         };
@@ -1586,7 +1607,78 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
     window.addEventListener('addImageItem', handleAddImageItem);
     return () => window.removeEventListener('addImageItem', handleAddImageItem);
-  }, []);
+  }, [scale, panOffset]);
+
+  // Handle image file drops
+  const handleImageDrop = useCallback((e, dropPosition) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+
+    const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
+    
+    if (files.length === 0) {
+      return;
+    }
+
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+
+    files.forEach((file) => {
+      const imageUrl = URL.createObjectURL(file);
+      const img = new Image();
+      
+      img.onload = () => {
+        // Calculate dimensions while maintaining aspect ratio
+        const maxWidth = 400;
+        const maxHeight = 300;
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > maxWidth) {
+          height = (maxWidth / width) * height;
+          width = maxWidth;
+        }
+        if (height > maxHeight) {
+          width = (maxHeight / height) * width;
+          height = maxHeight;
+        }
+
+        // Calculate position based on drop location
+        let position;
+        if (dropPosition && canvasRect) {
+          position = {
+            x: Math.round(((dropPosition.x - canvasRect.left - panOffset.x) / (scale * dpr) - width/2) / 10) * 10,
+            y: Math.round(((dropPosition.y - canvasRect.top - panOffset.y) / (scale * dpr) - height/2) / 10) * 10
+          };
+        } else {
+          position = { x: 100, y: 100 };
+        }
+
+        const newItemId = Date.now() + Math.random();
+        setItems(prevItems => {
+          const maxOrder = prevItems.length > 0 ? Math.max(...prevItems.map((i, idx) => i.order !== undefined ? i.order : idx)) : -1;
+          return [...prevItems, {
+            type: 'image',
+            imageUrl,
+            width,
+            height,
+            position,
+            id: newItemId,
+            order: maxOrder + 1
+          }];
+        });
+        setSelectedItems(new Set([newItemId]));
+      };
+      
+      img.onerror = () => {
+        URL.revokeObjectURL(imageUrl);
+        alert(`Failed to load image "${file.name}"`);
+      };
+      
+      img.src = imageUrl;
+    });
+  }, [scale, panOffset]);
 
   const handleCanvasClick = (e) => {
     // Close connection settings menu if clicking on canvas (but not on menu or color picker)
@@ -5633,7 +5725,7 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
           drop(node);
           canvasRef.current = node;
         }}
-        className={`whiteboard-canvas ${isPanning ? 'panning' : ''}`}
+        className={`whiteboard-canvas ${isPanning ? 'panning' : ''} ${isDraggingOver ? 'drag-over' : ''}`}
         onMouseMove={handleMouseMove}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
@@ -5645,12 +5737,54 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
             e.preventDefault();
           }
         }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          // Only show drag over state if dragging files (not react-dnd items)
+          if (e.dataTransfer.types.includes('Files')) {
+            setIsDraggingOver(true);
+          }
+        }}
+        onDragEnter={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          // Only show drag over state if dragging files (not react-dnd items)
+          if (e.dataTransfer.types.includes('Files')) {
+            setIsDraggingOver(true);
+          }
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          // Only hide drag over if we're actually leaving the canvas
+          if (!e.currentTarget.contains(e.relatedTarget)) {
+            setIsDraggingOver(false);
+          }
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDraggingOver(false);
+          
+          // Check if files are being dropped
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            const dropPosition = {
+              x: e.clientX,
+              y: e.clientY
+            };
+            handleImageDrop(e, dropPosition);
+          }
+        }}
         style={{
           cursor: isPanning ? 'grabbing' : (isSpacePressed || isRightClickSelecting ? 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'20\' height=\'20\' viewBox=\'0 0 32 32\'%3E%3Ccircle cx=\'13\' cy=\'13\' r=\'8\' stroke=\'%23000000\' stroke-width=\'2.5\' fill=\'none\'/%3E%3Cline x1=\'20\' y1=\'20\' x2=\'28\' y2=\'28\' stroke=\'%23000000\' stroke-width=\'2.5\' stroke-linecap=\'round\'/%3E%3C/svg%3E") 10 10, crosshair' : 'grab'),
           position: 'relative',
           overflow: 'hidden',
           width: '100%',
-          height: showFooter ? 'calc(100% - 15px)' : '100%'
+          height: showFooter ? 'calc(100% - 15px)' : '100%',
+          ...(isDraggingOver && {
+            backgroundColor: 'rgba(33, 150, 243, 0.1)',
+            border: '2px dashed #2196F3'
+          })
         }}
       >
         <div 
@@ -6089,6 +6223,39 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
 
       {/* Usage Tracker for non-signed-in users */}
       {!user && <UsageTracker key={user ? 'hidden' : 'visible'} isSearchPanelOpen={isSearchPanelOpen} />}
+
+      {/* Image upload indicator */}
+      {isUploadingImage && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            color: 'white',
+            padding: '20px 30px',
+            borderRadius: '8px',
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            fontSize: '16px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+          }}
+        >
+          <div className="loading-spinner" style={{
+            width: '20px',
+            height: '20px',
+            border: '2px solid rgba(255, 255, 255, 0.3)',
+            borderTop: '2px solid white',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite'
+          }}></div>
+          <span>Uploading image...</span>
+        </div>
+      )}
 
       {/* Add the help toggle button */}
       <button 

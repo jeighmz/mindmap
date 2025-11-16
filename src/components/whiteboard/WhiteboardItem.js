@@ -2943,7 +2943,15 @@ const WhiteboardItem = ({
     return (
       <div 
         className={`${item.type}-shape`}
-        style={stickyStyle}
+        style={{
+          ...stickyStyle,
+          whiteSpace: 'pre-wrap',
+          wordWrap: 'break-word',
+          overflowWrap: 'break-word',
+          alignItems: 'flex-start',
+          justifyContent: 'flex-start',
+          textAlign: 'left'
+        }}
         onDoubleClick={() => setIsEditing(true)}
       >
         {item.text}
