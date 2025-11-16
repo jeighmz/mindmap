@@ -555,6 +555,7 @@ const WhiteboardItem = ({
           <img
             src={item.imageUrl}
             alt={item.loadError ? 'Failed to load image' : 'Whiteboard item'}
+            {...(item.imageUrl && !item.imageUrl.startsWith('data:') && !item.imageUrl.startsWith('blob:') ? { crossOrigin: 'anonymous' } : {})}
             style={{
               maxWidth: '100%',
               maxHeight: '100%',
@@ -570,6 +571,10 @@ const WhiteboardItem = ({
                 imageUrl: item.imageUrl?.substring(0, 50) + '...',
                 error: e
               });
+            }}
+            onLoad={(e) => {
+              // Ensure image is fully loaded and rendered
+              e.target.style.opacity = item.errorOverlay ? 0.5 : 1;
             }}
           />
           {item.errorOverlay && (

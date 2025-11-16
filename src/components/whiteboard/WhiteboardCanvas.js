@@ -2534,22 +2534,82 @@ Performance Metrics Analysis`
     const bounds = calculateContentBounds();
     const exportPadding = 20;
 
-    // Convert all blob URLs to data URLs before export
-    const images = contentElement.querySelectorAll('img[src^="blob:"]');
-    const imagePromises = Array.from(images).map(async (img) => {
-      // Wait for image to load first
-      if (!img.complete) {
-        await new Promise((resolve) => {
-          img.onload = resolve;
-          img.onerror = resolve; // Resolve even on error to continue
-        });
-      }
-      const dataUrl = await blobToDataURL(img.src);
-      img.src = dataUrl;
-      // Wait a bit for the new src to be applied
-      await new Promise(resolve => setTimeout(resolve, 50));
+    // Wait for ALL images to be fully loaded before export
+    const allImages = contentElement.querySelectorAll('img');
+    const imageLoadPromises = Array.from(allImages).map((img) => {
+      return new Promise((resolve) => {
+        // Check if image is already loaded
+        const isDataUrl = img.src && img.src.startsWith('data:');
+        const isBlobUrl = img.src && img.src.startsWith('blob:');
+        
+        // For data URLs, check if they're loaded
+        if (isDataUrl && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+          resolve();
+          return;
+        }
+        
+        // For regular URLs, check if loaded
+        if (!isDataUrl && !isBlobUrl && img.complete && img.naturalWidth > 0) {
+          resolve();
+          return;
+        }
+        
+        // Convert blob URLs to data URLs if needed
+        if (isBlobUrl) {
+          blobToDataURL(img.src).then((dataUrl) => {
+            img.src = dataUrl;
+            // Force reload by creating new image element
+            const testImg = new Image();
+            testImg.onload = () => {
+              img.src = dataUrl;
+              setTimeout(() => resolve(), 100);
+            };
+            testImg.onerror = () => resolve();
+            testImg.src = dataUrl;
+          }).catch(() => resolve());
+        } else if (isDataUrl) {
+          // For data URLs, ensure they're loaded
+          const testImg = new Image();
+          testImg.onload = () => {
+            if (img.complete && img.naturalWidth > 0) {
+              resolve();
+            } else {
+              const originalSrc = img.src;
+              img.src = '';
+              setTimeout(() => {
+                img.src = originalSrc;
+                setTimeout(() => resolve(), 100);
+              }, 50);
+            }
+          };
+          testImg.onerror = () => resolve();
+          testImg.src = img.src;
+        } else {
+          // Wait for existing image to load
+          const loadHandler = () => resolve();
+          const errorHandler = () => resolve();
+          img.addEventListener('load', loadHandler, { once: true });
+          img.addEventListener('error', errorHandler, { once: true });
+          
+          if (!img.src || img.src === '') {
+            resolve();
+          } else if (!img.complete) {
+            const originalSrc = img.src;
+            img.src = '';
+            setTimeout(() => { img.src = originalSrc; }, 10);
+          }
+        }
+      });
     });
-    await Promise.all(imagePromises);
+    
+    // Wait for all images to load, with a timeout
+    await Promise.race([
+      Promise.all(imageLoadPromises),
+      new Promise(resolve => setTimeout(resolve, 10000))
+    ]);
+    
+    // Additional delay to ensure rendering is complete
+    await new Promise(resolve => setTimeout(resolve, 300));
 
     html2canvas(contentElement, {
       backgroundColor: '#f5f5f5',
@@ -2561,6 +2621,7 @@ Performance Metrics Analysis`
       useCORS: true,
       logging: false,
       allowTaint: false,
+      imageTimeout: 15000, // 15 second timeout for images
       onclone: (clonedDoc) => {
         const clonedContent = clonedDoc.querySelector('.canvas-content');
         if (clonedContent) {
@@ -2716,22 +2777,46 @@ Performance Metrics Analysis`
     const bounds = calculateContentBounds();
     const exportPadding = 20;
 
-    // Convert all blob URLs to data URLs before export
-    const images = contentElement.querySelectorAll('img[src^="blob:"]');
-    const imagePromises = Array.from(images).map(async (img) => {
-      // Wait for image to load first
-      if (!img.complete) {
-        await new Promise((resolve) => {
-          img.onload = resolve;
-          img.onerror = resolve; // Resolve even on error to continue
-        });
-      }
-      const dataUrl = await blobToDataURL(img.src);
-      img.src = dataUrl;
-      // Wait a bit for the new src to be applied
-      await new Promise(resolve => setTimeout(resolve, 50));
+    // Wait for ALL images to be fully loaded before export
+    const allImages = contentElement.querySelectorAll('img');
+    const imageLoadPromises = Array.from(allImages).map((img) => {
+      return new Promise((resolve) => {
+        // If image is already loaded, resolve immediately
+        if (img.complete && img.naturalWidth > 0) {
+          resolve();
+          return;
+        }
+        
+        // Convert blob URLs to data URLs if needed
+        if (img.src && img.src.startsWith('blob:')) {
+          blobToDataURL(img.src).then((dataUrl) => {
+            img.src = dataUrl;
+            // Wait for the new src to load
+            const newImg = new Image();
+            newImg.onload = () => resolve();
+            newImg.onerror = () => resolve(); // Continue even on error
+            newImg.src = dataUrl;
+          }).catch(() => resolve());
+        } else {
+          // Wait for existing image to load
+          img.onload = () => resolve();
+          img.onerror = () => resolve(); // Continue even on error
+          // If image hasn't started loading, trigger load
+          if (!img.src || img.src === '') {
+            resolve();
+          }
+        }
+      });
     });
-    await Promise.all(imagePromises);
+    
+    // Wait for all images to load, with a timeout
+    await Promise.race([
+      Promise.all(imageLoadPromises),
+      new Promise(resolve => setTimeout(resolve, 5000)) // 5 second timeout
+    ]);
+    
+    // Additional delay to ensure rendering is complete
+    await new Promise(resolve => setTimeout(resolve, 200));
 
     try {
       const canvas = await html2canvas(contentElement, {
@@ -2743,6 +2828,7 @@ Performance Metrics Analysis`
         scale: scale,
         useCORS: true,
         allowTaint: false,
+        imageTimeout: 15000, // 15 second timeout for images
         onclone: (clonedDoc) => {
           const clonedContent = clonedDoc.querySelector('.canvas-content');
           if (clonedContent) {
