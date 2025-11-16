@@ -1625,10 +1625,13 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     const dpr = window.devicePixelRatio || 1;
 
     files.forEach((file) => {
-      const imageUrl = URL.createObjectURL(file);
-      const img = new Image();
-      
-      img.onload = () => {
+      // Convert file to data URL immediately for production compatibility
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target.result;
+        const img = new Image();
+        
+        img.onload = () => {
         // Calculate dimensions while maintaining aspect ratio
         const maxWidth = 400;
         const maxHeight = 300;
@@ -1658,25 +1661,31 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         const newItemId = Date.now() + Math.random();
         setItems(prevItems => {
           const maxOrder = prevItems.length > 0 ? Math.max(...prevItems.map((i, idx) => i.order !== undefined ? i.order : idx)) : -1;
-          return [...prevItems, {
-            type: 'image',
-            imageUrl,
-            width,
-            height,
-            position,
-            id: newItemId,
-            order: maxOrder + 1
-          }];
-        });
-        setSelectedItems(new Set([newItemId]));
+            return [...prevItems, {
+              type: 'image',
+              imageUrl: dataUrl, // Use data URL instead of blob URL
+              width,
+              height,
+              position,
+              id: newItemId,
+              order: maxOrder + 1
+            }];
+          });
+          setSelectedItems(new Set([newItemId]));
+        };
+        
+        img.onerror = () => {
+          alert(`Failed to load image "${file.name}"`);
+        };
+        
+        img.src = dataUrl;
       };
       
-      img.onerror = () => {
-        URL.revokeObjectURL(imageUrl);
-        alert(`Failed to load image "${file.name}"`);
+      reader.onerror = () => {
+        alert(`Failed to read image "${file.name}"`);
       };
       
-      img.src = imageUrl;
+      reader.readAsDataURL(file);
     });
   }, [scale, panOffset]);
 

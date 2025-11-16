@@ -87,59 +87,68 @@ const ToolbarItem = ({ type, icon, chartType, isChartMenuOpen, onChartMenuToggle
         // For now, we'll calculate a reasonable center position
         // The canvas will handle positioning based on its current pan/scale state
         
-        files.forEach((file, index) => {
-          const imageUrl = URL.createObjectURL(file);
-          const img = new Image();
-          
-          img.onload = () => {
-            // Calculate dimensions while maintaining aspect ratio
-            const maxWidth = 400;
-            const maxHeight = 300;
-            let width = img.width;
-            let height = img.height;
+        files.forEach(async (file, index) => {
+          // Convert file to data URL immediately for production compatibility
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const dataUrl = e.target.result;
+            const img = new Image();
             
-            if (width > maxWidth) {
-              height = (maxWidth / width) * height;
-              width = maxWidth;
-            }
-            if (height > maxHeight) {
-              width = (maxHeight / height) * width;
-              height = maxHeight;
-            }
-
-            // Calculate center position - offset multiple images in a grid pattern
-            const cols = Math.ceil(Math.sqrt(files.length));
-            const row = Math.floor(index / cols);
-            const col = index % cols;
-            const offsetX = (col - (cols - 1) / 2) * (width + 20);
-            const offsetY = (row - (Math.ceil(files.length / cols) - 1) / 2) * (height + 20);
-            
-            // Dispatch event with viewport center coordinates
-            // The canvas will convert these to canvas coordinates
-            const newItem = {
-              type: 'image',
-              imageUrl,
-              width,
-              height,
-              position: { 
-                viewportX: viewportCenterX + offsetX, 
-                viewportY: viewportCenterY + offsetY 
+            img.onload = () => {
+              // Calculate dimensions while maintaining aspect ratio
+              const maxWidth = 400;
+              const maxHeight = 300;
+              let width = img.width;
+              let height = img.height;
+              
+              if (width > maxWidth) {
+                height = (maxWidth / width) * height;
+                width = maxWidth;
               }
-            };
+              if (height > maxHeight) {
+                width = (maxHeight / height) * width;
+                height = maxHeight;
+              }
 
-            // Use setTimeout to ensure each image gets processed with unique timing
-            setTimeout(() => {
-              const event = new CustomEvent('addImageItem', { detail: newItem });
-              window.dispatchEvent(event);
-            }, index * 10);
+              // Calculate center position - offset multiple images in a grid pattern
+              const cols = Math.ceil(Math.sqrt(files.length));
+              const row = Math.floor(index / cols);
+              const col = index % cols;
+              const offsetX = (col - (cols - 1) / 2) * (width + 20);
+              const offsetY = (row - (Math.ceil(files.length / cols) - 1) / 2) * (height + 20);
+              
+              // Dispatch event with viewport center coordinates
+              // The canvas will convert these to canvas coordinates
+              const newItem = {
+                type: 'image',
+                imageUrl: dataUrl, // Use data URL instead of blob URL
+                width,
+                height,
+                position: { 
+                  viewportX: viewportCenterX + offsetX, 
+                  viewportY: viewportCenterY + offsetY 
+                }
+              };
+
+              // Use setTimeout to ensure each image gets processed with unique timing
+              setTimeout(() => {
+                const event = new CustomEvent('addImageItem', { detail: newItem });
+                window.dispatchEvent(event);
+              }, index * 10);
+            };
+            
+            img.onerror = () => {
+              alert(`Failed to load image "${file.name}"`);
+            };
+            
+            img.src = dataUrl;
           };
           
-          img.onerror = () => {
-            URL.revokeObjectURL(imageUrl);
-            alert(`Failed to load image "${file.name}"`);
+          reader.onerror = () => {
+            alert(`Failed to read image "${file.name}"`);
           };
           
-          img.src = imageUrl;
+          reader.readAsDataURL(file);
         });
       };
     
