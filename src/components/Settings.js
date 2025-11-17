@@ -334,6 +334,60 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
   const renderProfileSection = () => (
     <div className="settings-section">
       <h3>Profile</h3>
+      <p>Manage your profile information and preferences</p>
+      
+      <div className="form-group">
+        <label htmlFor="profilePicture">Profile Picture</label>
+        <div className="profile-picture-container">
+          <div className="profile-picture-preview">
+            <img 
+              src={profilePicturePreview || getUserProfilePicture(user)} 
+              alt="Profile" 
+              className="profile-picture-preview-img"
+              onError={(e) => handleImageError(e, user)}
+            />
+            {isUploadingPicture && (
+              <div className="profile-picture-uploading">Uploading...</div>
+            )}
+          </div>
+          <div className="profile-picture-actions">
+            <input
+              ref={fileInputRef}
+              type="file"
+              id="profilePicture"
+              accept="image/*"
+              onChange={handleProfilePictureChange}
+              style={{ display: 'none' }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="profile-picture-upload-button"
+              disabled={isUploadingPicture}
+            >
+              {profilePicture ? 'Change Picture' : 'Upload Picture'}
+            </button>
+            {(profilePicturePreview && profilePicturePreview !== getUserProfilePicture(user)) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setProfilePicture(null);
+                  setProfilePicturePreview(null);
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                  }
+                }}
+                className="profile-picture-remove-button"
+                disabled={isUploadingPicture}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+        <small>Upload a profile picture (max 5MB). Changes will be saved when you click Save.</small>
+      </div>
+
       <div className="form-group">
         <label htmlFor="displayName">Display Name</label>
         <input
@@ -345,7 +399,6 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
         />
         <small>Your name will be visible to other users</small>
       </div>
-
     </div>
   );
 
@@ -530,7 +583,86 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
   const renderIntegrationsSection = () => (
     <div className="settings-section">
       <h3>Integrations</h3>
-      <p>Coming soon...</p>
+      <p>Connect your favorite tools and services to enhance your workflow</p>
+      
+      <div className="integrations-search-container">
+        <div className="integrations-search-wrapper">
+          <svg className="search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            className="integrations-search-input"
+            placeholder="Search integrations..."
+            value={integrationSearch}
+            onChange={(e) => setIntegrationSearch(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {notionApiKey && (
+        <div className="form-group" style={{ marginBottom: '24px' }}>
+          <label htmlFor="notionApiKeySettings">Notion API Key</label>
+          <input
+            type="password"
+            id="notionApiKeySettings"
+            value={notionApiKey}
+            onChange={(e) => setNotionApiKey(e.target.value)}
+            placeholder="secret_..."
+          />
+          <small>
+            Your Notion API key for syncing mind maps. 
+            <a 
+              href="https://www.notion.so/my-integrations" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={{ marginLeft: '4px', color: '#4285f4' }}
+            >
+              Get your API key
+            </a>
+          </small>
+        </div>
+      )}
+
+      {filteredIntegrations.length > 0 ? (
+        <div className="integrations-grid">
+          {filteredIntegrations.map((integration) => (
+            <div
+              key={integration.id}
+              className={`integration-card ${integration.enabled ? 'enabled' : ''}`}
+              onClick={() => handleIntegrationClick(integration)}
+            >
+              <div className="integration-header">
+                <div className="integration-icon">
+                  <span className="integration-emoji">{integration.icon}</span>
+                </div>
+                <div className="integration-info">
+                  <h4>{integration.name}</h4>
+                  <p>{integration.description}</p>
+                </div>
+              </div>
+              <div className="integration-status">
+                <span className={`status-badge ${integration.enabled ? 'connected' : 'available'}`}>
+                  {integration.enabled ? (
+                    <>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      Connected
+                    </>
+                  ) : (
+                    'Available'
+                  )}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="integrations-empty">
+          <p>No integrations found matching your search.</p>
+        </div>
+      )}
     </div>
   );
 
@@ -545,6 +677,7 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
     return (
       <div className="settings-section">
         <h3>Subscription</h3>
+        <p>Manage your plan and view your current features</p>
         <div className="subscription-info">
           <div className="tier-display">
             <span className="current-tier">
@@ -606,61 +739,10 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
   const renderGeneralSection = () => (
     <div className="settings-section">
       <h3>General</h3>
+      <p>Customize your account settings and preferences</p>
       
       <div className="form-group">
-        <label htmlFor="profilePicture">Profile Picture</label>
-        <div className="profile-picture-container">
-          <div className="profile-picture-preview">
-            <img 
-              src={profilePicturePreview || getUserProfilePicture(user)} 
-              alt="Profile" 
-              className="profile-picture-preview-img"
-              onError={(e) => handleImageError(e, user)}
-            />
-            {isUploadingPicture && (
-              <div className="profile-picture-uploading">Uploading...</div>
-            )}
-          </div>
-          <div className="profile-picture-actions">
-            <input
-              ref={fileInputRef}
-              type="file"
-              id="profilePicture"
-              accept="image/*"
-              onChange={handleProfilePictureChange}
-              style={{ display: 'none' }}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="profile-picture-upload-button"
-              disabled={isUploadingPicture}
-            >
-              {profilePicture ? 'Change Picture' : 'Upload Picture'}
-            </button>
-            {(profilePicturePreview && profilePicturePreview !== getUserProfilePicture(user)) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setProfilePicture(null);
-                  setProfilePicturePreview(null);
-                  if (fileInputRef.current) {
-                    fileInputRef.current.value = '';
-                  }
-                }}
-                className="profile-picture-remove-button"
-                disabled={isUploadingPicture}
-              >
-                Remove
-              </button>
-            )}
-          </div>
-        </div>
-        <small>Upload a profile picture (max 5MB). Changes will be saved when you click Save.</small>
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="showCoordinates" style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer' }}>
+        <label htmlFor="showCoordinates" className="toggle-group">
           <input
             type="checkbox"
             id="showCoordinates"
@@ -669,17 +751,16 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
               setShowCoordinates(e.target.checked);
               localStorage.setItem('showCoordinates', e.target.checked);
             }}
-            style={{ marginTop: '2px', cursor: 'pointer' }}
           />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 500, marginBottom: '4px' }}>Show coordinates under each object</div>
-            <small style={{ display: 'block', marginTop: '4px' }}>Toggle the display of (x, y) coordinates below each whiteboard item.</small>
+          <div className="toggle-content">
+            <div className="toggle-title">Show coordinates under each object</div>
+            <div className="toggle-description">Toggle the display of (x, y) coordinates below each whiteboard item.</div>
           </div>
         </label>
       </div>
 
       <div className="form-group">
-        <label htmlFor="showFooter" style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer' }}>
+        <label htmlFor="showFooter" className="toggle-group">
           <input
             type="checkbox"
             id="showFooter"
@@ -690,27 +771,25 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
               // Dispatch custom event to notify other components
               window.dispatchEvent(new Event('showFooterChanged'));
             }}
-            style={{ marginTop: '2px', cursor: 'pointer' }}
           />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 500, marginBottom: '4px' }}>Show footer</div>
-            <small style={{ display: 'block', marginTop: '4px' }}>Toggle the display of the footer showing board name and canvas/view dimensions.</small>
+          <div className="toggle-content">
+            <div className="toggle-title">Show footer</div>
+            <div className="toggle-description">Toggle the display of the footer showing board name and canvas/view dimensions.</div>
           </div>
         </label>
       </div>
 
       <div className="form-group">
-        <label htmlFor="darkMode" style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer' }}>
+        <label htmlFor="darkMode" className="toggle-group">
           <input
             type="checkbox"
             id="darkMode"
             checked={isDarkMode}
             onChange={toggleDarkMode}
-            style={{ marginTop: '2px', cursor: 'pointer' }}
           />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 500, marginBottom: '4px' }}>Dark mode</div>
-            <small style={{ display: 'block', marginTop: '4px' }}>Switch between light and dark theme.</small>
+          <div className="toggle-content">
+            <div className="toggle-title">Dark mode</div>
+            <div className="toggle-description">Switch between light and dark theme.</div>
           </div>
         </label>
       </div>
@@ -748,24 +827,37 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
               className={`nav-item ${activeSection === SETTINGS_SECTIONS.GENERAL ? 'active' : ''}`}
               onClick={() => setActiveSection(SETTINGS_SECTIONS.GENERAL)}
             >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
               General
             </button>
             <button
               className={`nav-item ${activeSection === SETTINGS_SECTIONS.PROFILE ? 'active' : ''}`}
               onClick={() => setActiveSection(SETTINGS_SECTIONS.PROFILE)}
             >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
               Profile
             </button>
             <button
               className={`nav-item ${activeSection === SETTINGS_SECTIONS.INTEGRATIONS ? 'active' : ''}`}
               onClick={() => setActiveSection(SETTINGS_SECTIONS.INTEGRATIONS)}
             >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
               Integrations
             </button>
             <button
               className={`nav-item ${activeSection === SETTINGS_SECTIONS.SUBSCRIPTION ? 'active' : ''}`}
               onClick={() => setActiveSection(SETTINGS_SECTIONS.SUBSCRIPTION)}
             >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+              </svg>
               Subscription
             </button>
           </nav>
@@ -774,15 +866,33 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
         <div className="settings-content">
           {message.text && (
             <div className={`message ${message.type} ${messageFadeOut ? 'fade-out' : ''}`}>
+              {message.type === 'success' && (
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              )}
+              {message.type === 'error' && (
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              )}
+              {message.type === 'info' && (
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              )}
               {message.text}
             </div>
           )}
 
           {isLoading ? (
-            <div className="loading-message">Loading settings...</div>
+            <div className="loading-message">
+              <div className="loading-spinner"></div>
+              <div>Loading settings...</div>
+            </div>
           ) : (
             <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-              <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+              <div className="settings-scrollable-content" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
                 {activeSection === SETTINGS_SECTIONS.GENERAL && renderGeneralSection()}
                 {activeSection === SETTINGS_SECTIONS.PROFILE && renderProfileSection()}
                 {activeSection === SETTINGS_SECTIONS.INTEGRATIONS && renderIntegrationsSection()}
