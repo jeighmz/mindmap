@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserBoards, saveBoard, deleteBoard } from '../../services/boardService';
+import { serverTimestamp } from 'firebase/firestore';
 import '../../styles/SavedWhiteboardsMenu.css';
 
 const SavedWhiteboardsMenu = ({ 
@@ -19,6 +20,30 @@ const SavedWhiteboardsMenu = ({
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Helper function to safely convert timestamp to Date for display
+  const getDisplayDate = (timestamp) => {
+    if (!timestamp) {
+      // Return a fallback date instead of current date to avoid showing "Invalid Date"
+      // Use a date far in the past to indicate missing timestamp
+      return new Date(0); // Jan 1, 1970 - will show as a very old date
+    }
+    
+    // Handle Firestore Timestamp
+    if (typeof timestamp.toDate === 'function') {
+      const date = timestamp.toDate();
+      return isNaN(date.getTime()) ? new Date(0) : date;
+    }
+    
+    // Handle Date object
+    if (timestamp instanceof Date) {
+      return isNaN(timestamp.getTime()) ? new Date(0) : timestamp;
+    }
+    
+    // Handle string or number
+    const date = new Date(timestamp);
+    return isNaN(date.getTime()) ? new Date(0) : date;
+  };
+
   // Update activeTab when user logs in/out
   useEffect(() => {
     if (user && activeTab === 'demo') {
@@ -27,6 +52,7 @@ const SavedWhiteboardsMenu = ({
       setActiveTab('demo');
     }
   }, [user]);
+
 
   // Fetch boards when the menu is opened and tab is personal
   useEffect(() => {
@@ -45,12 +71,36 @@ const SavedWhiteboardsMenu = ({
     setError(null);
     try {
       const boards = await getUserBoards(user.uid);
-      // Sort by savedAt descending (most recent first)
+      
+      // CRITICAL: Keep the raw Firestore timestamps - don't convert them
+      // getDisplayDate will handle conversion when displaying
+      // This preserves the actual Firestore data and prevents timestamp changes
+      
+      // Sort by lastEditedAt descending (most recent edit first)
+      // Sort boards by date (most recent first)
+      // Uses savedAt (creation time) for primary sorting, falls back to lastEditedAt
       const sortedBoards = [...boards].sort((a, b) => {
-        const dateA = new Date(a.savedAt || 0);
-        const dateB = new Date(b.savedAt || 0);
-        return dateB - dateA;
+        // Get the primary timestamp (savedAt) or fallback to lastEditedAt
+        const timestampA = a.savedAt || a.lastEditedAt;
+        const timestampB = b.savedAt || b.lastEditedAt;
+        
+        // If both are null/invalid, maintain order
+        if (!timestampA && !timestampB) return 0;
+        
+        // If only A is null, put it at the bottom
+        if (!timestampA) return 1;
+        
+        // If only B is null, put it at the bottom
+        if (!timestampB) return -1;
+        
+        // Both have timestamps, compare them
+        const dateA = getDisplayDate(timestampA);
+        const dateB = getDisplayDate(timestampB);
+        
+        // Sort descending (most recent first)
+        return dateB.getTime() - dateA.getTime();
       });
+      
       setUserBoards(sortedBoards);
     } catch (error) {
       setError(error.message || 'Failed to load boards');
@@ -210,8 +260,8 @@ const SavedWhiteboardsMenu = ({
       // Create the board data with cleaned values
       const boardData = {
         name: String(boardName.trim()),
-        savedAt: new Date().toISOString(),
         userId: String(user.uid),
+        lastEditedAt: serverTimestamp(), // Update last edited time on manual save
         content: {
           items: processedItems,
           connections: processedConnections,
@@ -226,32 +276,104 @@ const SavedWhiteboardsMenu = ({
       // If we have an existing board ID, include it in the data
       if (existingBoardId) {
         boardData.id = existingBoardId;
+      } else {
+        // Only set savedAt for new boards
+        boardData.savedAt = serverTimestamp();
       }
 
       const savedBoard = await saveBoard(boardData, user.uid);
       
       if (existingBoardId) {
-        // Update existing board in the list and re-sort by savedAt
+        // Update existing board in the list and re-sort by lastEditedAt
         setUserBoards(prev => {
-          const updated = prev.map(board => 
-            board.id === existingBoardId ? savedBoard : board
-          );
-          // Sort by savedAt descending (most recent first)
-          return updated.sort((a, b) => {
-            const dateA = new Date(a.savedAt || 0);
-            const dateB = new Date(b.savedAt || 0);
-            return dateB - dateA;
+          // Find the board being updated to preserve ALL its original properties
+          const boardToUpdate = prev.find(board => board.id === existingBoardId);
+          if (!boardToUpdate) {
+            // Board not found in list, return unchanged
+            return prev;
+          }
+          
+          // CRITICAL: Preserve the original Firestore timestamps - don't convert them
+          // Keep the raw savedAt and lastEditedAt from the board's Firestore data
+          const originalSavedAt = boardToUpdate.savedAt; // Keep raw Firestore timestamp
+          const originalLastEditedAt = boardToUpdate.lastEditedAt; // Keep raw Firestore timestamp
+          
+          // Use the new lastEditedAt from savedBoard if we got one, otherwise keep original
+          // Don't convert - keep it as it comes from Firestore
+          const newLastEditedAt = savedBoard.lastEditedAt || originalLastEditedAt;
+          
+          // Create updated board with preserved Firestore timestamps
+          const updatedBoard = {
+            ...boardToUpdate, // Preserve all existing properties including raw timestamps
+            name: savedBoard.name || boardToUpdate.name,
+            content: savedBoard.content || boardToUpdate.content,
+            // CRITICAL: Always preserve the original savedAt from Firestore - never change it
+            savedAt: originalSavedAt,
+            // Use the new lastEditedAt from Firestore if we got one, otherwise keep original
+            lastEditedAt: newLastEditedAt
+          };
+          
+          // Create new array with updated board, preserving all other boards exactly as they were
+          const updated = prev.map(board => {
+            if (board.id === existingBoardId) {
+              return updatedBoard;
+            }
+            // CRITICAL: Return the exact same object reference for unchanged boards
+            // This prevents React from re-rendering them
+            return board;
           });
+          
+          // Sort by lastEditedAt descending (most recent edit first)
+          // Sort boards by date (most recent first)
+          const sorted = [...updated].sort((a, b) => {
+            // Get the primary timestamp (savedAt) or fallback to lastEditedAt
+            const timestampA = a.savedAt || a.lastEditedAt;
+            const timestampB = b.savedAt || b.lastEditedAt;
+            
+            // If both are null/invalid, maintain order
+            if (!timestampA && !timestampB) return 0;
+            
+            // If only A is null, put it at the bottom
+            if (!timestampA) return 1;
+            
+            // If only B is null, put it at the bottom
+            if (!timestampB) return -1;
+            
+            // Both have timestamps, compare them
+            const dateA = getDisplayDate(timestampA);
+            const dateB = getDisplayDate(timestampB);
+            
+            // Sort descending (most recent first)
+            return dateB.getTime() - dateA.getTime();
+          });
+          
+          return sorted;
         });
       } else {
         // Add new board to the list and re-sort
         setUserBoards(prev => {
           const updated = [savedBoard, ...prev];
-          // Sort by savedAt descending (most recent first)
+          // Sort by lastEditedAt descending (most recent edit first)
           return updated.sort((a, b) => {
-            const dateA = new Date(a.savedAt || 0);
-            const dateB = new Date(b.savedAt || 0);
-            return dateB - dateA;
+            // Get the primary timestamp (savedAt) or fallback to lastEditedAt
+            const timestampA = a.savedAt || a.lastEditedAt;
+            const timestampB = b.savedAt || b.lastEditedAt;
+            
+            // If both are null/invalid, maintain order
+            if (!timestampA && !timestampB) return 0;
+            
+            // If only A is null, put it at the bottom
+            if (!timestampA) return 1;
+            
+            // If only B is null, put it at the bottom
+            if (!timestampB) return -1;
+            
+            // Both have timestamps, compare them
+            const dateA = getDisplayDate(timestampA);
+            const dateB = getDisplayDate(timestampB);
+            
+            // Sort descending (most recent first)
+            return dateB.getTime() - dateA.getTime();
           });
         });
         setNewBoardName('');
@@ -297,12 +419,31 @@ const SavedWhiteboardsMenu = ({
     );
   };
 
-  // Sort boards by savedAt descending (most recent first)
+  // Sort boards by lastEditedAt descending (most recent edit first)
+  // Sort boards by date (most recent first)
+  // Uses savedAt (creation time) for primary sorting, falls back to lastEditedAt
+  // Boards with null/invalid timestamps go to the bottom
   const sortBoardsByDate = (boards) => {
     return [...boards].sort((a, b) => {
-      const dateA = new Date(a.savedAt || 0);
-      const dateB = new Date(b.savedAt || 0);
-      return dateB - dateA;
+      // Get the primary timestamp (savedAt) or fallback to lastEditedAt
+      const timestampA = a.savedAt || a.lastEditedAt;
+      const timestampB = b.savedAt || b.lastEditedAt;
+      
+      // If both are null/invalid, maintain order
+      if (!timestampA && !timestampB) return 0;
+      
+      // If only A is null, put it at the bottom
+      if (!timestampA) return 1;
+      
+      // If only B is null, put it at the bottom
+      if (!timestampB) return -1;
+      
+      // Both have timestamps, compare them
+      const dateA = getDisplayDate(timestampA);
+      const dateB = getDisplayDate(timestampB);
+      
+      // Sort descending (most recent first)
+      return dateB.getTime() - dateA.getTime();
     });
   };
 
@@ -494,16 +635,19 @@ const SavedWhiteboardsMenu = ({
             ) : (
               <>
                 {displayedBoards.length > 0 ? (
-                  displayedBoards.map((board) => (
+                  displayedBoards.map((board) => {
+                    const isCurrentlyOpen = board.id === currentBoardId;
+                    
+                    return (
                     <div 
                       key={board.id} 
-                      className={`saved-board-item ${board.id === currentBoardId ? 'selected' : ''}`}
+                      className={`saved-board-item ${isCurrentlyOpen ? 'selected' : ''}`}
                     >
                       <span>
                         {board.name}
                       </span>
                       <span className="saved-date">
-                        {new Date(board.savedAt).toLocaleString(undefined, {
+                        {getDisplayDate(board.savedAt || board.lastEditedAt).toLocaleString(undefined, {
                           month: 'short',
                           day: 'numeric',
                           year: 'numeric',
@@ -563,7 +707,8 @@ const SavedWhiteboardsMenu = ({
                         )}
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="no-boards-message">
                     <svg 

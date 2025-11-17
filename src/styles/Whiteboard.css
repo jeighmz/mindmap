@@ -9,21 +9,20 @@
 
 .whiteboard-toolbar {
   position: fixed;
-  top: 50%;
-  left: 20px;
-  transform: translateY(-50%);
+  top: 60px;
+  left: 0;
   width: 60px;
-  height: fit-content;
+  height: calc(100vh - 60px);
   justify-content: center;
   align-items: center;
   background: #ffffff;
   border: 1px solid #ddd;
-  border-radius: 8px;
+  border-left: none;
+  border-radius: 0 0 8px 0;
   padding: 12px 8px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   z-index: 1000;
   transition: opacity 0.3s ease, visibility 0.3s ease;
 }
@@ -36,7 +35,7 @@
 
 /* Adjust toolbar position when search panel is open */
 .panel-open .whiteboard-toolbar {
-  left: 20px;
+  left: 0;
 }
 
 /* For small screens, ensure toolbar remains visible */
@@ -1621,16 +1620,17 @@
 .search-panel,
 .mind-map-panel {
   position: fixed;
-  top: 95px;
-  right: 20px;
+  top: 60px;
+  right: 0;
   width: 400px;
-  height: calc(100vh - 115px);
+  height: calc(100vh - 60px);
   background: white;
-  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
   z-index: 2000;
   overflow-y: auto;
   transition: transform 0.3s ease;
-  border-radius: 8px;
+  border: 1px solid #ddd;
+  border-right: none;
+  border-radius: 0;
 }
 
 /* Make whiteboard responsive when any panel is open */
@@ -1667,6 +1667,8 @@
     transform: translateY(-50%);
     height: calc(100vh - 180px);
     max-height: 70vh;
+    border-right: 1px solid #ddd;
+    border-radius: 8px;
   }
 }
 
@@ -2492,7 +2494,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border: 1px solid #ddd;
+  border-top: none;
   z-index: 1500;
   box-sizing: border-box;
 }

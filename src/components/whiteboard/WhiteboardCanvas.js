@@ -91,9 +91,13 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [lastSaveTime, setLastSaveTime] = useState(null);
   const autoSaveTimeoutRef = useRef(null);
+  const lastAutoSaveBoardIdRef = useRef(null); // Track which board was last auto-saved
   const isInitialLoadRef = useRef(true);
   const isGeneratingMindMapRef = useRef(false);
   const previousBoardIdRef = useRef(null);
+  const lastSavedContentRef = useRef(null); // Track last saved content to detect actual changes
+  const isAutoSavingRef = useRef(false); // Mutex-like lock to prevent concurrent auto-saves
+  const originalSavedAtRef = useRef(null); // Track the original savedAt timestamp - never changes after board creation
   // Add state for color picker
   const [colorPicker, setColorPicker] = useState({
     background: '#fff740',
@@ -104,6 +108,9 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     fontSize: 14,
     textColor: '#000',
     fontFamily: 'Arial',
+    fontWeight: 'normal',
+    fontStyle: 'normal',
+    textDecoration: 'none',
   });
   // Add state for color picker section
   const [activeColorSection, setActiveColorSection] = useState('background');
@@ -536,11 +543,29 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }
   }, []);
 
-  const [, drop] = useDrop(() => ({
+  const [{ isOver }, drop] = useDrop(() => ({
     accept: 'WHITEBOARD_ITEM',
+    canDrop: () => {
+      return true; // Always allow drops
+    },
     drop: (item, monitor) => {
+      if (!item || !item.type) {
+        console.error('Invalid item dropped', item);
+        return undefined;
+      }
+      
       const offset = monitor.getClientOffset();
-      const canvasRect = document.querySelector('.whiteboard-canvas').getBoundingClientRect();
+      if (!offset) {
+        console.error('No drop offset available');
+        return undefined;
+      }
+      
+      const canvasRect = document.querySelector('.whiteboard-canvas')?.getBoundingClientRect();
+      
+      if (!canvasRect) {
+        console.error('Canvas element not found');
+        return undefined;
+      }
       
       if (!item.id) {
         let width, height;
@@ -555,72 +580,133 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
             width = 150;  // Reduced from 200
             height = 150; // Reduced from 200
             break;
+          case 'rectangle':
+            width = 120;
+            height = 80;
+            break;
+          case 'circle':
+            width = 100;
+            height = 100;
+            break;
+          case 'text':
+            width = 200;
+            height = 50;
+            break;
           default:
             width = 80;   // Reduced from 100
             height = 40;   // Reduced from 60
         }
 
         // Calculate the position accounting for scale, pan offset, and device pixel ratio
+        // The canvas-content div has transform: translate(panOffset.x, panOffset.y) scale(scale * dpr)
+        // So we need to convert screen coordinates to canvas coordinates
         const dpr = window.devicePixelRatio || 1;
+        
+        // Get mouse position relative to canvas element
+        const relativeX = offset.x - canvasRect.left;
+        const relativeY = offset.y - canvasRect.top;
+        
+        // Convert to canvas coordinates (accounting for pan and scale)
+        // panOffset is negative when panned, so we subtract it (which adds)
+        const canvasX = (relativeX - panOffset.x) / (scale * dpr);
+        const canvasY = (relativeY - panOffset.y) / (scale * dpr);
+        
+        // Center the item on the drop point
         const position = {
-          x: Math.round(((offset.x - canvasRect.left - panOffset.x) / (scale * dpr) - width/2) / 10) * 10,
-          y: Math.round(((offset.y - canvasRect.top - panOffset.y) / (scale * dpr) - height/2) / 10) * 10
+          x: Math.round((canvasX - width/2) / 10) * 10,
+          y: Math.round((canvasY - height/2) / 10) * 10
         };
+        
+        // Ensure position values are valid numbers
+        if (isNaN(position.x) || isNaN(position.y) || !isFinite(position.x) || !isFinite(position.y)) {
+          console.error('Invalid position calculated', { 
+            relativeX, relativeY, canvasX, canvasY, position, 
+            offset, canvasRect, panOffset, scale, dpr, width, height 
+          });
+          return undefined;
+        }
 
-        const maxOrder = items.length > 0 ? Math.max(...items.map((i, idx) => i.order !== undefined ? i.order : idx)) : -1;
-        const newItem = {
-          id: Date.now(),
-          type: item.type,
-          chartType: item.chartType,
-          position,
-          width,
-          height,
-          text: item.type === 'sticky' ? 'New note' : (item.type === 'text' ? '' : ''),
-          order: maxOrder + 1,
-          // Add default chart configuration for better initial appearance
-          ...(item.type === 'chart' && {
-            title: 'New Chart',
-            xAxisTitle: 'X',
-            yAxisTitle: 'Y',
-            showXAxisLabels: true,
-            showYAxisLabels: true,
-            xAxisUnit: 1,
-            yAxisUnit: 1,
-            xAxisStart: 0,
-            xAxisEnd: 10,
-            yAxisStart: 0,
-            yAxisEnd: 10,
-            ...(item.chartType === 'sine' && {
-              periods: 2,
-              frequency: 1,
-              amplitude: 1,
-              waveType: 'sine',
-              xAxisTitle: 'Angle (π)',
-              yAxisTitle: 'Amplitude',
-              yAxisStart: -3,
-              yAxisEnd: 3
+        setItems(prevItems => {
+          const maxOrder = prevItems.length > 0 ? Math.max(...prevItems.map((i, idx) => i.order !== undefined ? i.order : idx)) : -1;
+          const newItem = {
+            id: Date.now(),
+            type: item.type,
+            chartType: item.chartType,
+            position: { x: position.x, y: position.y }, // Ensure position is an object
+            width: Number(width),
+            height: Number(height),
+            text: item.type === 'sticky' ? 'New note' : (item.type === 'text' ? '' : (item.type === 'rectangle' || item.type === 'circle' ? '' : '')),
+            order: maxOrder + 1,
+            // Add default chart configuration for better initial appearance
+            ...(item.type === 'chart' && {
+              title: 'New Chart',
+              xAxisTitle: 'X',
+              yAxisTitle: 'Y',
+              showXAxisLabels: true,
+              showYAxisLabels: true,
+              xAxisUnit: 1,
+              yAxisUnit: 1,
+              xAxisStart: 0,
+              xAxisEnd: 10,
+              yAxisStart: 0,
+              yAxisEnd: 10,
+              ...(item.chartType === 'sine' && {
+                periods: 2,
+                frequency: 1,
+                amplitude: 1,
+                waveType: 'sine',
+                xAxisTitle: 'Angle (π)',
+                yAxisTitle: 'Amplitude',
+                yAxisStart: -3,
+                yAxisEnd: 3
+              })
+            }),
+            ...(item.type === 'text' && {
+              backgroundColor: 'transparent',
+              borderColor: 'transparent',
+              textColor: '#000000',
+              fontSize: 16,
+              fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif',
+              isNewText: true
+            }),
+            ...(item.type === 'rectangle' && {
+              backgroundColor: '#ffffff',
+              borderColor: '#333333',
+              textColor: '#000000',
+              fontSize: 14,
+              fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif'
+            }),
+            ...(item.type === 'circle' && {
+              backgroundColor: '#ffffff',
+              borderColor: '#333333',
+              textColor: '#000000',
+              fontSize: 14,
+              fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif'
             })
-          }),
-          ...(item.type === 'text' && {
-            backgroundColor: 'transparent',
-            borderColor: 'transparent',
-            textColor: '#000000',
-            fontSize: 16,
-            fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif',
-            isNewText: true
-          })
-        };
-        saveState();
-        setItems(prevItems => [...prevItems, newItem]);
+          };
+          // Save state after updating items
+          setTimeout(() => saveState(), 0);
+          return [...prevItems, newItem];
+        });
       }
       return undefined;
     }
-  }), [scale, panOffset]);
+  }), [scale, panOffset, saveState]);
 
   const handleWheel = useCallback((e) => {
     // Enable scroll zoom without requiring Ctrl key
     e.preventDefault();
     showZoomOverlay(); // Show zoom overlay when zooming
+    
+    // Get canvas element and its position
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    
+    // Get mouse position relative to canvas
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
     
     // Handle different scroll types (trackpad vs mouse wheel)
     // deltaMode: 0 = pixels, 1 = lines, 2 = pages
@@ -638,8 +724,23 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     const zoomSensitivity = 0.0008; // Smooth sensitivity for trackpad
     const zoomFactor = 1 - (deltaY * zoomSensitivity); // Negative deltaY = zoom in, positive = zoom out
     
+    // Zoom towards cursor position
     setScale(s => {
       const newScale = Math.min(Math.max(0.1, s * zoomFactor), 4);
+      
+      // Use functional update to get current pan offset
+      setPanOffset(currentPan => {
+        // Calculate the world coordinates of the point under the cursor before zoom
+        const worldX = (mouseX - currentPan.x) / s;
+        const worldY = (mouseY - currentPan.y) / s;
+        
+        // Calculate new pan offset so the same world point stays under the cursor
+        const newPanX = mouseX - worldX * newScale;
+        const newPanY = mouseY - worldY * newScale;
+        
+        return { x: newPanX, y: newPanY };
+      });
+      
       return newScale;
     });
   }, [showZoomOverlay]);
@@ -1191,7 +1292,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       const boardData = {
         name: name || currentBoardName || 'Untitled Board',
         userId: user.uid,
-        savedAt: serverTimestamp(),
+        lastEditedAt: serverTimestamp(), // Manual save - update lastEditedAt
         content: {
           items: processedItems,
           connections: cleanedConnections,
@@ -1206,10 +1307,41 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       // Include board ID if updating existing board
       if (currentBoardId) {
         boardData.id = currentBoardId;
+      } else {
+        // Only set savedAt for new boards
+        boardData.savedAt = serverTimestamp();
       }
 
       // Save to Firestore
       const savedBoard = await saveBoard(boardData, user.uid);
+      
+      // Store the original savedAt timestamp for new boards
+      // For existing boards, preserve the originalSavedAtRef value
+      if (!currentBoardId && savedBoard.savedAt) {
+        // New board - store the savedAt from the response
+        originalSavedAtRef.current = savedBoard.savedAt instanceof Date 
+          ? savedBoard.savedAt 
+          : new Date(savedBoard.savedAt);
+      }
+      // For existing boards, originalSavedAtRef.current should already be set from when the board was loaded
+      
+      // Update the last saved content reference after manual save
+      const contentForComparison = {
+        items: JSON.stringify(processedItems.map(item => ({
+          id: item.id,
+          type: item.type,
+          position: item.position,
+          width: item.width,
+          height: item.height,
+          text: item.text || '',
+          chartType: item.chartType
+        })).sort((a, b) => String(a.id).localeCompare(String(b.id)))),
+        connections: JSON.stringify(cleanedConnections.map(conn => ({
+          from: String(conn.from),
+          to: String(conn.to)
+        })).sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to)))
+      };
+      lastSavedContentRef.current = contentForComparison;
       
       // Update state only after everything is saved
       setItems(processedItems);
@@ -1225,6 +1357,17 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
   const handleLoadWhiteboard = async (boardId) => {
     try {
+      // CRITICAL: Set isInitialLoadRef BEFORE clearing anything to prevent auto-save
+      isInitialLoadRef.current = true;
+      
+      // Clear any pending auto-save and reset tracking refs when switching boards
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+        autoSaveTimeoutRef.current = null;
+      }
+      lastAutoSaveBoardIdRef.current = null; // Reset so new board can save
+      lastSavedContentRef.current = null; // Reset - will be set after loading
+      
       // Clear state before loading new board to prevent stale data
       setItems([]);
       setConnections([]);
@@ -1237,6 +1380,29 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       }
 
       const boardData = boardDoc.data();
+      
+      // Store the original savedAt timestamp when loading a board
+      // This ensures it never changes, even if the board is refreshed
+      if (boardData.savedAt) {
+        let convertedDate = null;
+        // Convert Firestore Timestamp to Date if needed
+        if (typeof boardData.savedAt.toDate === 'function') {
+          convertedDate = boardData.savedAt.toDate();
+        } else if (boardData.savedAt instanceof Date) {
+          convertedDate = boardData.savedAt;
+        } else {
+          convertedDate = new Date(boardData.savedAt);
+        }
+        
+        // Validate the date - only store if it's valid
+        if (convertedDate && !isNaN(convertedDate.getTime())) {
+          originalSavedAtRef.current = convertedDate;
+        } else {
+          originalSavedAtRef.current = null;
+        }
+      } else {
+        originalSavedAtRef.current = null;
+      }
       
       // Check if this is a demo board (userId is null)
       const isDemoBoard = boardData.userId === null;
@@ -1345,6 +1511,25 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       // Update state with loaded data
       setItems(processedItems);
       
+      // Store the loaded content as the baseline for change detection
+      // We'll compare this with current content to detect actual changes
+      const contentForComparison = {
+        items: JSON.stringify(processedItems.map(item => ({
+          id: item.id,
+          type: item.type,
+          position: item.position,
+          width: item.width,
+          height: item.height,
+          text: item.text || '',
+          chartType: item.chartType
+        })).sort((a, b) => String(a.id).localeCompare(String(b.id)))),
+        connections: JSON.stringify((boardData.content.connections || []).map(conn => ({
+          from: String(conn.from),
+          to: String(conn.to)
+        })).sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to)))
+      };
+      lastSavedContentRef.current = contentForComparison;
+      
       // Load connections with all properties properly converted
       // Note: Item IDs might be numbers or strings, so we need to match them properly
       const seenIds = new Set();
@@ -1393,31 +1578,47 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         setCurrentBoardId(null);
         // Set a name that indicates it's a copy of a demo board
         setCurrentBoardName(boardData.name ? `${boardData.name} (Copy)` : 'Demo Board (Copy)');
+        // Clear originalSavedAtRef for demo boards since they'll create new boards
+        originalSavedAtRef.current = null;
       } else {
         setCurrentBoardId(boardId);
         setCurrentBoardName(boardData.name || null);
       }
       
-      // Mark that we just loaded, so we don't auto-save immediately
-      isInitialLoadRef.current = true;
+      // Keep isInitialLoadRef true for 2 seconds after load to prevent auto-save
+      // It was already set to true at the start of this function
       setTimeout(() => {
         isInitialLoadRef.current = false;
       }, 2000); // Wait 2 seconds after load before allowing auto-save
 
     } catch (error) {
+      // Reset isInitialLoadRef on error
+      isInitialLoadRef.current = false;
       throw error; // Re-throw to be handled by the caller
     }
   };
 
   // Auto-save function for existing boards
   const autoSave = useCallback(async () => {
-    if (!user || !currentBoardId || !currentBoardName || isInitialLoadRef.current || isGeneratingMindMapRef.current) {
+    // Prevent concurrent auto-saves
+    if (isAutoSavingRef.current) {
+      return;
+    }
+    
+    const boardIdToSave = currentBoardId;
+    const boardNameToSave = currentBoardName;
+    
+    if (!user || !boardIdToSave || !boardNameToSave || isInitialLoadRef.current || isGeneratingMindMapRef.current) {
       return;
     }
 
-    // Store the boardId at the start of auto-save to ensure we're saving to the correct board
-    const boardIdToSave = currentBoardId;
-    const boardNameToSave = currentBoardName;
+    // Ensure we're still on the same board
+    if (currentBoardId !== boardIdToSave || currentBoardName !== boardNameToSave) {
+      return;
+    }
+    
+    // Set mutex lock
+    isAutoSavingRef.current = true;
 
     try {
       setIsAutoSaving(true);
@@ -1490,18 +1691,49 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         };
       });
 
-      // Double-check before saving (user might have switched boards during processing)
-      // Only save if the board ID and name haven't changed
+      // Compare current content with last saved content to detect actual changes
+      if (!lastSavedContentRef.current) {
+        setIsAutoSaving(false);
+        isAutoSavingRef.current = false;
+        return;
+      }
+
+      const currentContentForComparison = {
+        items: JSON.stringify(processedItems.map(item => ({
+          id: item.id,
+          type: item.type,
+          position: item.position,
+          width: item.width,
+          height: item.height,
+          text: item.text || '',
+          chartType: item.chartType
+        })).sort((a, b) => String(a.id).localeCompare(String(b.id)))),
+        connections: JSON.stringify(cleanedConnections.map(conn => ({
+          from: String(conn.from),
+          to: String(conn.to)
+        })).sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to)))
+      };
+
+      const contentChanged = 
+        lastSavedContentRef.current.items !== currentContentForComparison.items ||
+        lastSavedContentRef.current.connections !== currentContentForComparison.connections;
+
+      // Ensure we're still on the same board
       if (currentBoardId !== boardIdToSave || currentBoardName !== boardNameToSave) {
-        return; // Board changed, don't save
+        isAutoSavingRef.current = false;
+        return;
       }
 
       // Don't save viewport (scale, panOffset) in auto-save to avoid saving on every view change
+      // IMPORTANT: Only update lastEditedAt if content actually changed
+      // This ensures the "most recent edit" timestamp accurately reflects actual content changes
       const boardData = {
         id: boardIdToSave, // Use the stored boardId to ensure we save to the correct board
         name: boardNameToSave, // Use the stored boardName
         userId: user.uid,
-        savedAt: serverTimestamp(),
+        // Only include lastEditedAt if content actually changed
+        // This prevents auto-saves from updating timestamps for boards that weren't actually edited
+        ...(contentChanged && { lastEditedAt: serverTimestamp() }),
         content: {
           items: processedItems,
           connections: cleanedConnections,
@@ -1509,14 +1741,39 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         }
       };
 
+      // Skip save entirely if content hasn't changed
+      if (!contentChanged) {
+        isAutoSavingRef.current = false;
+        return;
+      }
+
+      // Final check before saving
+      if (currentBoardId !== boardIdToSave || currentBoardName !== boardNameToSave) {
+        isAutoSavingRef.current = false;
+        return;
+      }
+
+      // Prevent duplicate saves
+      if (lastAutoSaveBoardIdRef.current?.id === boardIdToSave) {
+        const timeSinceLastSave = Date.now() - (lastAutoSaveBoardIdRef.current?.timestamp || 0);
+        if (timeSinceLastSave < 1000) {
+          isAutoSavingRef.current = false;
+          return;
+        }
+      }
+      
       await saveBoard(boardData, user.uid);
+      
       setLastSaveTime(new Date());
+      lastAutoSaveBoardIdRef.current = { id: boardIdToSave, timestamp: Date.now() };
+      lastSavedContentRef.current = currentContentForComparison;
     } catch (error) {
-      // Silently fail for auto-save - don't interrupt user workflow
+      // Silently fail for auto-save
     } finally {
       setIsAutoSaving(false);
+      isAutoSavingRef.current = false;
     }
-  }, [user, currentBoardId, currentBoardName, items, connections]);
+  }, [user, currentBoardId, currentBoardName, items, connections, isInitialLoadRef, isGeneratingMindMapRef]);
 
   // Clear state when currentBoardId becomes null (new board created)
   useEffect(() => {
@@ -1540,27 +1797,37 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
   // Auto-save effect - debounced (only for items and connections, not viewport changes)
   useEffect(() => {
+    // Clear any pending auto-save when board changes
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+      autoSaveTimeoutRef.current = null;
+    }
+
+    // Don't auto-save if no board is loaded, during initial load, or during mind map generation
     if (!currentBoardId || isInitialLoadRef.current || isGeneratingMindMapRef.current) {
       return;
     }
 
-    // Clear existing timeout
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current);
-    }
+    // Store the current boardId to ensure we only save to the correct board
+    const boardIdForThisSave = currentBoardId;
+    const boardNameForThisSave = currentBoardName;
 
     // Set new timeout for auto-save (2 seconds after last change)
     autoSaveTimeoutRef.current = setTimeout(() => {
-      autoSave();
+      if (currentBoardId === boardIdForThisSave && currentBoardName === boardNameForThisSave) {
+        autoSave();
+      }
+      autoSaveTimeoutRef.current = null;
     }, 2000);
 
-    // Cleanup
+    // Cleanup - clear timeout if component unmounts or dependencies change
     return () => {
       if (autoSaveTimeoutRef.current) {
         clearTimeout(autoSaveTimeoutRef.current);
+        autoSaveTimeoutRef.current = null;
       }
     };
-  }, [items, connections, currentBoardId, autoSave]);
+  }, [items, connections, currentBoardId, currentBoardName, autoSave, isInitialLoadRef, isGeneratingMindMapRef]);
 
   const handleDeleteSavedWhiteboard = (boardId) => {
     const updatedBoards = savedWhiteboards.filter(b => b.id !== boardId);
@@ -2771,25 +3038,18 @@ Performance Metrics Analysis`
 
   // Function to toggle Saved Boards menu (closes others)
   const toggleSavedBoardsMenu = useCallback(() => {
-    setIsSavedBoardsMenuOpen(prev => {
-      const newState = !prev;
-      if (onLibraryStateChange) {
-        onLibraryStateChange(newState);
-      }
-      return newState;
-    });
+    setIsSavedBoardsMenuOpen(prev => !prev);
     setIsExportMenuOpen(false); 
     // Close UserMenu if its state was lifted up
-  }, [onLibraryStateChange]);
+    // Note: onLibraryStateChange is called by the useEffect that watches isSavedBoardsMenuOpen
+  }, []);
 
   // Function to toggle Export menu (closes others)
   const toggleExportMenu = useCallback(() => {
     setIsExportMenuOpen(prev => !prev);
     setIsSavedBoardsMenuOpen(false);
-    if (onLibraryStateChange) {
-      onLibraryStateChange(false);
-    }
     // Close UserMenu if its state was lifted up
+    // Note: onLibraryStateChange is called by the useEffect that watches isSavedBoardsMenuOpen
   }, []);
 
   // Function to capture canvas as base64 image
@@ -5026,6 +5286,9 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
         fontSize: selectedItem.fontSize || 14,
         textColor: selectedItem.textColor || '#000',
         fontFamily: selectedItem.fontFamily || 'Arial',
+        fontWeight: selectedItem.fontWeight || 'normal',
+        fontStyle: selectedItem.fontStyle || 'normal',
+        textDecoration: selectedItem.textDecoration || 'none',
       });
     }
   }, [selectedItem]);
@@ -5077,6 +5340,26 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
     setTextStyling(prev => ({ ...prev, textColor: color.hex }));
   };
 
+  // Font size presets mapping
+  const fontSizePresets = {
+    'Header 1': 32,
+    'Header 2': 24,
+    'Header 3': 20,
+    'Body': 14,
+    'Small': 12
+  };
+
+  // Get current preset name based on font size
+  const getCurrentPreset = (fontSize) => {
+    const size = parseInt(fontSize);
+    // Find the closest preset
+    if (size >= 28) return 'Header 1';
+    if (size >= 22) return 'Header 2';
+    if (size >= 17) return 'Header 3';
+    if (size >= 13) return 'Body';
+    return 'Small';
+  };
+
   // Handler for font size change
   const handleFontSizeChange = (size) => {
     if (!selectedItem || selectedItem.type === 'chart') return;
@@ -5086,6 +5369,14 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
         : item
     ));
     setTextStyling(prev => ({ ...prev, fontSize: parseInt(size) }));
+  };
+
+  // Handler for preset selection
+  const handlePresetChange = (presetName) => {
+    const size = fontSizePresets[presetName];
+    if (size) {
+      handleFontSizeChange(size);
+    }
   };
 
   // Handler for font family change
@@ -5617,6 +5908,27 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
               {/* Font Size Control */}
               <div style={{ marginBottom: '10px' }}>
                 <div style={{ fontSize: 11, marginBottom: 4 }}>Font Size: {textStyling.fontSize}px</div>
+                <select
+                  value={getCurrentPreset(textStyling.fontSize)}
+                  onChange={(e) => handlePresetChange(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '4px 8px',
+                    fontSize: '12px',
+                    borderRadius: '4px',
+                    border: '1px solid #ddd',
+                    backgroundColor: 'white',
+                    cursor: 'pointer',
+                    outline: 'none',
+                    marginBottom: '8px'
+                  }}
+                >
+                  <option value="Header 1">Header 1</option>
+                  <option value="Header 2">Header 2</option>
+                  <option value="Header 3">Header 3</option>
+                  <option value="Body">Body</option>
+                  <option value="Small">Small</option>
+                </select>
                 <input
                   type="range"
                   min="8"
@@ -5632,6 +5944,98 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                     cursor: 'pointer',
                   }}
                 />
+              </div>
+              
+              {/* Text Formatting Controls */}
+              <div style={{ marginBottom: '10px' }}>
+                <div style={{ fontSize: 11, marginBottom: 4 }}>Text Formatting</div>
+                <div style={{
+                  display: 'flex',
+                  gap: '6px',
+                  alignItems: 'center',
+                }}>
+                  <button
+                    onClick={() => {
+                      if (!selectedItem || selectedItem.type === 'chart') return;
+                      const newWeight = textStyling.fontWeight === 'bold' ? 'normal' : 'bold';
+                      setItems(prevItems => prevItems.map(item =>
+                        item.id === selectedItem.id
+                          ? { ...item, fontWeight: newWeight }
+                          : item
+                      ));
+                      setTextStyling(prev => ({ ...prev, fontWeight: newWeight }));
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '6px 8px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      background: textStyling.fontWeight === 'bold' ? '#e3f2fd' : 'white',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      color: textStyling.fontWeight === 'bold' ? '#1976d2' : '#333',
+                      transition: 'all 0.2s ease',
+                    }}
+                    title="Bold"
+                  >
+                    B
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!selectedItem || selectedItem.type === 'chart') return;
+                      const newStyle = textStyling.fontStyle === 'italic' ? 'normal' : 'italic';
+                      setItems(prevItems => prevItems.map(item =>
+                        item.id === selectedItem.id
+                          ? { ...item, fontStyle: newStyle }
+                          : item
+                      ));
+                      setTextStyling(prev => ({ ...prev, fontStyle: newStyle }));
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '6px 8px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      background: textStyling.fontStyle === 'italic' ? '#e3f2fd' : 'white',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontStyle: 'italic',
+                      color: textStyling.fontStyle === 'italic' ? '#1976d2' : '#333',
+                      transition: 'all 0.2s ease',
+                    }}
+                    title="Italic"
+                  >
+                    I
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!selectedItem || selectedItem.type === 'chart') return;
+                      const newDecoration = textStyling.textDecoration === 'underline' ? 'none' : 'underline';
+                      setItems(prevItems => prevItems.map(item =>
+                        item.id === selectedItem.id
+                          ? { ...item, textDecoration: newDecoration }
+                          : item
+                      ));
+                      setTextStyling(prev => ({ ...prev, textDecoration: newDecoration }));
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '6px 8px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      background: textStyling.textDecoration === 'underline' ? '#e3f2fd' : 'white',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      textDecoration: 'underline',
+                      color: textStyling.textDecoration === 'underline' ? '#1976d2' : '#333',
+                      transition: 'all 0.2s ease',
+                    }}
+                    title="Underline"
+                  >
+                    U
+                  </button>
+                </div>
               </div>
               
               {/* Text Color Swatches */}
@@ -5900,42 +6304,47 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
           }
         }}
         onDragOver={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          // Only show drag over state if dragging files (not react-dnd items)
+          // Only prevent default for file drops, let react-dnd handle its own drops
           if (e.dataTransfer.types.includes('Files')) {
+            e.preventDefault();
+            e.stopPropagation();
             setIsDraggingOver(true);
           }
+          // Don't prevent default for react-dnd items - let react-dnd handle them
         }}
         onDragEnter={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          // Only show drag over state if dragging files (not react-dnd items)
+          // Only prevent default for file drops, let react-dnd handle its own drops
           if (e.dataTransfer.types.includes('Files')) {
+            e.preventDefault();
+            e.stopPropagation();
             setIsDraggingOver(true);
           }
+          // Don't prevent default for react-dnd items - let react-dnd handle them
         }}
         onDragLeave={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
+          // Only prevent default for file drops
+          if (e.dataTransfer.types.includes('Files')) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
           // Only hide drag over if we're actually leaving the canvas
           if (!e.currentTarget.contains(e.relatedTarget)) {
             setIsDraggingOver(false);
           }
         }}
         onDrop={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDraggingOver(false);
-          
-          // Check if files are being dropped
+          // Only handle file drops here, let react-dnd handle its own drops
           if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDraggingOver(false);
             const dropPosition = {
               x: e.clientX,
               y: e.clientY
             };
             handleImageDrop(e, dropPosition);
           }
+          // Don't prevent default for react-dnd items - let react-dnd handle them
         }}
         style={{
           cursor: isPanning ? 'grabbing' : (isSpacePressed || isRightClickSelecting ? 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'20\' height=\'20\' viewBox=\'0 0 32 32\'%3E%3Ccircle cx=\'13\' cy=\'13\' r=\'8\' stroke=\'%23000000\' stroke-width=\'2.5\' fill=\'none\'/%3E%3Cline x1=\'20\' y1=\'20\' x2=\'28\' y2=\'28\' stroke=\'%23000000\' stroke-width=\'2.5\' stroke-linecap=\'round\'/%3E%3C/svg%3E") 10 10, crosshair' : 'grab'),
@@ -6120,7 +6529,18 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
           )}
           {/* Render chart items first (in the back), sorted by order */}
           {items
-            .filter(item => item.type === 'chart')
+            .filter(item => {
+              // Only render items with valid position and dimensions
+              if (!item || !item.position || typeof item.position.x !== 'number' || typeof item.position.y !== 'number') {
+                console.warn('Filtered out chart item - invalid position', item);
+                return false;
+              }
+              if (!item.width || !item.height || item.width <= 0 || item.height <= 0) {
+                console.warn('Filtered out chart item - invalid dimensions', item);
+                return false;
+              }
+              return item.type === 'chart';
+            })
             .sort((a, b) => {
               const orderA = a.order !== undefined ? a.order : items.indexOf(a);
               const orderB = b.order !== undefined ? b.order : items.indexOf(b);
@@ -6153,7 +6573,18 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
             ))}
           {/* Render non-chart items after (in front), sorted by order */}
           {items
-            .filter(item => item.type !== 'chart')
+            .filter(item => {
+              // Only render items with valid position and dimensions
+              if (!item || !item.position || typeof item.position.x !== 'number' || typeof item.position.y !== 'number') {
+                console.warn('Filtered out non-chart item - invalid position', item);
+                return false;
+              }
+              if (!item.width || !item.height || item.width <= 0 || item.height <= 0) {
+                console.warn('Filtered out non-chart item - invalid dimensions', item);
+                return false;
+              }
+              return item.type !== 'chart';
+            })
             .sort((a, b) => {
               const orderA = a.order !== undefined ? a.order : items.indexOf(a);
               const orderB = b.order !== undefined ? b.order : items.indexOf(b);
@@ -6251,6 +6682,8 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
           highlightedItems={highlightedItems}
           onClose={handleCloseSearchPanel}
           onFullscreenChange={setIsSearchPanelFullscreen}
+          currentBoardId={currentBoardId}
+          onHighlightedItemsChange={setHighlightedItems}
         />
       )}
 

@@ -66,15 +66,6 @@ class StripeService {
       }
       const userData = userDoc.data();
 
-      // Log the tier being sent for debugging
-      console.log('Creating checkout session with tier:', {
-        userId,
-        tier,
-        currentTier: userData.tier,
-        productId,
-        interval: INTERVAL_MAPPING[interval]
-      });
-      
       // Create checkout session through Firebase Function
       const response = await fetch(`${getBaseUrl()}/create-checkout-session`, {
         method: 'POST',

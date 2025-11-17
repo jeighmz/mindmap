@@ -105,6 +105,16 @@ const WhiteboardItem = ({
   onResizeEnd,
   onShowColorMenu
 }) => {
+  // Validate item early - but don't return yet (hooks must run unconditionally)
+  const isValidItem = item && 
+    item.position && 
+    typeof item.position.x === 'number' && 
+    typeof item.position.y === 'number' &&
+    item.width && 
+    item.height && 
+    item.width > 0 && 
+    item.height > 0;
+
   const [isEditing, setIsEditing] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0 });
@@ -114,8 +124,10 @@ const WhiteboardItem = ({
   const textareaRef = useRef(null);
 
   // Initialize chart config from saved item data or defaults
-  const getInitialChartConfig = () => ({
-    title: item.title || '',
+  const getInitialChartConfig = () => {
+    if (!item) return {};
+    return {
+      title: item.title || '',
     xAxisTitle: item.xAxisTitle || '',
     yAxisTitle: item.yAxisTitle || '',
     xAxisUnit: item.xAxisUnit || (item.chartType === 'sine' ? Math.PI / 2 : 1),
@@ -153,7 +165,8 @@ const WhiteboardItem = ({
     xyChartDisplayType: item.xyChartDisplayType || 'line', // 'line', 'bar', 'scatter'
     // Sankey chart settings
     sankeyData: item.sankeyData || '' // "source1,target1,value1; source2,target2,value2; ..."
-  });
+    };
+  };
 
   const [chartConfig, setChartConfig] = useState(getInitialChartConfig());
 
@@ -522,6 +535,9 @@ const WhiteboardItem = ({
       fontFamily: item.fontFamily || '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       fontSize: `${item.fontSize || 14}px`,
       color: item.textColor || '#000',
+      fontWeight: item.fontWeight || 'normal',
+      fontStyle: item.fontStyle || 'normal',
+      textDecoration: item.textDecoration || 'none',
       borderRadius: '2px'
     } : {
       backgroundColor: item.backgroundColor,
@@ -535,6 +551,9 @@ const WhiteboardItem = ({
       fontFamily: item.fontFamily || '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       fontSize: `${item.fontSize || 14}px`,
       color: item.textColor || '#000',
+      fontWeight: item.fontWeight || 'normal',
+      fontStyle: item.fontStyle || 'normal',
+      textDecoration: item.textDecoration || 'none',
       border: item.borderColor ? `2px solid ${item.borderColor}` : '1px solid #ccc'
     };
 
@@ -1695,32 +1714,7 @@ const WhiteboardItem = ({
                         });
                       }
                       
-                      // Debug: Log tier distribution
-                      if (process.env.NODE_ENV === 'development') {
-                        const tierDistribution = new Map();
-                        Array.from(allNodeNames).forEach(name => {
-                          const tier = nodeTiers.get(name);
-                          tierDistribution.set(tier, (tierDistribution.get(tier) || 0) + 1);
-                        });
-                        console.log('Sankey Tier Assignment Debug:', {
-                          totalNodes: allNodeNames.size,
-                          tierDistribution: Array.from(tierDistribution.entries()),
-                          nodeTiers: Array.from(nodeTiers.entries()),
-                          rawLinks: rawLinks.slice(0, 5), // First 5 links for debugging
-                          sources: Array.from(allNodeNames).filter(name => 
-                            !incoming.has(name) || incoming.get(name).length === 0
-                          )
-                        });
-                      }
-                      
                       const maxTier = Math.max(...Array.from(nodeTiers.values()), 0);
-                      
-                      // Debug: Log final tier assignments before creating nodes
-                      if (process.env.NODE_ENV === 'development') {
-                        console.log('Final tier assignments:', Array.from(nodeTiers.entries()));
-                        console.log('Max tier:', maxTier);
-                        console.log('Raw links for verification:', rawLinks.slice(0, 10));
-                      }
                       
                       // Create node objects with indices and group by tier
                       let nodeIndex = 0;
@@ -1745,11 +1739,6 @@ const WhiteboardItem = ({
                             nodeIndex++;
                           });
                           nodesByTier.set(tier, tierNodes);
-                          
-                          // Debug: Log tier grouping
-                          if (process.env.NODE_ENV === 'development') {
-                            console.log(`Tier ${tier} has ${tierNodes.length} nodes:`, tierNodes.map(n => n.name));
-                          }
                         }
                       }
                       
@@ -1772,16 +1761,6 @@ const WhiteboardItem = ({
                   
                   if (!sankeyData || !sankeyData.nodes || !sankeyData.links || !sankeyData.nodesByTier || 
                       sankeyData.nodes.length === 0 || sankeyData.links.length === 0) {
-                    // Debug logging
-                    if (process.env.NODE_ENV === 'development') {
-                      console.log('Sankey Chart Debug - Invalid data:', {
-                        dataString,
-                        sankeyData,
-                        hasNodes: !!sankeyData?.nodes,
-                        hasLinks: !!sankeyData?.links,
-                        hasNodesByTier: !!sankeyData?.nodesByTier
-                      });
-                    }
                     return (
                       <text
                         x={width / 2}
@@ -1795,17 +1774,6 @@ const WhiteboardItem = ({
                         {dataString ? 'Invalid Sankey data format' : 'Add Sankey data in chart settings'}
                       </text>
                     );
-                  }
-                  
-                  // Debug logging
-                  if (process.env.NODE_ENV === 'development') {
-                    console.log('Sankey Chart Debug:', {
-                      dataString,
-                      nodes: sankeyData.nodes.length,
-                      links: sankeyData.links.length,
-                      maxTier: sankeyData.maxTier,
-                      nodesByTier: sankeyData.nodesByTier ? Array.from(sankeyData.nodesByTier.entries()).map(([tier, nodes]) => [tier, nodes.length]) : 'N/A'
-                    });
                   }
                   
                   // Calculate node values (sum of all flows in/out)
@@ -1865,20 +1833,6 @@ const WhiteboardItem = ({
                   const availableWidth = width - chartPadding - chartMargin - rightMargin; // Better distribution
                   const numTiers = sankeyData.maxTier + 1;
                   
-                  // Debug: Log tier info
-                  if (process.env.NODE_ENV === 'development') {
-                    console.log('Sankey Layout:', {
-                      maxTier: sankeyData.maxTier,
-                      numTiers,
-                      availableWidth,
-                      nodesByTier: Array.from(sankeyData.nodesByTier.entries()).map(([tier, nodes]) => ({
-                        tier,
-                        count: nodes.length,
-                        nodeNames: nodes.map(n => n.name)
-                      }))
-                    });
-                  }
-                  
                   // Calculate tier spacing - ensure minimum spacing even if only one tier
                   let tierSpacing = 0;
                   if (numTiers > 1) {
@@ -1936,15 +1890,6 @@ const WhiteboardItem = ({
                         });
                         
                         sankeyData.maxTier = numNewTiers - 1;
-                        
-                        if (process.env.NODE_ENV === 'development') {
-                          console.log('Distributed single-tier nodes:', {
-                            totalNodes: singleTierNodes.length,
-                            createdTiers: numNewTiers,
-                            nodesPerTier,
-                            newMaxTier: sankeyData.maxTier
-                          });
-                        }
                       } else {
                         // We have starting nodes, use flow-based distribution
                         nodesToProcess = startingNodes;
@@ -1998,19 +1943,6 @@ const WhiteboardItem = ({
                         const newMaxTier = Math.max(...Array.from(nodeOrder.values()), 0);
                         sankeyData.maxTier = newMaxTier;
                       }
-                      
-                      // Debug: Log redistribution
-                      if (process.env.NODE_ENV === 'development') {
-                        console.log('Forced tier redistribution:', {
-                          originalTier: 0,
-                          newMaxTier: sankeyData.maxTier,
-                          nodesByTier: Array.from(sankeyData.nodesByTier.entries()).map(([tier, nodes]) => ({
-                            tier,
-                            count: nodes.length,
-                            names: nodes.map(n => n.name)
-                          }))
-                        });
-                      }
                     }
                   }
                   
@@ -2030,12 +1962,6 @@ const WhiteboardItem = ({
                       x = chartMargin + (tier * finalTierSpacing);
                     }
                     tierXPositions.set(tier, x);
-                  }
-                  
-                  if (process.env.NODE_ENV === 'development') {
-                    console.log('Tier X positions:', Array.from(tierXPositions.entries()));
-                    console.log(`Final tier spacing: ${finalTierSpacing}, finalNumTiers: ${finalNumTiers}`);
-                    console.log('Available width:', availableWidth, 'Chart margin:', chartMargin, 'Right margin:', rightMargin);
                   }
                   
                   // Proper Sankey layout: align nodes based on flow relationships
@@ -2165,16 +2091,6 @@ const WhiteboardItem = ({
                     // Use 85% of available height to leave good margins
                     const targetHeight = availableHeight * 0.85;
                     const scale = maxTotalHeight > targetHeight ? targetHeight / maxTotalHeight : 1;
-                    
-                    if (process.env.NODE_ENV === 'development') {
-                      console.log('Sankey scaling:', {
-                        maxTotalHeight,
-                        availableHeight,
-                        targetHeight,
-                        scale,
-                        willScale: scale < 1
-                      });
-                    }
                     
                     // Apply scale to all positions and center vertically
                     const scaledPositions = new Map();
@@ -2470,11 +2386,6 @@ const WhiteboardItem = ({
                           const incoming = nodeIncoming.get(node.index) || 0;
                           const isFirstTier = tier === 0;
                           const isLastTier = tier === sankeyData.maxTier;
-                          
-                          // Debug: Log node rendering
-                          if (process.env.NODE_ENV === 'development' && tier === 0) {
-                            console.log(`Rendering node ${node.name}: tier=${tier}, x=${tierX}, y=${pos.y}`);
-                          }
                           
                           return (
                             <g key={`node-${node.index}`}>
@@ -3182,6 +3093,12 @@ const WhiteboardItem = ({
       </div>
     );
   };
+
+  // Return null if item is invalid (after all hooks have been called)
+  if (!isValidItem) {
+    console.warn('WhiteboardItem: Invalid item or missing required properties', item);
+    return null;
+  }
 
   return (
     <div

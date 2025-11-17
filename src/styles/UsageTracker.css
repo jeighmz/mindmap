@@ -1,6 +1,6 @@
 .usage-tracker {
   position: fixed;
-  top: 80px;
+  top: 60px;
   right: 20px;
   background: white;
   border-radius: 12px;
@@ -15,7 +15,7 @@
 
 /* Push out when search panel (AI analysis chat) is open */
 .usage-tracker.panel-open {
-  right: 440px; /* 400px panel width + 20px spacing + 20px original right */
+  right: 400px; /* 400px panel width */
 }
 
 .usage-tracker-header {

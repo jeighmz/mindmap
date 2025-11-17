@@ -3,6 +3,7 @@ import {
   addDoc, 
   deleteDoc, 
   doc, 
+  getDoc,
   getDocs, 
   query, 
   where,
@@ -25,7 +26,12 @@ const checkAuth = () => {
 // Safely convert savedAt to Date object
 const convertSavedAtToDate = (savedAt) => {
   if (!savedAt) {
-    return new Date();
+    return null; // Return null instead of new Date() to avoid creating fake timestamps
+  }
+  
+  // Check if it's a serverTimestamp placeholder (shouldn't happen when reading from Firestore, but handle it)
+  if (savedAt._methodName === 'serverTimestamp') {
+    return null; // Return null instead of creating a fake timestamp
   }
   
   if (typeof savedAt.toDate === 'function') {
@@ -36,14 +42,16 @@ const convertSavedAtToDate = (savedAt) => {
     return savedAt;
   } else if (typeof savedAt === 'string') {
     // ISO string
-    return new Date(savedAt);
+    const date = new Date(savedAt);
+    return isNaN(date.getTime()) ? null : date; // Validate the date
   } else if (typeof savedAt === 'number') {
     // Timestamp number
-    return new Date(savedAt);
+    const date = new Date(savedAt);
+    return isNaN(date.getTime()) ? null : date; // Validate the date
   }
   
-  // Fallback
-  return new Date();
+  // If we can't convert it, return null instead of creating a fake timestamp
+  return null;
 };
 
 // Get all boards for a specific user
@@ -56,6 +64,7 @@ export const getUserBoards = async (userId) => {
     }
 
     const boardsRef = collection(db, BOARDS_COLLECTION);
+    // Note: We sort by savedAt in the query (required for Firestore), but will re-sort by lastEditedAt in the UI
     const q = query(
       boardsRef,
       where('userId', '==', userId),
@@ -65,11 +74,26 @@ export const getUserBoards = async (userId) => {
     const querySnapshot = await getDocs(q);
     const boards = querySnapshot.docs.map(doc => {
       const data = doc.data();
-      return {
+      
+      const convertedSavedAt = convertSavedAtToDate(data.savedAt);
+      
+      const board = {
         id: doc.id,
         ...data,
-        savedAt: convertSavedAtToDate(data.savedAt)
+        // Only set savedAt if we successfully converted it
+        ...(convertedSavedAt && { savedAt: convertedSavedAt })
       };
+      
+      // Only set lastEditedAt if it actually exists in Firestore and can be converted
+      if (data.lastEditedAt) {
+        const convertedLastEditedAt = convertSavedAtToDate(data.lastEditedAt);
+        if (convertedLastEditedAt) {
+          board.lastEditedAt = convertedLastEditedAt;
+        }
+      }
+      // If lastEditedAt doesn't exist, don't set it - the UI will use savedAt for display
+      
+      return board;
     });
     
     return boards;
@@ -167,9 +191,26 @@ export const saveBoard = async (boardData, userId) => {
         ...boardData.content,
         items: cleanedItems
       },
-      userId: currentUser.uid,
-      savedAt: serverTimestamp()
+      userId: currentUser.uid
     };
+
+    // Handle savedAt (creation/first save time)
+    // Only set savedAt for new boards or when explicitly provided
+    if (boardData.savedAt !== undefined) {
+      // savedAt was explicitly provided (new board creation)
+      data.savedAt = serverTimestamp();
+    } else if (!boardData.id) {
+      // New board without savedAt - set it
+      data.savedAt = serverTimestamp();
+    }
+    // If boardData.id exists and savedAt is undefined, don't set it (preserve existing timestamp)
+
+    // Handle lastEditedAt (tracks when content actually changed)
+    // Set lastEditedAt if explicitly provided (both auto-save and manual save can set this)
+    if (boardData.lastEditedAt !== undefined && boardData.lastEditedAt !== null) {
+      data.lastEditedAt = boardData.lastEditedAt;
+    }
+    // If not provided, don't include lastEditedAt - preserves existing value
 
     // Remove all undefined values before saving to Firestore
     const cleanedData = removeUndefined(data);
@@ -177,13 +218,52 @@ export const saveBoard = async (boardData, userId) => {
     // If boardData has an id, update existing board
     if (boardData.id) {
       const boardRef = doc(db, BOARDS_COLLECTION, boardData.id);
+      
+      // Fetch the document BEFORE updating to preserve the original savedAt
+      // savedAt should never change for existing boards UNLESS it's invalid
+      const existingDoc = await getDoc(boardRef);
+      const existingData = existingDoc.data();
+      const originalSavedAt = existingData?.savedAt 
+        ? convertSavedAtToDate(existingData.savedAt)
+        : null;
+      
+      // FIX: If savedAt is invalid (null or placeholder), set it to serverTimestamp()
+      // This fixes boards that have invalid timestamps in Firestore
+      if (!originalSavedAt || 
+          (existingData?.savedAt && existingData.savedAt._methodName === 'serverTimestamp')) {
+        cleanedData.savedAt = serverTimestamp();
+      }
+      
       await updateDoc(boardRef, cleanedData);
       
-      return {
+      // Fetch the updated document to get the actual server timestamp for lastEditedAt
+      const updatedDoc = await getDoc(boardRef);
+      const updatedData = updatedDoc.data();
+      
+      // Build return value with actual Date objects from Firestore
+      // If we fixed savedAt, use the new value from Firestore, otherwise preserve original
+      const finalSavedAt = (!originalSavedAt || 
+                            (existingData?.savedAt && existingData.savedAt._methodName === 'serverTimestamp'))
+        ? convertSavedAtToDate(updatedData.savedAt) // Use the newly set timestamp
+        : originalSavedAt; // Preserve the original valid timestamp
+      
+      const returnValue = {
         id: boardData.id,
-        ...data,
-        savedAt: new Date()
+        name: data.name,
+        content: data.content,
+        userId: data.userId,
+        savedAt: finalSavedAt
       };
+      
+      // Set lastEditedAt from Firestore if it exists, otherwise preserve existing
+      if (updatedData.lastEditedAt) {
+        returnValue.lastEditedAt = convertSavedAtToDate(updatedData.lastEditedAt);
+      } else if (boardData.lastEditedAt) {
+        // Fallback to provided value if Firestore doesn't have it yet
+        returnValue.lastEditedAt = boardData.lastEditedAt instanceof Date ? boardData.lastEditedAt : new Date(boardData.lastEditedAt);
+      }
+      
+      return returnValue;
     }
 
     // Otherwise, create new board
@@ -192,8 +272,11 @@ export const saveBoard = async (boardData, userId) => {
     
     const savedBoard = {
       id: docRef.id,
-      ...data,
-      savedAt: new Date()
+      name: data.name,
+      content: data.content,
+      userId: data.userId,
+      savedAt: new Date(),
+      lastEditedAt: new Date()
     };
     
     return savedBoard;
@@ -240,5 +323,83 @@ export const getDemoBoards = async () => {
     return boards;
   } catch (error) {
     throw error;
+  }
+};
+
+// Save chat history for a board (stored directly in board document)
+export const saveChatHistory = async (boardId, chatHistory) => {
+  try {
+    checkAuth();
+    
+    if (!boardId) {
+      throw new Error('Board ID is required');
+    }
+
+    // Verify the user owns this board
+    const boardRef = doc(db, BOARDS_COLLECTION, boardId);
+    const boardDoc = await getDoc(boardRef);
+    
+    if (!boardDoc.exists()) {
+      throw new Error('Board not found');
+    }
+    
+    const boardData = boardDoc.data();
+    if (boardData.userId !== auth.currentUser.uid) {
+      throw new Error('Unauthorized access');
+    }
+
+    // Save chat history directly in the board document
+    // Ensure messages arrays, tabNames, and highlightedItems are preserved (don't filter them out)
+    const cleanedHistory = (chatHistory || []).map(chat => {
+      return {
+        tabId: chat.tabId || chat.id,
+        tabName: chat.tabName || 'Untitled Chat', // Preserve historical tabName
+        messages: chat.messages || [], // Preserve historical messages
+        highlightedItems: chat.highlightedItems || [], // Preserve historical highlighted items
+        saved: chat.saved || false, // Preserve saved status
+        savedAt: chat.savedAt || null // Preserve saved timestamp
+      };
+    });
+    
+    const updateData = {
+      chatHistory: cleanedHistory
+    };
+    
+    await updateDoc(boardRef, removeUndefined(updateData));
+  } catch (error) {
+    console.error('Error saving chat history:', error);
+    throw error;
+  }
+};
+
+// Load chat history for a board
+export const loadChatHistory = async (boardId) => {
+  try {
+    checkAuth();
+    
+    if (!boardId) {
+      return [];
+    }
+
+    const boardRef = doc(db, BOARDS_COLLECTION, boardId);
+    const boardDoc = await getDoc(boardRef);
+    
+    if (!boardDoc.exists()) {
+      return [];
+    }
+    
+    const boardData = boardDoc.data();
+    
+    // Verify the user owns this board
+    if (boardData.userId !== auth.currentUser.uid) {
+      return [];
+    }
+    
+    // Return chat history from board document
+    return boardData.chatHistory || [];
+  } catch (error) {
+    console.error('Error loading chat history:', error);
+    // Return empty array on error instead of throwing
+    return [];
   }
 }; 

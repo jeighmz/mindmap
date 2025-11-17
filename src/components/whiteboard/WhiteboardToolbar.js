@@ -376,7 +376,7 @@ const WhiteboardToolbar = ({ onOpenMindMapPanel, onOpenSearchPanel, items, conne
   const [isAgentChatOpen, setIsAgentChatOpen] = useState(false);
 
   return (
-    <div className={`whiteboard-toolbar ${isLibraryOpen ? 'hidden' : ''}`}>
+    <div className="whiteboard-toolbar">
       {tools.map((tool, index) => (
         <ToolbarItem
           key={`${tool.type}-${index}`}
