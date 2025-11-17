@@ -1,31 +1,37 @@
 /* Modal container styles */
 .modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
   background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 10000;
+  z-index: 10000 !important;
   pointer-events: all;
+  margin: 0;
+  padding: 0;
 }
 
 .modal-container {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  z-index: 10001;
+  z-index: 10001 !important;
   width: 900px;
   height: 600px;
+  max-width: 90vw;
+  max-height: 90vh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  background: white;
+  margin: 0;
 }
 
 @media (max-width: 1024px) {
@@ -872,4 +878,203 @@
   .profile-picture-remove-button {
     width: 100%;
   }
+}
+
+/* Dark Mode Styles */
+.dark-mode .modal-overlay {
+  background-color: rgba(0, 0, 0, 0.7);
+}
+
+.dark-mode .modal-container,
+.dark-mode .modal-content,
+.dark-mode .settings-modal {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.dark-mode .modal-close {
+  color: var(--text-secondary);
+}
+
+.dark-mode .modal-close:hover {
+  color: var(--text-primary);
+}
+
+.dark-mode .settings-sidebar {
+  background: var(--bg-secondary);
+  border-right-color: var(--border-color);
+}
+
+.dark-mode .settings-sidebar h2 {
+  color: var(--text-primary);
+}
+
+.dark-mode .nav-item {
+  color: var(--text-secondary);
+}
+
+.dark-mode .nav-item:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.dark-mode .nav-item.active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-left-color: #4285f4;
+}
+
+.dark-mode .settings-content {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.dark-mode .settings-section h3 {
+  color: var(--text-primary);
+}
+
+.dark-mode .form-group label {
+  color: var(--text-secondary);
+}
+
+.dark-mode .form-group input {
+  background: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-primary);
+}
+
+.dark-mode .form-group input:focus {
+  border-color: #4285f4;
+  box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.25);
+}
+
+.dark-mode .form-group small {
+  color: var(--text-tertiary);
+}
+
+.dark-mode .form-actions {
+  border-top-color: var(--border-color);
+}
+
+.dark-mode .form-actions button[type="button"] {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.dark-mode .form-actions button[type="button"]:hover {
+  background: var(--bg-secondary);
+}
+
+.dark-mode .message.success {
+  background: #1e3a2e;
+  color: #4ade80;
+  border-color: #2d5a3d;
+}
+
+.dark-mode .message.error {
+  background: #3a1e1e;
+  color: #f87171;
+  border-color: #5a2d2d;
+}
+
+.dark-mode .message.info {
+  background: #1e2a3a;
+  color: #60a5fa;
+  border-color: #2d3d5a;
+}
+
+.dark-mode .loading-message {
+  color: var(--text-secondary);
+}
+
+.dark-mode .subscription-info {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+}
+
+.dark-mode .tier-display {
+  border-bottom-color: var(--border-color);
+}
+
+.dark-mode .tier-name {
+  color: var(--text-primary);
+}
+
+.dark-mode .tier-features {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+}
+
+.dark-mode .tier-features h4 {
+  color: var(--text-primary);
+}
+
+.dark-mode .tier-features li {
+  color: var(--text-secondary);
+}
+
+.dark-mode .integrations-search-input {
+  background: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-primary);
+}
+
+.dark-mode .integrations-search-input:focus {
+  border-color: #4285f4;
+  box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.25);
+}
+
+.dark-mode .integration-card {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+}
+
+.dark-mode .integration-card:hover {
+  background: var(--bg-secondary);
+  border-color: #4285f4;
+}
+
+.dark-mode .integration-card.enabled {
+  background: #1e3a2e;
+  border-color: #28a745;
+}
+
+.dark-mode .integration-info h4 {
+  color: var(--text-primary);
+}
+
+.dark-mode .integration-info p {
+  color: var(--text-secondary);
+}
+
+.dark-mode .integrations-empty {
+  color: var(--text-secondary);
+}
+
+.dark-mode .profile-picture-preview {
+  border-color: var(--border-color);
+  background: var(--bg-tertiary);
+}
+
+.dark-mode .profile-picture-upload-button,
+.dark-mode .profile-picture-remove-button {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.dark-mode .profile-picture-upload-button {
+  background: #4285f4;
+  color: white;
+  border-color: #4285f4;
+}
+
+.dark-mode .profile-picture-upload-button:hover:not(:disabled) {
+  background: #357abd;
+  border-color: #357abd;
+}
+
+.dark-mode .profile-picture-remove-button:hover:not(:disabled) {
+  background: var(--bg-secondary);
 } 

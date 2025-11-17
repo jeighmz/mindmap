@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db, storage } from '../firebase-config';
 import { useAuth } from '../contexts/AuthContext';
+import { useApp } from '../contexts/AppContext';
 import { USER_TIERS, TIER_FEATURES } from '../config/userTiers';
 import Modal from './Modal';
 import '../styles/Settings.css';
@@ -62,6 +63,7 @@ const SETTINGS_SECTIONS = {
 
 export default function Settings({ isOpen, onClose, onUpgradeClick }) {
   const { user, userTier, refreshUserData } = useAuth();
+  const { isDarkMode, toggleDarkMode } = useApp();
   const [notionApiKey, setNotionApiKey] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -693,6 +695,22 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500, marginBottom: '4px' }}>Show footer</div>
             <small style={{ display: 'block', marginTop: '4px' }}>Toggle the display of the footer showing board name and canvas/view dimensions.</small>
+          </div>
+        </label>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="darkMode" style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            id="darkMode"
+            checked={isDarkMode}
+            onChange={toggleDarkMode}
+            style={{ marginTop: '2px', cursor: 'pointer' }}
+          />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 500, marginBottom: '4px' }}>Dark mode</div>
+            <small style={{ display: 'block', marginTop: '4px' }}>Switch between light and dark theme.</small>
           </div>
         </label>
       </div>

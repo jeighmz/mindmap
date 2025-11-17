@@ -36,7 +36,13 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const panOffsetRef = useRef({ x: 0, y: 0 });
   const [scale, setScale] = useState(1.0); // Changed from 0.4 to 1.0 for 100% default zoom
+  
+  // Sync ref with state
+  useEffect(() => {
+    panOffsetRef.current = panOffset;
+  }, [panOffset]);
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [connections, setConnections] = useState([]);
   const [connectingFrom, setConnectingFrom] = useState(null);
@@ -111,6 +117,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     fontWeight: 'normal',
     fontStyle: 'normal',
     textDecoration: 'none',
+    textAlign: 'center',
   });
   // Add state for color picker section
   const [activeColorSection, setActiveColorSection] = useState('background');
@@ -213,6 +220,9 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
   // Expose methods to parent through ref
   useImperativeHandle(ref, () => ({
+    handleToggleHelp: () => {
+      setIsInstructionsCollapsed(prev => !prev);
+    },
     handleCloseMindMapPanel: () => {
       setIsMindMapPanelOpen(false);
       if (onMindMapPanelClose) {
@@ -635,6 +645,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
             position: { x: position.x, y: position.y }, // Ensure position is an object
             width: Number(width),
             height: Number(height),
+            rotation: 0, // Default rotation
             text: item.type === 'sticky' ? 'New note' : (item.type === 'text' ? '' : (item.type === 'rectangle' || item.type === 'circle' ? '' : '')),
             order: maxOrder + 1,
             // Add default chart configuration for better initial appearance
@@ -667,6 +678,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
               textColor: '#000000',
               fontSize: 16,
               fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif',
+              textAlign: 'center',
               isNewText: true
             }),
             ...(item.type === 'rectangle' && {
@@ -674,14 +686,19 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
               borderColor: '#333333',
               textColor: '#000000',
               fontSize: 14,
-              fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif'
+              fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif',
+              textAlign: 'center'
             }),
             ...(item.type === 'circle' && {
               backgroundColor: '#ffffff',
               borderColor: '#333333',
               textColor: '#000000',
               fontSize: 14,
-              fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif'
+              fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif',
+              textAlign: 'center'
+            }),
+            ...(item.type === 'sticky' && {
+              textAlign: 'center'
             })
           };
           // Save state after updating items
@@ -769,6 +786,14 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     setItems(items.map(item =>
       item.id === id
         ? { ...item, ...size }
+        : item
+    ));
+  }, [items]);
+
+  const updateItemRotation = useCallback((id, rotation) => {
+    setItems(items.map(item =>
+      item.id === id
+        ? { ...item, rotation: rotation !== undefined ? rotation : (item.rotation || 0) }
         : item
     ));
   }, [items]);
@@ -2011,6 +2036,58 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }
   };
 
+  // Function to center an item on the viewport with smooth animation
+  const centerItemOnViewport = useCallback((itemId) => {
+    const item = items.find(i => i.id === itemId);
+    if (!item || !item.position) return;
+
+    const canvasEl = document.querySelector('.whiteboard-canvas');
+    if (!canvasEl) return;
+
+    const canvasBounds = canvasEl.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const effectiveScale = scale * dpr;
+
+    // Calculate center of the item
+    const itemCenterX = item.position.x + (item.width || 150) / 2;
+    const itemCenterY = item.position.y + (item.height || 150) / 2;
+
+    // Calculate pan offset to center the item in the viewport
+    // Formula: panOffset = viewportCenter - (canvasPosition * scale)
+    const targetX = canvasBounds.width / 2 - itemCenterX * effectiveScale;
+    const targetY = canvasBounds.height / 2 - itemCenterY * effectiveScale;
+
+    // Get current pan offset from ref to avoid stale closure
+    const startX = panOffsetRef.current.x;
+    const startY = panOffsetRef.current.y;
+    
+    // Animation parameters
+    const duration = 400; // milliseconds
+    const startTime = performance.now();
+    
+    // Easing function (ease-out cubic)
+    const easeOutCubic = (t) => {
+      return 1 - Math.pow(1 - t, 3);
+    };
+
+    const animate = (currentTime) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easedProgress = easeOutCubic(progress);
+
+      const currentX = startX + (targetX - startX) * easedProgress;
+      const currentY = startY + (targetY - startY) * easedProgress;
+
+      setPanOffset({ x: currentX, y: currentY });
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+
+    requestAnimationFrame(animate);
+  }, [items, scale]);
+
   const handleShowColorMenu = () => {
     // Only show color menu for non-image, non-chart items
     if (selectedItems.size === 1) {
@@ -2018,6 +2095,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       const selectedItem = items.find(item => item.id === selectedItemId);
       if (selectedItem && selectedItem.type !== 'image' && selectedItem.type !== 'chart') {
         setShowColorMenu(true);
+        // Center the item when the edit button (color menu) is clicked
+        centerItemOnViewport(selectedItemId);
       }
     }
   };
@@ -5289,6 +5368,7 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
         fontWeight: selectedItem.fontWeight || 'normal',
         fontStyle: selectedItem.fontStyle || 'normal',
         textDecoration: selectedItem.textDecoration || 'none',
+        textAlign: selectedItem.textAlign || 'center',
       });
     }
   }, [selectedItem]);
@@ -6038,6 +6118,113 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                 </div>
               </div>
               
+              {/* Text Alignment Control */}
+              <div style={{ marginBottom: '10px' }}>
+                <div style={{ fontSize: 11, marginBottom: 4 }}>Text Alignment</div>
+                <div style={{
+                  display: 'flex',
+                  gap: '6px',
+                  alignItems: 'center',
+                }}>
+                  <button
+                    onClick={() => {
+                      if (!selectedItem || selectedItem.type === 'chart') return;
+                      setItems(prevItems => prevItems.map(item =>
+                        item.id === selectedItem.id
+                          ? { ...item, textAlign: 'left' }
+                          : item
+                      ));
+                      setTextStyling(prev => ({ ...prev, textAlign: 'left' }));
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '6px 8px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      background: textStyling.textAlign === 'left' ? '#e3f2fd' : 'white',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      color: textStyling.textAlign === 'left' ? '#1976d2' : '#333',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    title="Align Left"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="3" y1="6" x2="21" y2="6" />
+                      <line x1="3" y1="12" x2="15" y2="12" />
+                      <line x1="3" y1="18" x2="21" y2="18" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!selectedItem || selectedItem.type === 'chart') return;
+                      setItems(prevItems => prevItems.map(item =>
+                        item.id === selectedItem.id
+                          ? { ...item, textAlign: 'center' }
+                          : item
+                      ));
+                      setTextStyling(prev => ({ ...prev, textAlign: 'center' }));
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '6px 8px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      background: textStyling.textAlign === 'center' ? '#e3f2fd' : 'white',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      color: textStyling.textAlign === 'center' ? '#1976d2' : '#333',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    title="Align Center"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="3" y1="6" x2="21" y2="6" />
+                      <line x1="7" y1="12" x2="17" y2="12" />
+                      <line x1="3" y1="18" x2="21" y2="18" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!selectedItem || selectedItem.type === 'chart') return;
+                      setItems(prevItems => prevItems.map(item =>
+                        item.id === selectedItem.id
+                          ? { ...item, textAlign: 'right' }
+                          : item
+                      ));
+                      setTextStyling(prev => ({ ...prev, textAlign: 'right' }));
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '6px 8px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      background: textStyling.textAlign === 'right' ? '#e3f2fd' : 'white',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      color: textStyling.textAlign === 'right' ? '#1976d2' : '#333',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    title="Align Right"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="3" y1="6" x2="21" y2="6" />
+                      <line x1="9" y1="12" x2="21" y2="12" />
+                      <line x1="3" y1="18" x2="21" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              
               {/* Text Color Swatches */}
               <div style={{ fontSize: 11, marginBottom: 4 }}>Text Color</div>
               <div style={{
@@ -6109,13 +6296,12 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
         </div>
       )}
       <div className="whiteboard-header">
-        <div className="header-left-controls">
+        <div className="header-logo-island">
           <div
             style={{
-              width: '32px',
-              height: '32px',
+              width: '24px',
+              height: '24px',
               overflow: 'hidden',
-              marginRight: '16px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center'
@@ -6126,7 +6312,7 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
               src="/logo_and_name.png" 
               alt="MindMap Logo" 
               style={{
-                height: '32px',
+                height: '24px',
                 width: 'auto',
                 objectFit: 'contain',
                 objectPosition: 'left center'
@@ -6221,13 +6407,6 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
               }
             }}
             title="Save New Canvas"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '4px',
-              padding: '8px'
-            }}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
@@ -6269,12 +6448,6 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
             className="header-button new-canvas-button"
             onClick={handleNewCanvas}
             title="New Canvas"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '4px'
-            }}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="5" x2="12" y2="19"/>
@@ -6552,6 +6725,7 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                 item={item}
                 updatePosition={updateItemPosition}
                 updateSize={updateItemSize}
+                updateRotation={updateItemRotation}
                 updateText={updateItemText}
                 isSelected={selectedItems.has(item.id)}
                 isConnecting={connectingFrom === item.id}
@@ -6596,6 +6770,7 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                 item={item}
                 updatePosition={updateItemPosition}
                 updateSize={updateItemSize}
+                updateRotation={updateItemRotation}
                 updateText={updateItemText}
                 isSelected={selectedItems.has(item.id)}
                 isConnecting={connectingFrom === item.id}
@@ -6852,14 +7027,6 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
         </div>
       )}
 
-      {/* Add the help toggle button */}
-      <button 
-        className="help-toggle-button"
-        onClick={() => setIsInstructionsCollapsed(!isInstructionsCollapsed)}
-        title={isInstructionsCollapsed ? "Show Instructions" : "Hide Instructions"}
-      >
-        ?
-      </button>
 
       {/* Footer with canvas and view size */}
       {showFooter && (

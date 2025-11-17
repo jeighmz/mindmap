@@ -85,7 +85,8 @@ const formatAxisLabel = (value, mode, xAxisTitle = '') => {
 const WhiteboardItem = ({ 
   item, 
   updatePosition, 
-  updateSize, 
+  updateSize,
+  updateRotation,
   updateText, 
   isSelected, 
   isConnecting,
@@ -118,6 +119,8 @@ const WhiteboardItem = ({
   const [isEditing, setIsEditing] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0 });
+  const [isRotating, setIsRotating] = useState(false);
+  const [rotateStart, setRotateStart] = useState({ x: 0, y: 0, angle: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState(null);
   const [hoverTooltip, setHoverTooltip] = useState(null); // { x, y, content }
@@ -357,6 +360,85 @@ const WhiteboardItem = ({
     }
   }, [isResizing, handleResizeMove, handleResizeEnd]);
 
+  const handleRotateMove = useCallback((e) => {
+    if (!isRotating || !updateRotation) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Get item center in screen coordinates
+    const itemRect = itemRef.current?.getBoundingClientRect();
+    if (!itemRect) return;
+
+    const centerX = itemRect.left + itemRect.width / 2;
+    const centerY = itemRect.top + itemRect.height / 2;
+
+    // Calculate angle from center to mouse position
+    const dx = e.clientX - centerX;
+    const dy = e.clientY - centerY;
+    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+    // Calculate the rotation relative to the start angle
+    const rotationDelta = angle - rotateStart.angle;
+    let newRotation = rotateStart.rotation + rotationDelta;
+
+    // Normalize to 0-360 range
+    newRotation = ((newRotation % 360) + 360) % 360;
+
+    // Snap to 15-degree increments if shift is held
+    if (e.shiftKey) {
+      newRotation = Math.round(newRotation / 15) * 15;
+    }
+
+    updateRotation(item.id, newRotation);
+  }, [isRotating, rotateStart, scale, item.id, updateRotation]);
+
+  const handleRotateStart = useCallback((e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    if (!updateRotation) return;
+
+    setIsRotating(true);
+    
+    // Get item center in screen coordinates
+    const itemRect = itemRef.current?.getBoundingClientRect();
+    if (!itemRect) return;
+
+    const centerX = itemRect.left + itemRect.width / 2;
+    const centerY = itemRect.top + itemRect.height / 2;
+
+    // Calculate initial angle from center to mouse position
+    const dx = e.clientX - centerX;
+    const dy = e.clientY - centerY;
+    const initialAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+    setRotateStart({
+      x: e.clientX,
+      y: e.clientY,
+      angle: initialAngle,
+      rotation: item.rotation || 0
+    });
+  }, [item.rotation, updateRotation]);
+
+  const handleRotateEnd = useCallback(() => {
+    setIsRotating(false);
+    if (onResizeEnd) {
+      onResizeEnd();
+    }
+  }, [onResizeEnd]);
+
+  useEffect(() => {
+    if (isRotating) {
+      window.addEventListener('mousemove', handleRotateMove);
+      window.addEventListener('mouseup', handleRotateEnd);
+      return () => {
+        window.removeEventListener('mousemove', handleRotateMove);
+        window.removeEventListener('mouseup', handleRotateEnd);
+      };
+    }
+  }, [isRotating, handleRotateMove, handleRotateEnd]);
+
   const handleMouseDown = (e) => {
     // Don't start drag if clicking on control buttons or resize handles
     if (e.target.closest('.edit-control, .connector-control, .expand-control, .resize-handle')) {
@@ -523,14 +605,28 @@ const WhiteboardItem = ({
   }, [isEditing, closeEditing]);
 
   const renderContent = () => {
+    // Determine alignment based on textAlign property
+    const textAlign = item.textAlign || 'center';
+    const getAlignment = (align) => {
+      switch(align) {
+        case 'left':
+          return { alignItems: 'center', justifyContent: 'flex-start' };
+        case 'right':
+          return { alignItems: 'center', justifyContent: 'flex-end' };
+        case 'center':
+        default:
+          return { alignItems: 'center', justifyContent: 'center' };
+      }
+    };
+    const alignment = getAlignment(textAlign);
+
     const stickyStyle = item.type === 'sticky' ? {
       backgroundColor: item.backgroundColor || '#fff740',
       width: '100%',
       height: '100%',
       padding: '16px',
       display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
+      ...alignment,
       overflow: 'hidden',
       fontFamily: item.fontFamily || '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       fontSize: `${item.fontSize || 14}px`,
@@ -538,6 +634,7 @@ const WhiteboardItem = ({
       fontWeight: item.fontWeight || 'normal',
       fontStyle: item.fontStyle || 'normal',
       textDecoration: item.textDecoration || 'none',
+      textAlign: textAlign,
       borderRadius: '2px'
     } : {
       backgroundColor: item.backgroundColor,
@@ -545,8 +642,7 @@ const WhiteboardItem = ({
       height: '100%',
       padding: '8px',
       display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
+      ...alignment,
       overflow: 'hidden',
       fontFamily: item.fontFamily || '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       fontSize: `${item.fontSize || 14}px`,
@@ -554,6 +650,7 @@ const WhiteboardItem = ({
       fontWeight: item.fontWeight || 'normal',
       fontStyle: item.fontStyle || 'normal',
       textDecoration: item.textDecoration || 'none',
+      textAlign: textAlign,
       border: item.borderColor ? `2px solid ${item.borderColor}` : '1px solid #ccc'
     };
 
@@ -2838,11 +2935,12 @@ const WhiteboardItem = ({
             resize: 'none',
             // Don't override border or backgroundColor - stickyStyle already has them set correctly
             outline: 'none',
-            textAlign: 'left',
+            textAlign: item.textAlign || 'center',
             lineHeight: '1.5',
             display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'flex-start',
+            ...(item.textAlign === 'left' ? { alignItems: 'flex-start', justifyContent: 'flex-start' } :
+                item.textAlign === 'right' ? { alignItems: 'flex-start', justifyContent: 'flex-end' } :
+                { alignItems: 'center', justifyContent: 'center' }),
             paddingTop: '8px'
           }}
           onClick={(e) => e.stopPropagation()}
@@ -2859,9 +2957,6 @@ const WhiteboardItem = ({
           whiteSpace: 'pre-wrap',
           wordWrap: 'break-word',
           overflowWrap: 'break-word',
-          alignItems: 'flex-start',
-          justifyContent: 'flex-start',
-          textAlign: 'left'
         }}
         onDoubleClick={() => setIsEditing(true)}
       >
@@ -3119,8 +3214,10 @@ const WhiteboardItem = ({
         top: item.position.y,
         width: item.width,
         height: item.height,
+        transform: item.rotation ? `rotate(${item.rotation}deg)` : undefined,
+        transformOrigin: 'center center',
         cursor: isDragging ? 'grabbing' : (isConnecting ? 'not-allowed' : (isValidTarget ? 'pointer' : 'default')),
-        transition: isDragging ? 'none' : 'all 0.15s ease',
+        transition: isDragging || isRotating ? 'none' : 'all 0.15s ease',
         zIndex: item.type === 'chart' ? 1 : (isSelected ? 1000 : (item.order !== undefined ? 100 + item.order : 100)),
         pointerEvents: 'auto',
         userSelect: 'none',

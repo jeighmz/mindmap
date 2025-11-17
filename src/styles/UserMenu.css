@@ -5,32 +5,38 @@
 
 .user-menu-button,
 .sign-in-button {
-  background-color: #f8f9fa;
-  border: 1px solid #dee2e6;
-  color: #495057;
-  padding: 8px 12px;
+  background-color: transparent;
+  border: none;
+  color: #6b7280;
+  padding: 4px 8px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.2s ease, border-color 0.2s ease;
+  font-size: 13px;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   box-sizing: border-box;
   line-height: 1;
-  height: auto;
-  min-height: auto;
+  height: 24px;
+  min-height: 24px;
 }
 
 .user-menu-button:hover,
 .sign-in-button:hover {
-  background-color: #e9ecef;
-  border-color: #ced4da;
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+.user-menu-button:active,
+.sign-in-button:active {
+  background-color: #e5e7eb;
+  transform: scale(0.98);
 }
 
 .user-avatar {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
@@ -46,8 +52,8 @@
 }
 
 .user-name {
-  font-size: 14px;
-  color: #495057;
+  font-size: 13px;
+  color: inherit;
   max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -147,10 +153,11 @@
 /* Mobile styles - hide username, show only profile picture */
 @media (max-width: 768px) {
   .user-menu-button {
-    padding: 6px;
+    padding: 4px;
     min-width: auto;
     width: auto;
     gap: 0;
+    height: 24px;
   }
 
   .user-name {
@@ -162,18 +169,67 @@
   }
 
   .user-avatar {
-    width: 32px;
-    height: 32px;
+    width: 18px;
+    height: 18px;
   }
 }
 
 @media (max-width: 480px) {
   .user-menu-button {
-    padding: 4px;
+    padding: 3px;
+    height: 22px;
   }
 
   .user-avatar {
-    width: 28px;
-    height: 28px;
+    width: 16px;
+    height: 16px;
   }
+}
+
+/* Dark Mode Styles */
+.dark-mode .user-menu-button,
+.dark-mode .sign-in-button {
+  color: var(--text-secondary);
+}
+
+.dark-mode .user-menu-button:hover,
+.dark-mode .sign-in-button:hover {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.dark-mode .user-menu-button:active,
+.dark-mode .sign-in-button:active {
+  background-color: var(--bg-secondary);
+}
+
+.dark-mode .user-dropdown {
+  background-color: var(--bg-primary);
+  border-color: var(--border-color);
+  box-shadow: 0 4px 8px var(--shadow);
+}
+
+.dark-mode .user-display-name {
+  color: var(--text-primary);
+}
+
+.dark-mode .user-email {
+  color: var(--text-secondary);
+}
+
+.dark-mode .menu-divider {
+  background: var(--border-color);
+}
+
+.dark-mode .menu-item {
+  color: var(--text-secondary);
+}
+
+.dark-mode .menu-item:hover {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.dark-mode .menu-icon {
+  color: var(--text-tertiary);
 } 

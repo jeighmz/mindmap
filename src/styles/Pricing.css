@@ -370,4 +370,66 @@
     right: 50%;
     transform: translateX(50%);
   }
+}
+
+/* Dark Mode Styles */
+.dark-mode {
+  --pricing-text-primary: var(--text-primary);
+  --pricing-text-secondary: var(--text-secondary);
+  --pricing-border: var(--border-color);
+  --pricing-background: var(--bg-primary);
+}
+
+.dark-mode .pricing-page {
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+}
+
+.dark-mode .pricing-container,
+.dark-mode .pricing-section {
+  color: var(--text-primary);
+}
+
+.dark-mode .back-button {
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.dark-mode .back-button:hover {
+  background: var(--bg-tertiary);
+  border-color: #4285f4;
+  color: #4285f4;
+}
+
+.dark-mode .pricing-header h1,
+.dark-mode .pricing-section h2,
+.dark-mode .pricing-card h3,
+.dark-mode .price {
+  color: var(--text-primary);
+}
+
+.dark-mode .pricing-subtitle {
+  color: var(--text-secondary);
+}
+
+.dark-mode .pricing-card {
+  background: var(--bg-primary);
+  border-color: var(--border-color);
+}
+
+.dark-mode .pricing-card:hover {
+  box-shadow: 0 8px 24px var(--shadow);
+}
+
+.dark-mode .modal-container {
+  background: var(--bg-primary);
+}
+
+.dark-mode .modal-overlay {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.dark-mode .error-message {
+  background: #3a1e1e;
+  border-color: #dc3545;
+  color: #f87171;
 } 

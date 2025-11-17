@@ -20,26 +20,26 @@ const ChartMenuItem = ({ chartType, icon, title, onChartMenuToggle }) => {
         onChartMenuToggle?.();
       }}
       style={{
-        width: '44px',
-        height: '44px',
+        width: '36px',
+        height: '36px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#f8f9fa',
-        border: '1px solid #dee2e6',
+        background: 'transparent',
+        border: 'none',
         borderRadius: '6px',
         cursor: isDragging ? 'grabbing' : 'grab',
-        color: '#333',
-        transition: 'all 0.2s',
-        opacity: isDragging ? 0.5 : 1,
+        color: '#6b7280',
+        transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)',
+        opacity: isDragging ? 0.6 : 1,
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.backgroundColor = '#e9ecef';
-        e.currentTarget.style.borderColor = '#adb5bd';
+        e.currentTarget.style.backgroundColor = '#f3f4f6';
+        e.currentTarget.style.color = '#111827';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = '#f8f9fa';
-        e.currentTarget.style.borderColor = '#dee2e6';
+        e.currentTarget.style.backgroundColor = 'transparent';
+        e.currentTarget.style.color = '#6b7280';
       }}
       title={title}
     >
@@ -177,17 +177,17 @@ const ToolbarItem = ({ type, icon, chartType, isChartMenuOpen, onChartMenuToggle
         {isChartMenuOpen && (
           <div style={{
             position: 'absolute',
-            right: '-190px',
+            right: '-160px',
             top: '50%',
             transform: 'translateY(-50%)',
             background: 'white',
-            border: '1px solid #ddd',
+            border: '1px solid #e5e7eb',
             borderRadius: '8px',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
             zIndex: 1001,
-            padding: '8px',
+            padding: '6px',
             display: 'flex',
-            gap: '8px',
+            gap: '4px',
             overflow: 'hidden'
           }}>
             <ChartMenuItem
@@ -195,7 +195,7 @@ const ToolbarItem = ({ type, icon, chartType, isChartMenuOpen, onChartMenuToggle
               title="XY Chart"
               onChartMenuToggle={onChartMenuToggle}
               icon={
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <line x1="4" y1="20" x2="20" y2="20" />
                   <line x1="4" y1="20" x2="4" y2="4" />
                   <path d="M7 14l3-3 4 4 4-8" />
@@ -207,7 +207,7 @@ const ToolbarItem = ({ type, icon, chartType, isChartMenuOpen, onChartMenuToggle
               title="Sine Wave"
               onChartMenuToggle={onChartMenuToggle}
               icon={
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M4 12c2-2.67 4-4 6-4s4 1.33 6 4c2 2.67 4 4 6 4s4-1.33 6-4" />
                 </svg>
               }
@@ -217,7 +217,7 @@ const ToolbarItem = ({ type, icon, chartType, isChartMenuOpen, onChartMenuToggle
               title="Sankey"
               onChartMenuToggle={onChartMenuToggle}
               icon={
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
                   <rect x="2" y="5" width="3.5" height="14" rx="0.5" fill="currentColor" opacity="0.85" />
                   <rect x="18.5" y="4" width="3.5" height="5.5" rx="0.5" fill="currentColor" opacity="0.85" />
                   <rect x="18.5" y="10.5" width="3.5" height="4" rx="0.5" fill="currentColor" opacity="0.85" />
@@ -246,7 +246,7 @@ const ToolbarItem = ({ type, icon, chartType, isChartMenuOpen, onChartMenuToggle
   );
 };
 
-const WhiteboardToolbar = ({ onOpenMindMapPanel, onOpenSearchPanel, items, connections, highlightedItems = [], isLibraryOpen = false }) => {
+const WhiteboardToolbar = ({ onOpenMindMapPanel, onOpenSearchPanel, items, connections, highlightedItems = [], isLibraryOpen = false, onToggleHelp }) => {
   const [buttonMouseDown, setButtonMouseDown] = useState(null);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isChartMenuOpen, setIsChartMenuOpen] = useState(false);
@@ -394,10 +394,10 @@ const WhiteboardToolbar = ({ onOpenMindMapPanel, onOpenSearchPanel, items, conne
         title="Generate Mind Map"
         style={{
           cursor: 'pointer',
-          transition: 'transform 0.2s ease, background-color 0.2s ease'
+          transition: 'transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1)'
         }}
       >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="12" cy="12" r="4" />
           <path d="M12 4v4" />
           <path d="M12 16v4" />
@@ -418,16 +418,33 @@ const WhiteboardToolbar = ({ onOpenMindMapPanel, onOpenSearchPanel, items, conne
         title="AI Analysis Chat"
         style={{
           cursor: isSpacePressed ? 'grab' : 'pointer',
-          transition: 'transform 0.2s ease, background-color 0.2s ease'
+          transition: 'transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1)'
         }}
       >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           <path d="M8 10h.01" />
           <path d="M12 10h.01" />
           <path d="M16 10h.01" />
         </svg>
       </button>
+      {onToggleHelp && (
+        <button 
+          className="toolbar-item help-toggle-button"
+          onClick={onToggleHelp}
+          title="Show/Hide Instructions"
+          style={{
+            cursor: 'pointer',
+            transition: 'transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1)'
+          }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+            <path d="M12 17h.01" />
+          </svg>
+        </button>
+      )}
       {/* Agent chat button temporarily disabled
       <button 
         className="toolbar-item"

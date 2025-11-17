@@ -41,6 +41,13 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
+  background-color: transparent;
+}
+
+/* Make app background transparent when whiteboard is active */
+.app:has(.whiteboard) {
+  background-color: transparent !important;
+  background: transparent !important;
 }
 
 .floating-user-menu {
@@ -60,4 +67,20 @@ main {
   flex: 1;
   overflow: visible;
   position: relative;
+}
+
+/* Dark Mode Styles */
+.dark-mode .app {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* Make app background transparent when whiteboard is active in dark mode */
+.dark-mode .app:has(.whiteboard) {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+.dark-mode .mindmap-container {
+  background-color: var(--bg-secondary);
 }

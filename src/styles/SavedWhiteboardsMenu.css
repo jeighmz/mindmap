@@ -4,19 +4,29 @@
 }
 
 .menu-toggle {
-  background: white;
+  background: transparent;
   border: none;
-  padding: 8px 12px;
-  border-radius: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 14px;
+  gap: 4px;
+  font-size: 13px;
+  color: #6b7280;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  height: 24px;
+  box-sizing: border-box;
 }
 
 .menu-toggle:hover {
-  background: #f8f9fa;
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.menu-toggle:active {
+  background: #e5e7eb;
+  transform: scale(0.98);
 }
 
 .saved-whiteboards-menu {
@@ -449,5 +459,176 @@ input.search-input:disabled {
   .board-tabs {
     margin-top: 16px;
     margin-bottom: 16px;
+  }
+}
+
+/* Dark Mode Styles */
+.dark-mode .menu-toggle {
+  color: var(--text-secondary);
+}
+
+.dark-mode .menu-toggle:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.dark-mode .menu-toggle:active {
+  background: var(--bg-secondary);
+}
+
+.dark-mode .saved-whiteboards-menu {
+  background: var(--bg-primary);
+  box-shadow: 0 2px 10px var(--shadow);
+  color: var(--text-primary);
+}
+
+.dark-mode .board-tabs {
+  border-bottom-color: var(--border-color);
+}
+
+.dark-mode .tab-button {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.dark-mode .tab-button:hover {
+  background: var(--bg-secondary);
+}
+
+.dark-mode .tab-button.active {
+  background: #4285f4;
+  color: white;
+}
+
+.dark-mode .error-message {
+  background: #3a1e1e;
+  border-color: #dc3545;
+  color: #f87171;
+}
+
+.dark-mode .saved-whiteboards-menu-close {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.dark-mode .saved-whiteboards-menu-close:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.dark-mode .search-boards .search-icon {
+  color: var(--text-tertiary);
+}
+
+.dark-mode .saved-whiteboards-menu .search-boards input.search-input,
+.dark-mode .saved-whiteboards-menu .search-boards .search-input,
+.dark-mode .saved-whiteboards-menu input.search-input,
+.dark-mode .search-boards input.search-input,
+.dark-mode .search-boards .search-input,
+.dark-mode input.search-input {
+  background-color: var(--input-bg) !important;
+  border-color: var(--input-border) !important;
+  color: var(--text-primary) !important;
+}
+
+.dark-mode .saved-whiteboards-menu .search-boards input.search-input:focus,
+.dark-mode .saved-whiteboards-menu .search-boards .search-input:focus,
+.dark-mode .saved-whiteboards-menu input.search-input:focus,
+.dark-mode .search-boards input.search-input:focus,
+.dark-mode .search-boards .search-input:focus,
+.dark-mode input.search-input:focus {
+  border-color: #4285f4 !important;
+  box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.2) !important;
+}
+
+.dark-mode .saved-whiteboards-menu .search-boards input.search-input::placeholder,
+.dark-mode .saved-whiteboards-menu .search-boards .search-input::placeholder,
+.dark-mode .saved-whiteboards-menu input.search-input::placeholder,
+.dark-mode .search-boards input.search-input::placeholder,
+.dark-mode .search-boards .search-input::placeholder,
+.dark-mode input.search-input::placeholder {
+  color: var(--text-tertiary) !important;
+}
+
+.dark-mode .saved-whiteboards-menu .search-boards input.search-input:disabled,
+.dark-mode .saved-whiteboards-menu .search-boards .search-input:disabled,
+.dark-mode .saved-whiteboards-menu input.search-input:disabled,
+.dark-mode .search-boards input.search-input:disabled,
+.dark-mode .search-boards .search-input:disabled,
+.dark-mode input.search-input:disabled {
+  background-color: var(--bg-tertiary) !important;
+}
+
+.dark-mode .clear-search {
+  color: var(--text-tertiary);
+}
+
+.dark-mode .clear-search:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-tertiary);
+}
+
+.dark-mode .saved-board-item {
+  border-color: var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.dark-mode .saved-board-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.dark-mode .saved-board-item.selected {
+  background: var(--bg-tertiary);
+  border-color: #4285f4;
+  border-left: 3px solid #4285f4;
+}
+
+.dark-mode .saved-date {
+  color: var(--text-secondary);
+}
+
+.dark-mode .board-actions button {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.dark-mode .board-actions button:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.dark-mode .board-actions .delete-btn {
+  color: #f87171;
+  background: transparent;
+}
+
+.dark-mode .delete-btn:hover {
+  background: rgba(248, 113, 113, 0.1) !important;
+}
+
+.dark-mode .loading-message,
+.dark-mode .no-boards-message {
+  color: var(--text-secondary);
+}
+
+.dark-mode .sign-in-prompt {
+  color: var(--text-secondary);
+  background-color: var(--bg-tertiary);
+}
+
+@media (max-width: 768px) {
+  .dark-mode .saved-whiteboards-menu {
+    background: var(--bg-primary) !important;
+  }
+
+  .dark-mode .saved-whiteboards-menu-close {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+  }
+
+  .dark-mode .saved-whiteboards-menu-close:hover {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
   }
 } 

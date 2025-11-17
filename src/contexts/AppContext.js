@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const AppContext = createContext();
 
@@ -8,6 +8,33 @@ export const AppProvider = ({ children }) => {
   const [mediaSearchOpen, setMediaSearchOpen] = useState(false);
   const [mediaSearchType, setMediaSearchType] = useState(null); // 'crypto', 'stock', 'etf', 'private'
   const [mediaSearchQuery, setMediaSearchQuery] = useState('');
+  
+  // Dark mode state with localStorage persistence
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode');
+    const darkMode = saved ? JSON.parse(saved) : false;
+    // Apply class immediately to prevent flash
+    if (darkMode) {
+      document.documentElement.classList.add('dark-mode');
+    } else {
+      document.documentElement.classList.remove('dark-mode');
+    }
+    return darkMode;
+  });
+
+  // Apply dark mode class to document root when state changes
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark-mode');
+    } else {
+      document.documentElement.classList.remove('dark-mode');
+    }
+    localStorage.setItem('darkMode', JSON.stringify(isDarkMode));
+  }, [isDarkMode]);
+
+  const toggleDarkMode = () => {
+    setIsDarkMode(prev => !prev);
+  };
 
   const handleBack = () => {
     setSelectedArticle(null);
@@ -33,6 +60,9 @@ export const AppProvider = ({ children }) => {
     setMediaSearchType,
     mediaSearchQuery,
     setMediaSearchQuery,
+    isDarkMode,
+    setIsDarkMode,
+    toggleDarkMode,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

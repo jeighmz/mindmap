@@ -34,6 +34,12 @@ const WhiteboardPage = () => {
     }
   };
 
+  const handleToggleHelp = () => {
+    if (canvasRef.current && typeof canvasRef.current.handleToggleHelp === 'function') {
+      canvasRef.current.handleToggleHelp();
+    }
+  };
+
   const handleCanvasUpdate = (newItems, newConnections) => {
     setItems(newItems);
     setConnections(newConnections);
@@ -101,6 +107,7 @@ const WhiteboardPage = () => {
           items={items}
           connections={connections}
           isLibraryOpen={isLibraryOpen}
+          onToggleHelp={handleToggleHelp}
         />
         <WhiteboardCanvas 
           ref={canvasRef}

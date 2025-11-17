@@ -311,4 +311,36 @@
   .chart-settings-nested {
     width: 100%;
   }
+}
+
+/* Dark Mode Styles */
+.dark-mode .chart-config-panel {
+  background: var(--bg-primary) !important;
+  border-color: var(--border-color) !important;
+  box-shadow: 0 4px 20px var(--shadow) !important;
+  color: var(--text-primary);
+}
+
+.dark-mode .chart-config-panel input,
+.dark-mode .chart-config-panel select,
+.dark-mode .chart-config-panel textarea {
+  background: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-primary);
+}
+
+.dark-mode .chart-config-panel input:focus,
+.dark-mode .chart-config-panel select:focus,
+.dark-mode .chart-config-panel textarea:focus {
+  border-color: #4285f4;
+}
+
+.dark-mode .chart-config-panel label {
+  color: var(--text-primary);
+}
+
+.dark-mode .input-group input {
+  background: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-primary);
 } 
