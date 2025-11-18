@@ -22,8 +22,10 @@ import { canGenerateMindMap, canExpandConcept, incrementMindMapCount, incrementE
 import { createNotionPage, writeToNotionDatabase } from './agent/tools/notion';
 import { ChromePicker } from 'react-color';
 import UsageTracker from './UsageTracker';
+import { useApp } from '../../contexts/AppContext';
 
 const WhiteboardCanvas = forwardRef((props, ref) => {
+  const { isDarkMode } = useApp();
   const {
     isMindMapPanelOpen: externalIsMindMapPanelOpen,
     onMindMapPanelClose,
@@ -121,6 +123,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   });
   // Add state for color picker section
   const [activeColorSection, setActiveColorSection] = useState('background');
+  // Add state for unit mode (px or mm) for object settings
+  const [unitMode, setUnitMode] = useState('px');
   // Add state to control color menu visibility
   const [showColorMenu, setShowColorMenu] = useState(false);
   
@@ -553,6 +557,27 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }
   }, []);
 
+  // Canvas bounds - items must stay within these limits
+  const CANVAS_BOUNDS = {
+    minX: 0,
+    minY: 0,
+    maxX: 4000,
+    maxY: 4000
+  };
+
+  // Helper function to constrain position to canvas bounds
+  const constrainPositionToCanvas = useCallback((position, itemWidth = 0, itemHeight = 0) => {
+    const constrainedX = Math.max(
+      CANVAS_BOUNDS.minX,
+      Math.min(CANVAS_BOUNDS.maxX - itemWidth, position.x)
+    );
+    const constrainedY = Math.max(
+      CANVAS_BOUNDS.minY,
+      Math.min(CANVAS_BOUNDS.maxY - itemHeight, position.y)
+    );
+    return { x: constrainedX, y: constrainedY };
+  }, []);
+
   const [{ isOver }, drop] = useDrop(() => ({
     accept: 'WHITEBOARD_ITEM',
     canDrop: () => {
@@ -622,7 +647,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         const canvasY = (relativeY - panOffset.y) / (scale * dpr);
         
         // Center the item on the drop point
-        const position = {
+        let position = {
           x: Math.round((canvasX - width/2) / 10) * 10,
           y: Math.round((canvasY - height/2) / 10) * 10
         };
@@ -635,6 +660,9 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           });
           return undefined;
         }
+
+        // Constrain position to canvas bounds
+        position = constrainPositionToCanvas(position, width, height);
 
         setItems(prevItems => {
           const maxOrder = prevItems.length > 0 ? Math.max(...prevItems.map((i, idx) => i.order !== undefined ? i.order : idx)) : -1;
@@ -708,7 +736,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       }
       return undefined;
     }
-  }), [scale, panOffset, saveState]);
+  }), [scale, panOffset, saveState, constrainPositionToCanvas]);
 
   const handleWheel = useCallback((e) => {
     // Enable scroll zoom without requiring Ctrl key
@@ -775,12 +803,18 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   }, [handleWheel]);
 
   const updateItemPosition = useCallback((id, position) => {
-    setItems(items.map(item => 
-      item.id === id 
-        ? { ...item, position } 
-        : item
-    ));
-  }, [items]);
+    setItems(items.map(item => {
+      if (item.id === id) {
+        const constrainedPosition = constrainPositionToCanvas(
+          position,
+          item.width || 0,
+          item.height || 0
+        );
+        return { ...item, position: constrainedPosition };
+      }
+      return item;
+    }));
+  }, [items, constrainPositionToCanvas]);
 
   const updateItemSize = useCallback((id, size) => {
     setItems(items.map(item =>
@@ -1898,6 +1932,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         };
       }
 
+      // Constrain position to canvas bounds
+      const itemWidth = e.detail.width || 400;
+      const itemHeight = e.detail.height || 300;
+      position = constrainPositionToCanvas(position, itemWidth, itemHeight);
+
       const newItemId = Date.now() + Math.random();
       setItems(prevItems => {
         const newItem = {
@@ -1913,7 +1952,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
     window.addEventListener('addImageItem', handleAddImageItem);
     return () => window.removeEventListener('addImageItem', handleAddImageItem);
-  }, [scale, panOffset]);
+  }, [scale, panOffset, constrainPositionToCanvas]);
 
   // Handle image file drops
   const handleImageDrop = useCallback((e, dropPosition) => {
@@ -1964,6 +2003,9 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           position = { x: 100, y: 100 };
         }
 
+        // Constrain position to canvas bounds
+        position = constrainPositionToCanvas(position, width, height);
+
         const newItemId = Date.now() + Math.random();
         setItems(prevItems => {
           const maxOrder = prevItems.length > 0 ? Math.max(...prevItems.map((i, idx) => i.order !== undefined ? i.order : idx)) : -1;
@@ -1993,7 +2035,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       
       reader.readAsDataURL(file);
     });
-  }, [scale, panOffset]);
+  }, [scale, panOffset, constrainPositionToCanvas]);
 
   const handleCanvasClick = (e) => {
     // Close connection settings menu if clicking on canvas (but not on menu or color picker)
@@ -2245,19 +2287,25 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         prevItems.map(item => {
           if (selectedItems.has(item.id) && basePositions[item.id]) {
             const basePosition = basePositions[item.id];
+            const newPosition = {
+              x: basePosition.x + alignedDx,
+              y: basePosition.y + alignedDy
+            };
+            const constrainedPosition = constrainPositionToCanvas(
+              newPosition,
+              item.width || 0,
+              item.height || 0
+            );
             return {
               ...item,
-              position: {
-                x: basePosition.x + alignedDx,
-                y: basePosition.y + alignedDy
-              }
+              position: constrainedPosition
             };
           }
           return item;
         })
       );
     });
-  }, [selectedItems, items]);
+  }, [selectedItems, items, constrainPositionToCanvas]);
 
   // Hide color menu when selection changes
   useEffect(() => {
@@ -4092,9 +4140,11 @@ Performance Metrics Analysis`
           attempts++;
         }
         
+        // Constrain position to canvas bounds
+        const constrainedPosition = constrainPositionToCanvas(position, dimensions.width, dimensions.height);
         const mainBranchNode = {
           ...branch,
-          position,
+          position: constrainedPosition,
           width: dimensions.width,
           height: dimensions.height
         };
@@ -4162,9 +4212,11 @@ Performance Metrics Analysis`
               subAttempts++;
             }
             
+            // Constrain sub-branch position to canvas bounds
+            const constrainedSubPosition = constrainPositionToCanvas(subPosition, subDimensions.width, subDimensions.height);
             const subBranchNode = {
               ...subBranch,
-              position: subPosition,
+              position: constrainedSubPosition,
               width: subDimensions.width,
               height: subDimensions.height
             };
@@ -4247,10 +4299,10 @@ Performance Metrics Analysis`
         id: `mindmap-central-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         type: 'circle',
         text: mindMapPrompt,
-        position: { 
+        position: constrainPositionToCanvas({ 
           x: viewportCenterX - 75, // Center of current viewport minus half width
           y: viewportCenterY - 75  // Center of current viewport minus half height
-        },
+        }, 150, 150),
         width: 150,
         height: 150,
         order: centralBaseOrder + 1 // Assign order to central node
@@ -4466,11 +4518,13 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
         // Improved positioning with better spacing
         // Use a more unique ID generation to avoid collisions
         const timestamp = Date.now();
+        // Constrain position to canvas bounds
+        const constrainedPosition = constrainPositionToCanvas(position, dimensions.width, dimensions.height);
         const mainBranchNode = {
           id: `mindmap-${timestamp}-${index}-${Math.random().toString(36).substr(2, 9)}`,
           type: 'rectangle',
           text: branch.text,
-          position: position,
+          position: constrainedPosition,
           width: dimensions.width,
           height: dimensions.height,
           order: branchBaseOrder + 1 + index * 2 // Assign unique order values
@@ -4553,11 +4607,13 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
             subAttempts++;
           }
           
+          // Constrain sub-branch position to canvas bounds
+          const constrainedSubPosition = constrainPositionToCanvas(subPosition, subDimensions.width, subDimensions.height);
           const subBranchNode = {
             id: `mindmap-${timestamp}-${index}-sub-${subIndex}-${Math.random().toString(36).substr(2, 9)}`,
             type: 'rectangle',
             text: subBranch.text,
-            position: subPosition,
+            position: constrainedSubPosition,
             width: subDimensions.width,
             height: subDimensions.height,
             order: branchBaseOrder + 1 + index * 2 + subIndex + 1 // Assign unique order values
@@ -5786,6 +5842,9 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
               <option value="background">Background Color</option>
               <option value="border">Border Color</option>
               <option value="text">Text Styling</option>
+              {selectedItem && selectedItem.type === 'rectangle' && (
+                <option value="object">Object Settings</option>
+              )}
             </select>
           </div>
 
@@ -5966,9 +6025,10 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                     width: '100%',
                     padding: '6px 8px',
                     borderRadius: '6px',
-                    border: '1px solid #ddd',
+                    border: isDarkMode ? '1px solid #404040' : '1px solid #ddd',
                     fontSize: '12px',
-                    background: 'white',
+                    background: isDarkMode ? '#2d2d2d' : 'white',
+                    color: isDarkMode ? '#e5e5e5' : '#333',
                     cursor: 'pointer',
                   }}
                 >
@@ -5996,8 +6056,9 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                     padding: '4px 8px',
                     fontSize: '12px',
                     borderRadius: '4px',
-                    border: '1px solid #ddd',
-                    backgroundColor: 'white',
+                    border: isDarkMode ? '1px solid #404040' : '1px solid #ddd',
+                    backgroundColor: isDarkMode ? '#2d2d2d' : 'white',
+                    color: isDarkMode ? '#e5e5e5' : '#333',
                     cursor: 'pointer',
                     outline: 'none',
                     marginBottom: '8px'
@@ -6037,7 +6098,8 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                   <button
                     onClick={() => {
                       if (!selectedItem || selectedItem.type === 'chart') return;
-                      const newWeight = textStyling.fontWeight === 'bold' ? 'normal' : 'bold';
+                      const isBold = selectedItem.fontWeight === 'bold' || selectedItem.fontWeight === '700' || selectedItem.fontWeight === 700;
+                      const newWeight = isBold ? 'normal' : 'bold';
                       setItems(prevItems => prevItems.map(item =>
                         item.id === selectedItem.id
                           ? { ...item, fontWeight: newWeight }
@@ -6048,13 +6110,19 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                     style={{
                       flex: 1,
                       padding: '6px 8px',
-                      border: '1px solid #ddd',
+                      border: isDarkMode 
+                        ? `1px solid ${(selectedItem?.fontWeight === 'bold' || selectedItem?.fontWeight === '700' || selectedItem?.fontWeight === 700) ? '#4285f4' : '#404040'}` 
+                        : '1px solid #ddd',
                       borderRadius: '4px',
-                      background: textStyling.fontWeight === 'bold' ? '#e3f2fd' : 'white',
+                      background: isDarkMode
+                        ? ((selectedItem?.fontWeight === 'bold' || selectedItem?.fontWeight === '700' || selectedItem?.fontWeight === 700) ? 'rgba(66, 133, 244, 0.3)' : '#2d2d2d')
+                        : ((selectedItem?.fontWeight === 'bold' || selectedItem?.fontWeight === '700' || selectedItem?.fontWeight === 700) ? '#e3f2fd' : 'white'),
                       cursor: 'pointer',
                       fontSize: '12px',
                       fontWeight: 'bold',
-                      color: textStyling.fontWeight === 'bold' ? '#1976d2' : '#333',
+                      color: isDarkMode
+                        ? ((selectedItem?.fontWeight === 'bold' || selectedItem?.fontWeight === '700' || selectedItem?.fontWeight === 700) ? '#90caf9' : '#e5e5e5')
+                        : ((selectedItem?.fontWeight === 'bold' || selectedItem?.fontWeight === '700' || selectedItem?.fontWeight === 700) ? '#1976d2' : '#333'),
                       transition: 'all 0.2s ease',
                     }}
                     title="Bold"
@@ -6064,7 +6132,8 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                   <button
                     onClick={() => {
                       if (!selectedItem || selectedItem.type === 'chart') return;
-                      const newStyle = textStyling.fontStyle === 'italic' ? 'normal' : 'italic';
+                      const isItalic = selectedItem.fontStyle === 'italic';
+                      const newStyle = isItalic ? 'normal' : 'italic';
                       setItems(prevItems => prevItems.map(item =>
                         item.id === selectedItem.id
                           ? { ...item, fontStyle: newStyle }
@@ -6075,13 +6144,19 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                     style={{
                       flex: 1,
                       padding: '6px 8px',
-                      border: '1px solid #ddd',
+                      border: isDarkMode 
+                        ? `1px solid ${selectedItem?.fontStyle === 'italic' ? '#4285f4' : '#404040'}` 
+                        : '1px solid #ddd',
                       borderRadius: '4px',
-                      background: textStyling.fontStyle === 'italic' ? '#e3f2fd' : 'white',
+                      background: isDarkMode
+                        ? (selectedItem?.fontStyle === 'italic' ? 'rgba(66, 133, 244, 0.3)' : '#2d2d2d')
+                        : (selectedItem?.fontStyle === 'italic' ? '#e3f2fd' : 'white'),
                       cursor: 'pointer',
                       fontSize: '12px',
                       fontStyle: 'italic',
-                      color: textStyling.fontStyle === 'italic' ? '#1976d2' : '#333',
+                      color: isDarkMode
+                        ? (selectedItem?.fontStyle === 'italic' ? '#90caf9' : '#e5e5e5')
+                        : (selectedItem?.fontStyle === 'italic' ? '#1976d2' : '#333'),
                       transition: 'all 0.2s ease',
                     }}
                     title="Italic"
@@ -6091,7 +6166,8 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                   <button
                     onClick={() => {
                       if (!selectedItem || selectedItem.type === 'chart') return;
-                      const newDecoration = textStyling.textDecoration === 'underline' ? 'none' : 'underline';
+                      const isUnderlined = selectedItem.textDecoration === 'underline';
+                      const newDecoration = isUnderlined ? 'none' : 'underline';
                       setItems(prevItems => prevItems.map(item =>
                         item.id === selectedItem.id
                           ? { ...item, textDecoration: newDecoration }
@@ -6102,13 +6178,19 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                     style={{
                       flex: 1,
                       padding: '6px 8px',
-                      border: '1px solid #ddd',
+                      border: isDarkMode 
+                        ? `1px solid ${selectedItem?.textDecoration === 'underline' ? '#4285f4' : '#404040'}` 
+                        : '1px solid #ddd',
                       borderRadius: '4px',
-                      background: textStyling.textDecoration === 'underline' ? '#e3f2fd' : 'white',
+                      background: isDarkMode
+                        ? (selectedItem?.textDecoration === 'underline' ? 'rgba(66, 133, 244, 0.3)' : '#2d2d2d')
+                        : (selectedItem?.textDecoration === 'underline' ? '#e3f2fd' : 'white'),
                       cursor: 'pointer',
                       fontSize: '12px',
                       textDecoration: 'underline',
-                      color: textStyling.textDecoration === 'underline' ? '#1976d2' : '#333',
+                      color: isDarkMode
+                        ? (selectedItem?.textDecoration === 'underline' ? '#90caf9' : '#e5e5e5')
+                        : (selectedItem?.textDecoration === 'underline' ? '#1976d2' : '#333'),
                       transition: 'all 0.2s ease',
                     }}
                     title="Underline"
@@ -6139,12 +6221,18 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                     style={{
                       flex: 1,
                       padding: '6px 8px',
-                      border: '1px solid #ddd',
+                      border: isDarkMode 
+                        ? `1px solid ${selectedItem?.textAlign === 'left' ? '#4285f4' : '#404040'}` 
+                        : '1px solid #ddd',
                       borderRadius: '4px',
-                      background: textStyling.textAlign === 'left' ? '#e3f2fd' : 'white',
+                      background: isDarkMode
+                        ? (selectedItem?.textAlign === 'left' ? 'rgba(66, 133, 244, 0.3)' : '#2d2d2d')
+                        : (selectedItem?.textAlign === 'left' ? '#e3f2fd' : 'white'),
                       cursor: 'pointer',
                       fontSize: '12px',
-                      color: textStyling.textAlign === 'left' ? '#1976d2' : '#333',
+                      color: isDarkMode
+                        ? (selectedItem?.textAlign === 'left' ? '#90caf9' : '#e5e5e5')
+                        : (selectedItem?.textAlign === 'left' ? '#1976d2' : '#333'),
                       transition: 'all 0.2s ease',
                       display: 'flex',
                       alignItems: 'center',
@@ -6171,12 +6259,18 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                     style={{
                       flex: 1,
                       padding: '6px 8px',
-                      border: '1px solid #ddd',
+                      border: isDarkMode 
+                        ? `1px solid ${selectedItem?.textAlign === 'center' ? '#4285f4' : '#404040'}` 
+                        : '1px solid #ddd',
                       borderRadius: '4px',
-                      background: textStyling.textAlign === 'center' ? '#e3f2fd' : 'white',
+                      background: isDarkMode
+                        ? (selectedItem?.textAlign === 'center' ? 'rgba(66, 133, 244, 0.3)' : '#2d2d2d')
+                        : (selectedItem?.textAlign === 'center' ? '#e3f2fd' : 'white'),
                       cursor: 'pointer',
                       fontSize: '12px',
-                      color: textStyling.textAlign === 'center' ? '#1976d2' : '#333',
+                      color: isDarkMode
+                        ? (selectedItem?.textAlign === 'center' ? '#90caf9' : '#e5e5e5')
+                        : (selectedItem?.textAlign === 'center' ? '#1976d2' : '#333'),
                       transition: 'all 0.2s ease',
                       display: 'flex',
                       alignItems: 'center',
@@ -6203,12 +6297,18 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                     style={{
                       flex: 1,
                       padding: '6px 8px',
-                      border: '1px solid #ddd',
+                      border: isDarkMode 
+                        ? `1px solid ${selectedItem?.textAlign === 'right' ? '#4285f4' : '#404040'}` 
+                        : '1px solid #ddd',
                       borderRadius: '4px',
-                      background: textStyling.textAlign === 'right' ? '#e3f2fd' : 'white',
+                      background: isDarkMode
+                        ? (selectedItem?.textAlign === 'right' ? 'rgba(66, 133, 244, 0.3)' : '#2d2d2d')
+                        : (selectedItem?.textAlign === 'right' ? '#e3f2fd' : 'white'),
                       cursor: 'pointer',
                       fontSize: '12px',
-                      color: textStyling.textAlign === 'right' ? '#1976d2' : '#333',
+                      color: isDarkMode
+                        ? (selectedItem?.textAlign === 'right' ? '#90caf9' : '#e5e5e5')
+                        : (selectedItem?.textAlign === 'right' ? '#1976d2' : '#333'),
                       transition: 'all 0.2s ease',
                       display: 'flex',
                       alignItems: 'center',
@@ -6290,6 +6390,183 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                     )}
                   </div>
                 ))}
+              </div>
+            </>
+          )}
+
+          {/* Object Settings Section - Only for rectangles */}
+          {activeColorSection === 'object' && selectedItem && selectedItem.type === 'rectangle' && (
+            <>
+              <div style={{ fontSize: 13, marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Object Settings</span>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    onClick={() => setUnitMode('px')}
+                    style={{
+                      padding: '2px 8px',
+                      fontSize: '10px',
+                      borderRadius: '4px',
+                      border: isDarkMode ? '1px solid #404040' : '1px solid #ddd',
+                      background: isDarkMode ? (unitMode === 'px' ? '#4285f4' : '#2d2d2d') : (unitMode === 'px' ? '#e3f2fd' : 'white'),
+                      color: isDarkMode ? (unitMode === 'px' ? '#90caf9' : '#e5e5e5') : (unitMode === 'px' ? '#1976d2' : '#333'),
+                      cursor: 'pointer',
+                      fontWeight: unitMode === 'px' ? '600' : '400',
+                    }}
+                    title="Use pixels"
+                  >
+                    px
+                  </button>
+                  <button
+                    onClick={() => setUnitMode('mm')}
+                    style={{
+                      padding: '2px 8px',
+                      fontSize: '10px',
+                      borderRadius: '4px',
+                      border: isDarkMode ? '1px solid #404040' : '1px solid #ddd',
+                      background: isDarkMode ? (unitMode === 'mm' ? '#4285f4' : '#2d2d2d') : (unitMode === 'mm' ? '#e3f2fd' : 'white'),
+                      color: isDarkMode ? (unitMode === 'mm' ? '#90caf9' : '#e5e5e5') : (unitMode === 'mm' ? '#1976d2' : '#333'),
+                      cursor: 'pointer',
+                      fontWeight: unitMode === 'mm' ? '600' : '400',
+                    }}
+                    title="Use millimeters"
+                  >
+                    mm
+                  </button>
+                </div>
+              </div>
+              
+              {/* Corner Radius Control */}
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ fontSize: 10, marginBottom: 3 }}>Corner Radius: {selectedItem.cornerRadius || 0}px</div>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={selectedItem.cornerRadius || 0}
+                  onChange={(e) => {
+                    const cornerRadius = parseInt(e.target.value) || 0;
+                    setItems(prevItems => prevItems.map(item =>
+                      item.id === selectedItem.id
+                        ? { ...item, cornerRadius }
+                        : item
+                    ));
+                  }}
+                  style={{
+                    width: '100%',
+                    height: '4px',
+                    borderRadius: '2px',
+                    background: isDarkMode ? '#404040' : '#ddd',
+                    outline: 'none',
+                    cursor: 'pointer',
+                  }}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="50"
+                  value={selectedItem.cornerRadius || 0}
+                  onChange={(e) => {
+                    const cornerRadius = Math.max(0, Math.min(50, parseInt(e.target.value) || 0));
+                    setItems(prevItems => prevItems.map(item =>
+                      item.id === selectedItem.id
+                        ? { ...item, cornerRadius }
+                        : item
+                    ));
+                  }}
+                  style={{
+                    width: '100%',
+                    marginTop: '3px',
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    border: isDarkMode ? '1px solid #404040' : '1px solid #ddd',
+                    fontSize: '12px',
+                    background: isDarkMode ? '#2d2d2d' : 'white',
+                    color: isDarkMode ? '#e5e5e5' : '#333',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              {/* Width Control */}
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ fontSize: 10, marginBottom: 3 }}>
+                  Width: {unitMode === 'px' 
+                    ? `${selectedItem.width || 0}px (${((selectedItem.width || 0) * 0.264583).toFixed(2)} mm)`
+                    : `${((selectedItem.width || 0) * 0.264583).toFixed(2)}mm (${selectedItem.width || 0}px)`
+                  }
+                </div>
+                <input
+                  type="number"
+                  min={unitMode === 'px' ? 10 : (10 * 0.264583).toFixed(2)}
+                  max={unitMode === 'px' ? 2000 : (2000 * 0.264583).toFixed(2)}
+                  step={unitMode === 'px' ? 1 : 0.01}
+                  value={unitMode === 'px' 
+                    ? (selectedItem.width || 0)
+                    : ((selectedItem.width || 0) * 0.264583).toFixed(2)
+                  }
+                  onChange={(e) => {
+                    const value = parseFloat(e.target.value) || 0;
+                    const width = unitMode === 'px' 
+                      ? Math.max(10, Math.min(2000, value))
+                      : Math.max(10, Math.min(2000, Math.round(value / 0.264583)));
+                    setItems(prevItems => prevItems.map(item =>
+                      item.id === selectedItem.id
+                        ? { ...item, width }
+                        : item
+                    ));
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    border: isDarkMode ? '1px solid #404040' : '1px solid #ddd',
+                    fontSize: '12px',
+                    background: isDarkMode ? '#2d2d2d' : 'white',
+                    color: isDarkMode ? '#e5e5e5' : '#333',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              {/* Height Control */}
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ fontSize: 10, marginBottom: 3 }}>
+                  Height: {unitMode === 'px' 
+                    ? `${selectedItem.height || 0}px (${((selectedItem.height || 0) * 0.264583).toFixed(2)} mm)`
+                    : `${((selectedItem.height || 0) * 0.264583).toFixed(2)}mm (${selectedItem.height || 0}px)`
+                  }
+                </div>
+                <input
+                  type="number"
+                  min={unitMode === 'px' ? 10 : (10 * 0.264583).toFixed(2)}
+                  max={unitMode === 'px' ? 2000 : (2000 * 0.264583).toFixed(2)}
+                  step={unitMode === 'px' ? 1 : 0.01}
+                  value={unitMode === 'px' 
+                    ? (selectedItem.height || 0)
+                    : ((selectedItem.height || 0) * 0.264583).toFixed(2)
+                  }
+                  onChange={(e) => {
+                    const value = parseFloat(e.target.value) || 0;
+                    const height = unitMode === 'px' 
+                      ? Math.max(10, Math.min(2000, value))
+                      : Math.max(10, Math.min(2000, Math.round(value / 0.264583)));
+                    setItems(prevItems => prevItems.map(item =>
+                      item.id === selectedItem.id
+                        ? { ...item, height }
+                        : item
+                    ));
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    border: isDarkMode ? '1px solid #404040' : '1px solid #ddd',
+                    fontSize: '12px',
+                    background: isDarkMode ? '#2d2d2d' : 'white',
+                    color: isDarkMode ? '#e5e5e5' : '#333',
+                    boxSizing: 'border-box',
+                  }}
+                />
               </div>
             </>
           )}

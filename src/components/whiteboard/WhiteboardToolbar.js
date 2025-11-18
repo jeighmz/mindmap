@@ -19,27 +19,10 @@ const ChartMenuItem = ({ chartType, icon, title, onChartMenuToggle }) => {
         e.stopPropagation();
         onChartMenuToggle?.();
       }}
+      className="chart-menu-item"
       style={{
-        width: '36px',
-        height: '36px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'transparent',
-        border: 'none',
-        borderRadius: '6px',
         cursor: isDragging ? 'grabbing' : 'grab',
-        color: '#6b7280',
-        transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)',
         opacity: isDragging ? 0.6 : 1,
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.backgroundColor = '#f3f4f6';
-        e.currentTarget.style.color = '#111827';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = 'transparent';
-        e.currentTarget.style.color = '#6b7280';
       }}
       title={title}
     >
@@ -175,20 +158,12 @@ const ToolbarItem = ({ type, icon, chartType, isChartMenuOpen, onChartMenuToggle
           {icon}
         </div>
         {isChartMenuOpen && (
-          <div style={{
+          <div className="chart-menu-popup" style={{
             position: 'absolute',
             right: '-160px',
             top: '50%',
             transform: 'translateY(-50%)',
-            background: 'white',
-            border: '1px solid #e5e7eb',
-            borderRadius: '8px',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
             zIndex: 1001,
-            padding: '6px',
-            display: 'flex',
-            gap: '4px',
-            overflow: 'hidden'
           }}>
             <ChartMenuItem
               chartType="xy"

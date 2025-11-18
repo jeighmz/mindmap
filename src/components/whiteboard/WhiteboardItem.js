@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useApp } from '../../contexts/AppContext';
 
 
 const formatDateLabel = (timestamp) => {
@@ -106,6 +107,12 @@ const WhiteboardItem = ({
   onResizeEnd,
   onShowColorMenu
 }) => {
+  const { isDarkMode } = useApp();
+  
+  // Text colors for charts based on dark mode
+  const chartTextColor = isDarkMode ? '#e5e5e5' : '#404040';
+  const chartTitleColor = isDarkMode ? '#ffffff' : '#1a1a1a';
+  
   // Validate item early - but don't return yet (hooks must run unconditionally)
   const isValidItem = item && 
     item.position && 
@@ -651,7 +658,8 @@ const WhiteboardItem = ({
       fontStyle: item.fontStyle || 'normal',
       textDecoration: item.textDecoration || 'none',
       textAlign: textAlign,
-      border: item.borderColor ? `2px solid ${item.borderColor}` : '1px solid #ccc'
+      border: item.borderColor ? `2px solid ${item.borderColor}` : '1px solid #ccc',
+      borderRadius: item.type === 'rectangle' && item.cornerRadius !== undefined ? `${item.cornerRadius}px` : undefined
     };
 
     if (item.type === 'image') {
@@ -737,15 +745,44 @@ const WhiteboardItem = ({
     if (item.type === 'chart') {
       const basePadding = 30;
       const yAxisLabelPadding = 20;
-      const padding = basePadding + yAxisLabelPadding;
+      const basePaddingValue = basePadding + yAxisLabelPadding;
       const tickLength = 5; // Length of tick marks
       
       const width = item.width;
       const height = item.height;
-      const chartWidth = width - (padding * 2);
-      const chartHeight = height - (padding * 2);
-
+      
+      // Calculate dynamic padding based on axis titles
+      // Title font size scales with chart size
+      const titleFontSize = Math.min(width, height) * 0.045;
+      const axisLabelFontSize = Math.min(width, height) * 0.028;
+      
+      // Calculate extra padding needed for axis titles
+      const xAxisTitlePadding = (chartConfig.xAxisTitle && chartConfig.showXAxisLabels !== false) 
+        ? titleFontSize + 10  // Space for title + margin
+        : 0;
+      
+      const yAxisTitlePadding = (chartConfig.yAxisTitle && chartConfig.showYAxisLabels !== false)
+        ? titleFontSize + 10  // Space for rotated title + margin
+        : 0;
+      
+      // Calculate padding for axis labels (they can be rotated, so need extra space)
+      const xAxisLabelPadding = (chartConfig.showXAxisLabels && (chartConfig.xAxisMode === 'date' || chartConfig.xAxisMode === 'custom'))
+        ? axisLabelFontSize * 1.5  // Extra space for rotated labels
+        : axisLabelFontSize + 5;  // Space for normal labels
+      
+      const yAxisLabelPaddingValue = axisLabelFontSize + 5;
+      
+      // Calculate effective padding
+      const leftPadding = basePaddingValue + Math.max(yAxisTitlePadding, yAxisLabelPaddingValue);
+      const rightPadding = basePaddingValue;
+      const topPadding = basePaddingValue;
+      const bottomPadding = basePaddingValue + Math.max(xAxisTitlePadding, xAxisLabelPadding);
+      
+      const padding = basePaddingValue; // Keep for backward compatibility
       const effectivePadding = padding;
+      
+      const chartWidth = width - leftPadding - rightPadding;
+      const chartHeight = height - topPadding - bottomPadding;
 
       // Parse and generate data points for XY charts
       const parseDataPoints = (dataPointsString) => {
@@ -864,7 +901,7 @@ const WhiteboardItem = ({
                 x={width / 2}
                 y={effectivePadding - 10}
                 fontSize={Math.min(width, height) * 0.05}
-                fill="#1a1a1a"
+                fill={chartTitleColor}
                 textAnchor="middle"
                 fontWeight="600"
                 letterSpacing="0.5px"
@@ -881,14 +918,14 @@ const WhiteboardItem = ({
                 <>
                   {/* Background grid */}
                   {xScale.map((value, i) => {
-                    const x = effectivePadding + (i * (chartWidth / (xScale.length - 1)));
+                    const x = leftPadding + (i * (chartWidth / (xScale.length - 1)));
                     return (
                       <g key={`x-${i}`}>
                         <line 
                           x1={x}
-                          y1={effectivePadding}
+                          y1={topPadding}
                           x2={x}
-                          y2={height - effectivePadding}
+                          y2={height - bottomPadding}
                           stroke="#666" 
                           strokeDasharray="4,4"
                           opacity="0.1"
@@ -896,14 +933,14 @@ const WhiteboardItem = ({
                         {chartConfig.showXAxisLabels && (
                           <text 
                             x={x}
-                            y={height - padding + 20}
-                            fontSize={Math.min(width, height) * 0.028}
-                            fill="#404040"
+                            y={height - bottomPadding + axisLabelFontSize + 5}
+                            fontSize={axisLabelFontSize}
+                            fill={chartTextColor}
                             textAnchor="middle"
                             fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
                             style={{ userSelect: 'none' }}
                             transform={chartConfig.xAxisMode === 'date' || chartConfig.xAxisMode === 'custom' 
-                              ? `rotate(-45, ${x}, ${height - padding + 20})` 
+                              ? `rotate(-45, ${x}, ${height - bottomPadding + axisLabelFontSize + 5})` 
                               : undefined}
                           >
                             {formatAxisLabel(value, chartConfig.xAxisMode)}
@@ -913,13 +950,13 @@ const WhiteboardItem = ({
                     );
                   })}
                   {yScale.map((value, i) => {
-                    const y = height - effectivePadding - (i * (chartHeight / (yScale.length - 1)));
+                    const y = height - bottomPadding - (i * (chartHeight / (yScale.length - 1)));
                     return (
                       <g key={`y-${i}`}>
                         <line 
-                          x1={effectivePadding}
+                          x1={leftPadding}
                           y1={y}
-                          x2={width - effectivePadding}
+                          x2={width - rightPadding}
                           y2={y}
                           stroke="#666" 
                           strokeDasharray="4,4"
@@ -927,10 +964,10 @@ const WhiteboardItem = ({
                         />
                         {chartConfig.showYAxisLabels && (
                           <text 
-                            x={padding - 15}
+                            x={leftPadding - 10}
                             y={y}
-                            fontSize={Math.min(width, height) * 0.028}
-                            fill="#404040"
+                            fontSize={axisLabelFontSize}
+                            fill={chartTextColor}
                             textAnchor="end"
                             dominantBaseline="middle"
                             fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
@@ -945,30 +982,30 @@ const WhiteboardItem = ({
 
                   {/* Axes */}
                   <line 
-                    x1={effectivePadding} 
-                    y1={height - effectivePadding} 
-                    x2={width - padding} 
-                    y2={height - effectivePadding} 
+                    x1={leftPadding} 
+                    y1={height - bottomPadding} 
+                    x2={width - rightPadding} 
+                    y2={height - bottomPadding} 
                     stroke="#2196F3" 
                     strokeWidth={Math.min(width, height) * 0.005}
                   />
                   <line 
-                    x1={effectivePadding} 
-                    y1={padding} 
-                    x2={effectivePadding} 
-                    y2={height - effectivePadding} 
+                    x1={leftPadding} 
+                    y1={topPadding} 
+                    x2={leftPadding} 
+                    y2={height - bottomPadding} 
                     stroke="#2196F3" 
                     strokeWidth={Math.min(width, height) * 0.005}
                   />
 
                   {/* X-Axis Title */}
-                  {chartConfig.xAxisTitle && (
+                  {chartConfig.xAxisTitle && chartConfig.showXAxisLabels !== false && (
                     <g>
                       <text
-                        x={effectivePadding + (chartWidth / 2)}
-                        y={height - padding / 2}
-                        fontSize={Math.min(width, height) * 0.045}
-                        fill="#1a1a1a"
+                        x={leftPadding + (chartWidth / 2)}
+                        y={height - bottomPadding + titleFontSize + 5}
+                        fontSize={titleFontSize}
+                        fill={chartTitleColor}
                         textAnchor="middle"
                         fontWeight="600"
                         letterSpacing="0.5px"
@@ -982,19 +1019,19 @@ const WhiteboardItem = ({
                   )}
 
                   {/* Y-Axis Title */}
-                  {chartConfig.yAxisTitle && (
+                  {chartConfig.yAxisTitle && chartConfig.showYAxisLabels !== false && (
                     <g>
                       <text
-                        x={padding / 2}
-                        y={height - effectivePadding - (chartHeight / 2)}
-                        fontSize={Math.min(width, height) * 0.045}
-                        fill="#1a1a1a"
+                        x={leftPadding / 3}
+                        y={height - bottomPadding - (chartHeight / 2)}
+                        fontSize={titleFontSize}
+                        fill={chartTitleColor}
                         textAnchor="middle"
                         fontWeight="600"
                         letterSpacing="0.5px"
                         fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
                         style={{ userSelect: 'none' }}
-                        transform={`rotate(-90, ${padding / 3}, ${height - effectivePadding - (chartHeight / 2)})`}
+                        transform={`rotate(-90, ${leftPadding / 3}, ${height - bottomPadding - (chartHeight / 2)})`}
                       >
                         {chartConfig.yAxisTitle}
                       </text>
@@ -1003,11 +1040,11 @@ const WhiteboardItem = ({
 
                   {/* Arrows */}
                   <polygon 
-                    points={`${width - padding + 5},${height - effectivePadding} ${width - padding - 5},${height - effectivePadding - 5} ${width - padding - 5},${height - effectivePadding + 5}`} 
+                    points={`${width - rightPadding + 5},${height - bottomPadding} ${width - rightPadding - 5},${height - bottomPadding - 5} ${width - rightPadding - 5},${height - bottomPadding + 5}`} 
                     fill="#2196F3"
                   />
                   <polygon 
-                    points={`${effectivePadding},${padding - 5} ${effectivePadding - 5},${padding + 5} ${effectivePadding + 5},${padding + 5}`} 
+                    points={`${leftPadding},${topPadding - 5} ${leftPadding - 5},${topPadding + 5} ${leftPadding + 5},${topPadding + 5}`} 
                     fill="#2196F3"
                   />
 
@@ -1028,12 +1065,12 @@ const WhiteboardItem = ({
                           {dataPoints.map((point, i) => {
                             const normalizedX = (point.x - chartConfig.xAxisStart) / xRange;
                             const normalizedY = (point.y - chartConfig.yAxisStart) / yRange;
-                            const barX = effectivePadding + (normalizedX * chartWidth) - (barWidth / 2);
+                            const barX = leftPadding + (normalizedX * chartWidth) - (barWidth / 2);
                             const barHeight = Math.max(0, normalizedY * maxBarHeight);
-                            const barY = height - effectivePadding - barHeight;
+                            const barY = height - bottomPadding - barHeight;
                             
-                            if (barX < effectivePadding || barX + barWidth > width - effectivePadding) return null;
-                            if (barY < effectivePadding || barY + barHeight > height - effectivePadding) return null;
+                            if (barX < leftPadding || barX + barWidth > width - rightPadding) return null;
+                            if (barY < topPadding || barY + barHeight > height - bottomPadding) return null;
                             
                             return (
                               <rect
@@ -1056,12 +1093,12 @@ const WhiteboardItem = ({
                       const chartPoints = dataPoints.map(point => {
                         const normalizedX = (point.x - chartConfig.xAxisStart) / xRange;
                         const normalizedY = (point.y - chartConfig.yAxisStart) / yRange;
-                        const chartX = effectivePadding + (normalizedX * chartWidth);
-                        const chartY = height - effectivePadding - (normalizedY * chartHeight);
+                        const chartX = leftPadding + (normalizedX * chartWidth);
+                        const chartY = height - bottomPadding - (normalizedY * chartHeight);
                         return { x: chartX, y: chartY, dataX: point.x, dataY: point.y };
                       }).filter(p => 
-                        p.x >= effectivePadding && p.x <= width - effectivePadding &&
-                        p.y >= effectivePadding && p.y <= height - effectivePadding
+                        p.x >= leftPadding && p.x <= width - rightPadding &&
+                        p.y >= topPadding && p.y <= height - bottomPadding
                       );
 
                       if (chartPoints.length === 0) return null;
@@ -1087,12 +1124,12 @@ const WhiteboardItem = ({
                       const chartPoints = dataPoints.map(point => {
                         const normalizedX = (point.x - chartConfig.xAxisStart) / xRange;
                         const normalizedY = (point.y - chartConfig.yAxisStart) / yRange;
-                        const chartX = effectivePadding + (normalizedX * chartWidth);
-                        const chartY = height - effectivePadding - (normalizedY * chartHeight);
+                        const chartX = leftPadding + (normalizedX * chartWidth);
+                        const chartY = height - bottomPadding - (normalizedY * chartHeight);
                         return { x: chartX, y: chartY, dataX: point.x, dataY: point.y };
                       }).filter(p => 
-                        p.x >= effectivePadding && p.x <= width - effectivePadding &&
-                        p.y >= effectivePadding && p.y <= height - effectivePadding
+                        p.x >= leftPadding && p.x <= width - rightPadding &&
+                        p.y >= topPadding && p.y <= height - bottomPadding
                       );
 
                       if (chartPoints.length === 0) return null;
@@ -1170,7 +1207,7 @@ const WhiteboardItem = ({
                           x={x}
                           y={height - padding + 20}
                           fontSize={Math.min(width, height) * 0.028}
-                          fill="#404040"
+                          fill={chartTextColor}
                           textAnchor="middle"
                           fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
                           style={{ userSelect: 'none' }}
@@ -1202,7 +1239,7 @@ const WhiteboardItem = ({
                           x={padding - 15}
                           y={y}
                           fontSize={Math.min(width, height) * 0.028}
-                          fill="#404040"
+                          fill={chartTextColor}
                           textAnchor="end"
                           dominantBaseline="middle"
                           fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
@@ -1240,7 +1277,7 @@ const WhiteboardItem = ({
                       x={effectivePadding + (chartWidth / 2)}
                       y={height - padding / 2}
                       fontSize={Math.min(width, height) * 0.045}
-                      fill="#1a1a1a"
+                      fill={chartTitleColor}
                       textAnchor="middle"
                       fontWeight="600"
                       letterSpacing="0.5px"
@@ -1260,7 +1297,7 @@ const WhiteboardItem = ({
                       x={padding / 2}
                       y={height - effectivePadding - (chartHeight / 2)}
                       fontSize={Math.min(width, height) * 0.045}
-                      fill="#1a1a1a"
+                      fill={chartTitleColor}
                       textAnchor="middle"
                       fontWeight="600"
                       letterSpacing="0.5px"
@@ -1363,7 +1400,7 @@ const WhiteboardItem = ({
                           x={x}
                           y={height - padding + 20}
                           fontSize={Math.min(width, height) * 0.028}
-                          fill="#404040"
+                          fill={chartTextColor}
                           textAnchor="middle"
                           fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
                           style={{ userSelect: 'none' }}
@@ -1395,7 +1432,7 @@ const WhiteboardItem = ({
                           x={padding - 15}
                           y={y}
                           fontSize={Math.min(width, height) * 0.028}
-                          fill="#404040"
+                          fill={chartTextColor}
                           textAnchor="end"
                           dominantBaseline="middle"
                           fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
@@ -1433,7 +1470,7 @@ const WhiteboardItem = ({
                       x={effectivePadding + (chartWidth / 2)}
                       y={height - padding / 2}
                       fontSize={Math.min(width, height) * 0.045}
-                      fill="#1a1a1a"
+                      fill={chartTitleColor}
                       textAnchor="middle"
                       fontWeight="600"
                       letterSpacing="0.5px"
@@ -1453,7 +1490,7 @@ const WhiteboardItem = ({
                       x={padding / 2}
                       y={height - effectivePadding - (chartHeight / 2)}
                       fontSize={Math.min(width, height) * 0.045}
-                      fill="#1a1a1a"
+                      fill={chartTitleColor}
                       textAnchor="middle"
                       fontWeight="600"
                       letterSpacing="0.5px"
@@ -2516,7 +2553,7 @@ const WhiteboardItem = ({
                                 x={isFirstTier ? tierX - 6 : (isLastTier ? tierX + nodeWidth + 6 : tierX + nodeWidth / 2)}
                                 y={pos.y + nodeHeight / 2}
                                 fontSize={Math.min(width, height) * 0.022}
-                                fill="#1a1a1a"
+                                fill={chartTitleColor}
                                 textAnchor={isFirstTier ? 'end' : (isLastTier ? 'start' : 'middle')}
                                 dominantBaseline="middle"
                                 fontWeight="500"
@@ -2600,7 +2637,7 @@ const WhiteboardItem = ({
                             x={padding - (padding * 0.2)} // Position relative to axis
                             y={y}
                             fontSize={Math.min(width, height) * 0.028}
-                            fill="#404040"
+                            fill={chartTextColor}
                             textAnchor="end"
                             dominantBaseline="middle"
                             fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
@@ -2689,7 +2726,7 @@ const WhiteboardItem = ({
                             x={x}
                             y={height - effectivePadding + (tickLength * 3)}
                             fontSize={Math.min(width, height) * 0.028}
-                            fill="#404040"
+                            fill={chartTextColor}
                             textAnchor="middle"
                             fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
                             style={{ userSelect: 'none' }}
@@ -2743,7 +2780,7 @@ const WhiteboardItem = ({
                             x={padding - (padding * 0.2)}
                             y={y}
                             fontSize={Math.min(width, height) * 0.028}
-                            fill="#404040"
+                            fill={chartTextColor}
                             textAnchor="end"
                             dominantBaseline="middle"
                             fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
@@ -2765,7 +2802,7 @@ const WhiteboardItem = ({
                       x={padding / 2}
                       y={height - effectivePadding - (chartHeight / 2)}
                       fontSize={Math.min(width, height) * 0.045}
-                      fill="#1a1a1a"
+                      fill={chartTitleColor}
                       textAnchor="middle"
                       fontWeight="600"
                       letterSpacing="0.5px"
@@ -2893,7 +2930,7 @@ const WhiteboardItem = ({
                       x={effectivePadding + (chartWidth / 2)}
                       y={height - (padding / 2)}
                       fontSize={Math.min(width, height) * 0.045}
-                      fill="#1a1a1a"
+                      fill={chartTitleColor}
                       textAnchor="middle"
                       fontWeight="600"
                       letterSpacing="0.5px"

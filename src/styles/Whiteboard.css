@@ -3155,6 +3155,52 @@
   background: var(--bg-secondary);
 }
 
+/* Chart Menu Popup Styles */
+.chart-menu-popup {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  padding: 6px;
+  display: flex;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.chart-menu-item {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #6b7280;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.chart-menu-item:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+/* Dark Mode - Chart Menu Popup */
+.dark-mode .chart-menu-popup {
+  background: var(--bg-primary);
+  border-color: var(--border-color);
+  box-shadow: 0 4px 12px var(--shadow);
+}
+
+.dark-mode .chart-menu-item {
+  color: var(--text-secondary);
+}
+
+.dark-mode .chart-menu-item:hover {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
 .dark-mode .chart-config-panel {
   background: var(--bg-primary) !important;
   border-color: var(--border-color) !important;

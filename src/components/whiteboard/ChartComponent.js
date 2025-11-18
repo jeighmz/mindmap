@@ -1,6 +1,12 @@
 import React from 'react';
+import { useApp } from '../../contexts/AppContext';
 
 const ChartComponent = ({ config, width, height }) => {
+  const { isDarkMode } = useApp();
+  
+  // Text colors for charts based on dark mode
+  const chartTextColor = isDarkMode ? '#e5e5e5' : '#404040';
+  const chartTitleColor = isDarkMode ? '#ffffff' : '#1a1a1a';
   const basePadding = 50;
   const yAxisLabelPadding = 35;
   const padding = basePadding + yAxisLabelPadding;
@@ -167,7 +173,7 @@ const ChartComponent = ({ config, width, height }) => {
                 x={x}
                 y={height - effectivePadding + (tickLength * 3)}
                 fontSize={xAxisFontSize}
-                fill="#404040"
+                fill={chartTextColor}
                 textAnchor="middle"
                 fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
                 style={{ userSelect: 'none' }}
@@ -219,7 +225,7 @@ const ChartComponent = ({ config, width, height }) => {
                 x={effectivePadding - (tickLength * 3)}
                 y={y}
                 fontSize={yAxisFontSize}
-                fill="#404040"
+                fill={chartTextColor}
                 textAnchor="end"
                 dominantBaseline="middle"
                 fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
@@ -257,7 +263,7 @@ const ChartComponent = ({ config, width, height }) => {
             x={effectivePadding + (chartWidth / 2)}
             y={height - (padding / 4)}
             fontSize={titleFontSize}
-            fill="#1a1a1a"
+            fill={chartTitleColor}
             textAnchor="middle"
             fontWeight="600"
             letterSpacing="0.5px"
@@ -277,7 +283,7 @@ const ChartComponent = ({ config, width, height }) => {
             x={padding / 4}
             y={height - effectivePadding - (chartHeight / 2)}
             fontSize={titleFontSize}
-            fill="#1a1a1a"
+            fill={chartTitleColor}
             textAnchor="middle"
             fontWeight="600"
             letterSpacing="0.5px"

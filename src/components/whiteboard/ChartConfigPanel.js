@@ -939,6 +939,25 @@ const ChartConfigPanel = React.memo(({
           />
         </div>
 
+        {/* Chart Type Selector (for XY charts) - moved to top */}
+        {initialConfig.chartType === 'xy' && (
+          <div className="chart-config-section">
+            <label>Chart Display Type:</label>
+            <select
+              name="xyChartDisplayType"
+              value={formData.xyChartDisplayType || 'line'}
+              onChange={handleChange}
+            >
+              <option value="line">Line Chart</option>
+              <option value="bar">Bar Chart</option>
+              <option value="scatter">Scatter Plot</option>
+            </select>
+          </div>
+        )}
+
+        {/* Data Plotting Section (for XY, bar, and scatter charts) - moved to top */}
+        {['xy', 'bar', 'scatter'].includes(initialConfig.chartType) && renderDataPlottingSection()}
+
         {/* X-Axis and Y-Axis configuration - hidden for Sankey charts */}
         {initialConfig.chartType !== 'sankey' && (
           <>
@@ -993,25 +1012,6 @@ const ChartConfigPanel = React.memo(({
             {renderYAxisInputs()}
           </>
         )}
-
-        {/* Chart Type Selector (for XY charts) */}
-        {initialConfig.chartType === 'xy' && (
-          <div className="chart-config-section">
-            <label>Chart Display Type:</label>
-            <select
-              name="xyChartDisplayType"
-              value={formData.xyChartDisplayType || 'line'}
-              onChange={handleChange}
-            >
-              <option value="line">Line Chart</option>
-              <option value="bar">Bar Chart</option>
-              <option value="scatter">Scatter Plot</option>
-            </select>
-          </div>
-        )}
-
-        {/* Data Plotting Section (for XY, bar, and scatter charts) */}
-        {['xy', 'bar', 'scatter'].includes(initialConfig.chartType) && renderDataPlottingSection()}
 
         {/* Sankey Chart Data Section */}
         {initialConfig.chartType === 'sankey' && renderSankeyDataSection()}

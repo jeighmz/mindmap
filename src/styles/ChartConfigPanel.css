@@ -343,4 +343,139 @@
   background: var(--input-bg);
   border-color: var(--input-border);
   color: var(--text-primary);
+}
+
+.dark-mode .input-container input {
+  background: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-primary);
+}
+
+.dark-mode .help-text {
+  color: var(--text-secondary);
+}
+
+.dark-mode .chart-settings-header {
+  background-color: var(--bg-tertiary);
+  border-color: var(--border-color);
+}
+
+.dark-mode .chart-settings-header:hover {
+  background-color: var(--bg-secondary);
+}
+
+.dark-mode .chart-settings-title span:last-child {
+  color: var(--text-secondary);
+}
+
+.dark-mode .chart-settings-nested {
+  background-color: var(--bg-tertiary);
+  border-color: var(--border-color);
+}
+
+.dark-mode .wave-type-selector {
+  background-color: var(--bg-tertiary);
+}
+
+.dark-mode .wave-type-button {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.dark-mode .wave-type-button.active {
+  background-color: #4285f4;
+  color: white;
+}
+
+.dark-mode .checkbox-section {
+  background-color: var(--bg-tertiary);
+  border-color: var(--border-color);
+}
+
+.dark-mode .checkbox-section label {
+  color: var(--text-primary);
+}
+
+.dark-mode .y-axis-checkbox-section {
+  background-color: var(--bg-tertiary);
+  border-color: var(--border-color);
+}
+
+.dark-mode .y-axis-checkbox-section label {
+  color: var(--text-primary);
+}
+
+.dark-mode .button-apply {
+  background-color: #4285f4;
+  color: white;
+}
+
+.dark-mode .button-apply:hover {
+  background-color: #357abd;
+}
+
+.dark-mode .button-cancel {
+  background-color: var(--text-secondary);
+  color: white;
+}
+
+.dark-mode .button-cancel:hover {
+  background-color: var(--text-tertiary);
+}
+
+/* File input styles for dark mode */
+.dark-mode .chart-config-panel input[type="file"] {
+  background: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-primary);
+}
+
+.dark-mode .chart-config-panel input[type="file"]::file-selector-button {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+  padding: 4px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  margin-right: 8px;
+}
+
+.dark-mode .chart-config-panel input[type="file"]::file-selector-button:hover {
+  background: var(--bg-tertiary);
+}
+
+/* File loaded message dark mode */
+.dark-mode .chart-config-panel [style*="backgroundColor: '#e8f5e9'"] {
+  background-color: rgba(76, 175, 80, 0.2) !important;
+  border-color: rgba(76, 175, 80, 0.5) !important;
+  color: #81c784 !important;
+}
+
+/* Chart settings arrow dark mode */
+.dark-mode .chart-settings-arrow {
+  color: var(--text-primary);
+}
+
+/* Code blocks in help text dark mode */
+.dark-mode .chart-config-panel code {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+/* Inline styled elements dark mode */
+.dark-mode .chart-config-panel [style*="background: '#f5f5f5'"],
+.dark-mode .chart-config-panel [style*="background: \"#f5f5f5\""] {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+}
+
+.dark-mode .chart-config-panel [style*="color: '#666'"],
+.dark-mode .chart-config-panel [style*="color: \"#666\""] {
+  color: var(--text-secondary) !important;
+}
+
+.dark-mode .chart-config-panel [style*="border: '1px solid #ddd'"],
+.dark-mode .chart-config-panel [style*="border: \"1px solid #ddd\""] {
+  border-color: var(--input-border) !important;
 } 

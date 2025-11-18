@@ -2165,6 +2165,13 @@ a:hover {
   align-items: center;
 }
 
+/* Landing page header - no background */
+.landing-page .header {
+  background-color: transparent;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
 .header-content {
   max-width: 1200px;
   width: 100%;
@@ -2364,6 +2371,13 @@ html {
   box-shadow: 0 2px 10px var(--shadow);
 }
 
+/* Dark Mode - Landing page header - no background */
+.dark-mode .landing-page .header {
+  background-color: transparent;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
 .dark-mode .nav-links a {
   color: var(--text-primary);
 }
@@ -2392,4 +2406,327 @@ html {
 .dark-mode .signup-button:hover {
   background: #357abd;
   border-color: #357abd;
+}
+
+/* Dark Mode - Landing Page Sections */
+.dark-mode .landing-page {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* Dark Mode - Hero Section */
+.dark-mode .hero-section {
+  background: linear-gradient(180deg, #0a0e27 0%, #1a1f3a 50%, #2a2f4a 100%);
+}
+
+.dark-mode .hero-badge span {
+  color: #a5b4fc;
+}
+
+.dark-mode .hero-title-line {
+  color: #ffffff;
+}
+
+.dark-mode .hero-subtitle {
+  color: #cbd5e1;
+}
+
+.dark-mode .feature-pill {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #cbd5e1;
+}
+
+.dark-mode .feature-pill:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+/* Dark Mode - Features Section */
+.dark-mode .features-section {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.dark-mode .features-heading {
+  color: var(--text-primary);
+}
+
+.dark-mode .features-description {
+  color: var(--text-secondary);
+}
+
+.dark-mode .feature-card {
+  background-color: var(--bg-primary);
+  border-color: var(--border-color);
+  box-shadow: 0 2px 8px var(--shadow);
+}
+
+.dark-mode .feature-card:hover {
+  box-shadow: 0 4px 16px var(--shadow);
+}
+
+.dark-mode .feature-title {
+  color: var(--text-primary);
+}
+
+.dark-mode .feature-description {
+  color: var(--text-secondary);
+}
+
+.dark-mode .feature-benefits li {
+  color: var(--text-secondary);
+}
+
+.dark-mode .feature-benefits li::before {
+  color: #6366f1;
+}
+
+.dark-mode .feature-icon-wrapper {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+}
+
+.dark-mode .feature-image-wrapper {
+  background: transparent;
+}
+
+.dark-mode .features-cta {
+  background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+  border: 1px solid var(--border-color);
+}
+
+.dark-mode .features-cta-title {
+  color: var(--text-primary);
+}
+
+.dark-mode .features-cta-description {
+  color: var(--text-secondary);
+}
+
+.dark-mode .features-cta-button {
+  color: #6366f1;
+  border-color: #6366f1;
+}
+
+.dark-mode .features-cta-button:hover {
+  background: #6366f1;
+  color: #ffffff;
+}
+
+/* Dark Mode - Use Cases Section */
+.dark-mode .use-cases-section {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.dark-mode .use-cases-heading {
+  color: var(--text-primary);
+}
+
+.dark-mode .use-cases-description {
+  color: var(--text-secondary);
+}
+
+.dark-mode .use-case-card {
+  background: var(--bg-primary);
+  border-color: var(--border-color);
+  box-shadow: 0 4px 20px var(--shadow);
+}
+
+.dark-mode .use-case-card:hover {
+  box-shadow: 0 6px 24px var(--shadow);
+}
+
+.dark-mode .use-case-card h3 {
+  color: var(--text-primary);
+}
+
+.dark-mode .use-case-card p {
+  color: var(--text-secondary);
+}
+
+.dark-mode .use-case-example {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.dark-mode .example-label {
+  color: #6366f1;
+}
+
+.dark-mode .use-case-try-button {
+  color: #6366f1;
+  border-color: #6366f1;
+}
+
+.dark-mode .use-case-try-button:hover {
+  background: #6366f1;
+  color: #ffffff;
+}
+
+.dark-mode .use-case-icon {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+}
+
+/* Dark Mode - Technology Section */
+.dark-mode .tech-section {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.dark-mode .tech-heading {
+  color: var(--text-primary);
+}
+
+.dark-mode .tech-description {
+  color: var(--text-secondary);
+}
+
+.dark-mode .tech-card {
+  background: var(--bg-primary);
+  border-color: var(--border-color);
+  box-shadow: 0 8px 30px var(--shadow);
+}
+
+.dark-mode .tech-card:hover {
+  box-shadow: 0 12px 40px var(--shadow);
+}
+
+.dark-mode .tech-logo {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+}
+
+.dark-mode .tech-title {
+  color: var(--text-primary);
+}
+
+.dark-mode .tech-detail {
+  color: var(--text-secondary);
+}
+
+.dark-mode .tech-features li {
+  color: var(--text-primary);
+  border-top-color: var(--border-color);
+}
+
+.dark-mode .tech-features li:last-child {
+  border-bottom-color: var(--border-color);
+}
+
+.dark-mode .tech-features li::before {
+  color: #6366f1;
+}
+
+/* Dark Mode - Models Section */
+.dark-mode .models-section {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.dark-mode .models-heading {
+  color: var(--text-primary);
+}
+
+.dark-mode .models-table {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+}
+
+.dark-mode .models-table th {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-bottom-color: var(--border-color);
+}
+
+.dark-mode .models-table td {
+  color: var(--text-primary);
+  border-bottom-color: var(--border-color);
+}
+
+.dark-mode .models-table tr:hover {
+  background: var(--bg-tertiary);
+}
+
+.dark-mode .company-logo {
+  opacity: 0.9;
+}
+
+.dark-mode .company-logo:hover {
+  opacity: 1;
+}
+
+/* Dark Mode - Integrations Section */
+.dark-mode .integrations-section {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.dark-mode .coming-soon-heading {
+  color: var(--text-primary);
+}
+
+.dark-mode .coming-soon-description {
+  color: var(--text-secondary);
+}
+
+.dark-mode .integrations-heading {
+  color: var(--text-primary);
+}
+
+.dark-mode .integration-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 6px var(--shadow);
+}
+
+.dark-mode .integration-card:hover {
+  box-shadow: 0 8px 12px var(--shadow);
+}
+
+.dark-mode .integration-card h4 {
+  color: var(--text-primary);
+}
+
+.dark-mode .integration-card p {
+  color: var(--text-secondary);
+}
+
+/* Dark Mode - CTA Section */
+.dark-mode .cta-section {
+  background: linear-gradient(180deg, #0a0e27 0%, #1a1f3a 50%, #2a2f4a 100%);
+}
+
+.dark-mode .cta-badge span {
+  color: #a5b4fc;
+}
+
+.dark-mode .cta-heading {
+  color: #ffffff;
+}
+
+.dark-mode .cta-description {
+  color: #cbd5e1;
+}
+
+.dark-mode .cta-stat-label {
+  color: #94a3b8;
+}
+
+.dark-mode .cta-button-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.dark-mode .cta-button-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.dark-mode .cta-note {
+  color: #94a3b8;
 } 
