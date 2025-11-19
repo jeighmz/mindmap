@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { getUserProfilePicture, handleImageError } from '../utils/profilePicture';
 import Login from './Login';
 import Settings from './Settings';
+import Notifications from './Notifications';
 import '../styles/UserMenu.css';
 
 export default function UserMenu({ onSettingsOpen }) {
@@ -71,6 +72,9 @@ export default function UserMenu({ onSettingsOpen }) {
                   </div>
                 </div>
                 <div className="menu-divider" />
+                <div className="menu-item-notifications-wrapper">
+                  <Notifications />
+                </div>
                 {isWhiteboardPage && (
                   <button 
                     className="menu-item"

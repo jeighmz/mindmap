@@ -21,6 +21,7 @@ function App() {
             <Routes>
               <Route path="/" element={<LandingPage />} />
               <Route path="/whiteboard" element={<WhiteboardPage />} />
+              <Route path="/whiteboard/:boardId" element={<WhiteboardPage />} />
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/features" element={<FeaturesPage />} />
               <Route path="/use-cases" element={<UseCasesPage />} />

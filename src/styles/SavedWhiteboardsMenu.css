@@ -35,6 +35,7 @@
   right: 0;
   width: 480px;
   background: white;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   padding: 12px;
@@ -283,6 +284,11 @@ input.search-input:disabled {
   justify-content: center;
 }
 
+.board-actions .share-btn {
+  color: #4285f4;
+  background: transparent;
+}
+
 .board-actions .delete-btn {
   color: #dc3545;
   background: transparent;
@@ -290,6 +296,11 @@ input.search-input:disabled {
 
 .board-actions button:hover {
   background: #e9ecef;
+}
+
+.share-btn:hover {
+  background: rgba(66, 133, 244, 0.1) !important;
+  color: #357abd;
 }
 
 .delete-btn:hover {
@@ -478,6 +489,7 @@ input.search-input:disabled {
 
 .dark-mode .saved-whiteboards-menu {
   background: var(--bg-primary);
+  border-color: var(--border-color);
   box-shadow: 0 2px 10px var(--shadow);
   color: var(--text-primary);
 }
@@ -598,9 +610,19 @@ input.search-input:disabled {
   color: var(--text-primary);
 }
 
+.dark-mode .board-actions .share-btn {
+  color: #60a5fa;
+  background: transparent;
+}
+
 .dark-mode .board-actions .delete-btn {
   color: #f87171;
   background: transparent;
+}
+
+.dark-mode .share-btn:hover {
+  background: rgba(96, 165, 250, 0.15) !important;
+  color: #93c5fd;
 }
 
 .dark-mode .delete-btn:hover {

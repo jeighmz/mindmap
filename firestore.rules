@@ -14,7 +14,8 @@ service cloud.firestore {
     // Users collection rules
     match /users/{userId} {
       allow create: if request.auth != null && request.auth.uid == userId;
-      allow read, update: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null; // Allow reading other users for sharing (email lookup)
+      allow update: if request.auth != null && request.auth.uid == userId;
     }
 
     // Boards collection rules
@@ -23,17 +24,84 @@ service cloud.firestore {
         return resource != null && resource.data.userId == null;
       }
       
-      // Read rules
+      function isBoardOwner() {
+        return request.auth != null && 
+          resource != null &&
+          resource.data.userId != null &&
+          resource.data.userId == request.auth.uid;
+      }
+      
+      function isSharedWith() {
+        return request.auth != null && 
+          resource != null &&
+          resource.data.sharedWith != null &&
+          request.auth.uid in resource.data.sharedWith;
+      }
+      
+      function hasEditorPermission() {
+        // Check if user has editor permission via boardShares
+        // This is a simplified check - in production, you might want to verify via boardShares collection
+        return isSharedWith(); // For now, all shared users can edit. Can be refined later.
+      }
+      
+      // Read rules - allow if demo, owner, or shared
+      // For list queries, Firestore evaluates these rules for each document
       allow read: if 
         isDemoBoard() || // Allow reading demo/public boards
-        isOwner(resource.data.userId);      // Allow reading own boards
+        isBoardOwner() || // Allow reading own boards
+        isSharedWith(); // Allow reading shared boards
       
       // Write rules
       allow create: if isSignedIn() 
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.keys().hasAll(['name', 'content', 'userId', 'savedAt']);
       
-      allow update, delete: if isOwner(resource.data.userId);
+      allow update: if 
+        isBoardOwner() || // Owner can always update
+        (isSharedWith() && hasEditorPermission()); // Shared users with editor permission can update
+      
+      allow delete: if isBoardOwner(); // Only owner can delete
+    }
+    
+    // Board shares collection rules
+    match /boardShares/{shareId} {
+      // Allow reading if user is the recipient or board owner
+      // For queries, Firestore evaluates this rule for each document
+      allow read: if request.auth != null && 
+        (resource.data.sharedWithUserId == request.auth.uid || 
+         resource.data.boardOwnerId == request.auth.uid);
+      
+      allow create: if request.auth != null && 
+        request.resource.data.boardOwnerId == request.auth.uid;
+      
+      allow update, delete: if request.auth != null && 
+        (resource.data.boardOwnerId == request.auth.uid || 
+         resource.data.sharedWithUserId == request.auth.uid);
+    }
+    
+    // Notifications collection rules
+    match /notifications/{notificationId} {
+      // Allow reading if userId matches OR if userEmail matches (for pending notifications)
+      allow read: if request.auth != null && 
+        (resource.data.userId == request.auth.uid ||
+         (resource.data.userEmail != null && 
+          resource.data.userEmail == request.auth.token.email.toLowerCase()));
+      
+      allow update, delete: if request.auth != null && 
+        resource.data.userId == request.auth.uid;
+      
+      allow create: if request.auth != null;
+    }
+    
+    // Board presence collection rules
+    match /boardPresence/{presenceId} {
+      allow read: if request.auth != null;
+      
+      allow create, update: if request.auth != null && 
+        request.resource.data.userId == request.auth.uid;
+      
+      allow delete: if request.auth != null && 
+        resource.data.userId == request.auth.uid;
     }
 
     // Whiteboards collection rules

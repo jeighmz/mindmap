@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserBoards, saveBoard, deleteBoard } from '../../services/boardService';
 import { serverTimestamp } from 'firebase/firestore';
+import ShareBoardModal from './ShareBoardModal';
 import '../../styles/SavedWhiteboardsMenu.css';
 
 const SavedWhiteboardsMenu = ({ 
@@ -19,6 +20,8 @@ const SavedWhiteboardsMenu = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [selectedBoardForShare, setSelectedBoardForShare] = useState(null);
 
   // Helper function to safely convert timestamp to Date for display
   const getDisplayDate = (timestamp) => {
@@ -681,29 +684,58 @@ const SavedWhiteboardsMenu = ({
                           </svg>
                         </button>
                         {(activeTab === 'personal' && user?.uid === board.userId) && (
-                          <button 
-                            type="button"
-                            className="delete-btn"
-                            onClick={() => handleDelete(board.id)}
-                            disabled={isLoading}
-                            title="Delete board"
-                          >
-                            <svg 
-                              width="14" 
-                              height="14" 
-                              viewBox="0 0 24 24" 
-                              fill="none" 
-                              stroke="currentColor" 
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
+                          <>
+                            <button 
+                              type="button"
+                              className="share-btn"
+                              onClick={() => {
+                                setSelectedBoardForShare({ id: board.id, name: board.name });
+                                setShareModalOpen(true);
+                              }}
+                              disabled={isLoading}
+                              title="Share board"
                             >
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                              <line x1="10" y1="11" x2="10" y2="17" />
-                              <line x1="14" y1="11" x2="14" y2="17" />
-                            </svg>
-                          </button>
+                              <svg 
+                                width="14" 
+                                height="14" 
+                                viewBox="0 0 24 24" 
+                                fill="none" 
+                                stroke="currentColor" 
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <circle cx="18" cy="5" r="3"></circle>
+                                <circle cx="6" cy="12" r="3"></circle>
+                                <circle cx="18" cy="19" r="3"></circle>
+                                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                              </svg>
+                            </button>
+                            <button 
+                              type="button"
+                              className="delete-btn"
+                              onClick={() => handleDelete(board.id)}
+                              disabled={isLoading}
+                              title="Delete board"
+                            >
+                              <svg 
+                                width="14" 
+                                height="14" 
+                                viewBox="0 0 24 24" 
+                                fill="none" 
+                                stroke="currentColor" 
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                <line x1="10" y1="11" x2="10" y2="17" />
+                                <line x1="14" y1="11" x2="14" y2="17" />
+                              </svg>
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -735,6 +767,17 @@ const SavedWhiteboardsMenu = ({
           </div>
         </div>
         </>
+      )}
+      {selectedBoardForShare && (
+        <ShareBoardModal
+          isOpen={shareModalOpen}
+          onClose={() => {
+            setShareModalOpen(false);
+            setSelectedBoardForShare(null);
+          }}
+          boardId={selectedBoardForShare.id}
+          boardName={selectedBoardForShare.name}
+        />
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -20,6 +20,25 @@ const WhiteboardPage = () => {
   const navigate = useNavigate();
   const { boardId } = useParams();
   const { user } = useAuth();
+  
+  // Load board from URL if boardId is present (only once)
+  const hasLoadedFromUrlRef = useRef(false);
+  useEffect(() => {
+    if (boardId && canvasRef.current && user && !hasLoadedFromUrlRef.current) {
+      // Check if canvas has handleLoadWhiteboard method
+      if (typeof canvasRef.current.handleLoadWhiteboard === 'function') {
+        hasLoadedFromUrlRef.current = true;
+        canvasRef.current.handleLoadWhiteboard(boardId).catch(error => {
+          console.error('Error loading board from URL:', error);
+          hasLoadedFromUrlRef.current = false;
+        });
+      }
+    }
+    // Reset when boardId changes
+    if (!boardId) {
+      hasLoadedFromUrlRef.current = false;
+    }
+  }, [boardId, user]);
 
   const handleOpenMindMapPanel = () => {
     // Toggle the mind map panel - let canvas handle the toggle

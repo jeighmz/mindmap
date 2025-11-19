@@ -144,6 +144,11 @@
 .menu-icon {
   font-size: 16px;
   color: #6c757d;
+  flex-shrink: 0;
+}
+
+.menu-item-notifications-wrapper {
+  width: 100%;
 }
 
 .sign-in-button {

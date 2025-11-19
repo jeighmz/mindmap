@@ -349,6 +349,10 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
       // Preserve ALL historical data including tabName and highlightedItems
       const historicalHighlightedItems = historyItem.highlightedItems || [];
       
+      // Check if the current active tab has content (user messages)
+      const activeTab = tabs.find(tab => tab.id === activeTabId);
+      const currentTabHasContent = activeTab && activeTab.messages.some(msg => msg.role === 'user');
+      
       // Restore highlighted items to the whiteboard
       if (onHighlightedItemsChange && historicalHighlightedItems.length > 0) {
         onHighlightedItemsChange(historicalHighlightedItems);
@@ -360,15 +364,44 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
       // Clear pending items when loading from history
       setPendingHighlightedItems([]);
       
-      setTabs([{
-        id: tabId,
-        name: historyItem.tabName || 'Restored Chat', // Use historical tabName
-        messages: historyItem.messages, // Use historical messages
-        highlightedItems: historicalHighlightedItems, // Use historical highlighted items
-        saved: historyItem.saved || false, // Preserve saved status
-        savedAt: historyItem.savedAt || null // Preserve saved timestamp
-      }]);
-      setActiveTabId(tabId);
+      if (currentTabHasContent) {
+        // Current tab has content - add as a new tab instead of replacing
+        const newTab = {
+          id: tabId,
+          name: historyItem.tabName || 'Restored Chat', // Use historical tabName
+          messages: historyItem.messages, // Use historical messages
+          highlightedItems: historicalHighlightedItems, // Use historical highlighted items
+          saved: historyItem.saved || false, // Preserve saved status
+          savedAt: historyItem.savedAt || null // Preserve saved timestamp
+        };
+        
+        // Check if a tab with this ID already exists
+        const existingTabIndex = tabs.findIndex(tab => tab.id === tabId);
+        
+        if (existingTabIndex >= 0) {
+          // Tab already exists - update it
+          const updatedTabs = [...tabs];
+          updatedTabs[existingTabIndex] = newTab;
+          setTabs(updatedTabs);
+        } else {
+          // Add as new tab
+          setTabs([...tabs, newTab]);
+        }
+        
+        setActiveTabId(tabId);
+      } else {
+        // Current tab has no content - replace it
+        setTabs([{
+          id: tabId,
+          name: historyItem.tabName || 'Restored Chat', // Use historical tabName
+          messages: historyItem.messages, // Use historical messages
+          highlightedItems: historicalHighlightedItems, // Use historical highlighted items
+          saved: historyItem.saved || false, // Preserve saved status
+          savedAt: historyItem.savedAt || null // Preserve saved timestamp
+        }]);
+        setActiveTabId(tabId);
+      }
+      
       setIsHistoryOpen(false);
     }
   };
@@ -657,12 +690,23 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
       // Get current chat history
       const currentHistory = await loadChatHistory(currentBoardId);
       
-      // IMPORTANT: Use ONLY the historyItem's messages (historical record), NOT current tab
-      const messagesToSave = historyItem.messages || [];
+      // Check if there's a current tab with this ID - if so, use its current content for resave
+      const currentTab = tabs.find(tab => tab.id === chatId);
+      
+      // Use current tab's content if available (for resave), otherwise use historical content
+      const messagesToSave = currentTab?.messages?.length > 0 
+        ? currentTab.messages 
+        : historyItem.messages || [];
+      
+      const highlightedItemsToSave = currentTab?.highlightedItems?.length > 0
+        ? currentTab.highlightedItems
+        : historyItem.highlightedItems || [];
+      
+      const tabNameToSave = currentTab?.name || historyItem.tabName || 'Untitled Chat';
       
       // Ensure we have messages
       if (!messagesToSave || messagesToSave.length === 0) {
-        alert('Cannot save chat: No messages found in this historical chat.');
+        alert('Cannot save chat: No messages found in this chat.');
         setSavingChatId(null);
         return;
       }
@@ -672,12 +716,12 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
         item => (item.tabId || item.id) === chatId
       );
       
-      // Mark as saved with timestamp, using ONLY historical messages and highlightedItems
+      // Mark as saved with timestamp, using current tab content if available, otherwise historical
       const chatToSave = {
         tabId: chatId,
-        tabName: historyItem.tabName || 'Untitled Chat',
-        messages: messagesToSave, // Historical messages only
-        highlightedItems: historyItem.highlightedItems || [], // Historical highlighted items
+        tabName: tabNameToSave,
+        messages: messagesToSave,
+        highlightedItems: highlightedItemsToSave,
         saved: true,
         savedAt: new Date().toISOString()
       };
@@ -695,8 +739,9 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
       // Save to Firestore
       await saveChatHistory(currentBoardId, updatedHistory);
       
-      // Update local state
-      setChatHistory(updatedHistory);
+      // Reload chat history from Firestore to ensure we have the latest decrypted version
+      // This ensures the UI reflects the updated savedAt timestamp and any other changes
+      await loadBoardChatHistory();
     } catch (error) {
       console.error('Error saving chat:', error);
       alert('Failed to save chat. Please try again.');
@@ -1392,20 +1437,12 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
                           <span className="history-item-count">
                             {historyItem.messages?.length || 0} messages
                           </span>
-                          {historyItem.saved ? (
-                            <button
-                              className="history-delete-button"
-                              onClick={(e) => handleDeleteSavedChat(historyItem, e)}
-                              title="Delete saved chat (free up slot)"
-                            >
-                              <DeleteIcon />
-                            </button>
-                          ) : (
+                          <div className="history-action-buttons">
                             <button
                               className="history-save-button"
                               onClick={(e) => handleSaveChat(historyItem, e)}
                               disabled={savingChatId === (historyItem.tabId || historyItem.id)}
-                              title="Save chat permanently"
+                              title={historyItem.saved ? "Resave chat (update saved version)" : "Save chat permanently"}
                             >
                               {savingChatId === (historyItem.tabId || historyItem.id) ? (
                                 <SpinnerIcon />
@@ -1413,7 +1450,16 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
                                 <SaveIcon />
                               )}
                             </button>
-                          )}
+                            {historyItem.saved && (
+                              <button
+                                className="history-delete-button"
+                                onClick={(e) => handleDeleteSavedChat(historyItem, e)}
+                                title="Delete saved chat (free up slot)"
+                              >
+                                <DeleteIcon />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                       {historyItem.messages && historyItem.messages.length > 0 && (

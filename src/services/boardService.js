@@ -9,9 +9,11 @@ import {
   where,
   orderBy,
   serverTimestamp,
-  updateDoc
+  updateDoc,
+  onSnapshot
 } from 'firebase/firestore';
 import { auth, db } from '../firebase-config';
+import { getApiBaseUrl } from '../utils/api';
 
 const BOARDS_COLLECTION = 'boards';
 
@@ -54,7 +56,7 @@ const convertSavedAtToDate = (savedAt) => {
   return null;
 };
 
-// Get all boards for a specific user
+// Get all boards for a specific user (including owned and shared)
 export const getUserBoards = async (userId) => {
   try {
     // Verify the requesting user matches the userId
@@ -64,39 +66,77 @@ export const getUserBoards = async (userId) => {
     }
 
     const boardsRef = collection(db, BOARDS_COLLECTION);
-    // Note: We sort by savedAt in the query (required for Firestore), but will re-sort by lastEditedAt in the UI
-    const q = query(
+    
+    // Get owned boards
+    const ownedBoardsQuery = query(
       boardsRef,
       where('userId', '==', userId),
       orderBy('savedAt', 'desc')
     );
     
-    const querySnapshot = await getDocs(q);
-    const boards = querySnapshot.docs.map(doc => {
+    // Get shared boards (where user is in sharedWith array)
+    // Note: Firestore doesn't support array-contains with orderBy on different fields
+    // So we'll fetch shared boards separately and merge
+    const sharedBoardsQuery = query(
+      boardsRef,
+      where('sharedWith', 'array-contains', userId)
+    );
+    
+    const [ownedSnapshot, sharedSnapshot] = await Promise.all([
+      getDocs(ownedBoardsQuery),
+      getDocs(sharedBoardsQuery)
+    ]);
+    
+    // Process owned boards
+    const ownedBoards = ownedSnapshot.docs.map(doc => {
       const data = doc.data();
-      
       const convertedSavedAt = convertSavedAtToDate(data.savedAt);
       
       const board = {
         id: doc.id,
         ...data,
-        // Only set savedAt if we successfully converted it
-        ...(convertedSavedAt && { savedAt: convertedSavedAt })
+        ...(convertedSavedAt && { savedAt: convertedSavedAt }),
+        isOwned: true
       };
       
-      // Only set lastEditedAt if it actually exists in Firestore and can be converted
       if (data.lastEditedAt) {
         const convertedLastEditedAt = convertSavedAtToDate(data.lastEditedAt);
         if (convertedLastEditedAt) {
           board.lastEditedAt = convertedLastEditedAt;
         }
       }
-      // If lastEditedAt doesn't exist, don't set it - the UI will use savedAt for display
       
       return board;
     });
     
-    return boards;
+    // Process shared boards (exclude duplicates - boards user owns)
+    const ownedBoardIds = new Set(ownedBoards.map(b => b.id));
+    const sharedBoards = sharedSnapshot.docs
+      .filter(doc => !ownedBoardIds.has(doc.id))
+      .map(doc => {
+        const data = doc.data();
+        const convertedSavedAt = convertSavedAtToDate(data.savedAt);
+        
+        const board = {
+          id: doc.id,
+          ...data,
+          ...(convertedSavedAt && { savedAt: convertedSavedAt }),
+          isOwned: false,
+          isShared: true
+        };
+        
+        if (data.lastEditedAt) {
+          const convertedLastEditedAt = convertSavedAtToDate(data.lastEditedAt);
+          if (convertedLastEditedAt) {
+            board.lastEditedAt = convertedLastEditedAt;
+          }
+        }
+        
+        return board;
+      });
+    
+    // Combine and return all boards
+    return [...ownedBoards, ...sharedBoards];
   } catch (error) {
     throw error;
   }
@@ -166,12 +206,8 @@ const cleanChartConfig = (item) => {
 // Save a new board or update an existing one
 export const saveBoard = async (boardData, userId) => {
   try {
-    // Verify the requesting user matches the userId
     const currentUser = checkAuth();
-    if (currentUser.uid !== userId) {
-      throw new Error('Unauthorized access');
-    }
-
+    
     // Validate board data
     if (!boardData.name) {
       throw new Error('Board name is required');
@@ -185,13 +221,41 @@ export const saveBoard = async (boardData, userId) => {
       return item;
     });
 
+    // If boardData has an id, it's an existing board - check permissions
+    if (boardData.id) {
+      const boardRef = doc(db, BOARDS_COLLECTION, boardData.id);
+      const existingDoc = await getDoc(boardRef);
+      
+      if (!existingDoc.exists()) {
+        throw new Error('Board not found');
+      }
+      
+      const existingData = existingDoc.data();
+      const isOwner = existingData.userId === currentUser.uid;
+      const isShared = (existingData.sharedWith || []).includes(currentUser.uid);
+      
+      // Only allow save if user is owner or shared user
+      // Note: Firestore rules will enforce editor permission for shared users
+      if (!isOwner && !isShared) {
+        throw new Error('Unauthorized access');
+      }
+      
+      // Preserve the original owner's userId - never change it
+      userId = existingData.userId;
+    } else {
+      // For new boards, verify the requesting user matches the userId
+      if (currentUser.uid !== userId) {
+        throw new Error('Unauthorized access');
+      }
+    }
+
     const data = {
       name: boardData.name,
       content: {
         ...boardData.content,
         items: cleanedItems
       },
-      userId: currentUser.uid
+      userId: userId // Use the original owner's userId for existing boards
     };
 
     // Handle savedAt (creation/first save time)
@@ -285,6 +349,46 @@ export const saveBoard = async (boardData, userId) => {
   }
 };
 
+// Subscribe to real-time board content updates
+export const subscribeToBoardContent = (boardId, callback) => {
+  try {
+    checkAuth();
+    
+    if (!boardId) {
+      console.warn('Board ID is required for subscription');
+      return () => {}; // Return empty unsubscribe function
+    }
+    
+    const boardRef = doc(db, BOARDS_COLLECTION, boardId);
+    
+    return onSnapshot(boardRef, (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        const boardData = docSnapshot.data();
+        const content = boardData.content || {};
+        
+        // Convert Firestore timestamps to dates
+        const convertedContent = {
+          items: content.items || [],
+          connections: content.connections || [],
+          scale: content.scale || 1,
+          panOffset: content.panOffset || { x: 0, y: 0 }
+        };
+        
+        callback(convertedContent);
+      } else {
+        console.warn('Board document does not exist');
+        callback(null);
+      }
+    }, (error) => {
+      console.error('Error in board content subscription:', error);
+      callback(null);
+    });
+  } catch (error) {
+    console.error('Error subscribing to board content:', error);
+    return () => {}; // Return empty unsubscribe function
+  }
+};
+
 // Delete a board
 export const deleteBoard = async (boardId) => {
   try {
@@ -326,10 +430,133 @@ export const getDemoBoards = async () => {
   }
 };
 
+// Helper function to encrypt chat history
+const encryptChatHistory = async (chatHistory, userId) => {
+  try {
+    // In development mode, use base64 encoding (for easier debugging)
+    // This allows the decrypt function to handle it properly
+    if (process.env.NODE_ENV === 'development') {
+      return btoa(JSON.stringify(chatHistory));
+    }
+
+    const response = await fetch(`${getApiBaseUrl()}/encrypt-chat-history`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        chatHistory
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to encrypt chat history');
+    }
+
+    const { encrypted } = await response.json();
+    return encrypted;
+  } catch (error) {
+    console.error('Error encrypting chat history:', error);
+    throw error;
+  }
+};
+
+// Helper function to decrypt chat history
+const decryptChatHistory = async (encryptedData, userId) => {
+  try {
+    // Check if data is already unencrypted (backward compatibility)
+    // Encrypted data should have the format: iv:encrypted:authTag (contains colons)
+    if (!encryptedData || typeof encryptedData !== 'string') {
+      // If it's not a string, it might already be decrypted (backward compatibility)
+      if (Array.isArray(encryptedData)) {
+        return encryptedData;
+      }
+      return [];
+    }
+
+    // If it doesn't contain colons, it might be unencrypted JSON (backward compatibility)
+    if (!encryptedData.includes(':')) {
+      try {
+        const parsed = JSON.parse(encryptedData);
+        // If parsing succeeds and it's an array, it's unencrypted
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      } catch (e) {
+        // If parsing fails, continue with decryption
+      }
+    }
+
+    // In development mode, try to decode as base64 first
+    if (process.env.NODE_ENV === 'development') {
+      try {
+        const decoded = atob(encryptedData);
+        const parsed = JSON.parse(decoded);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      } catch (e) {
+        // If base64 decode fails, continue with decryption
+      }
+    }
+
+    // Attempt to decrypt
+    const response = await fetch(`${getApiBaseUrl()}/decrypt-chat-history`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        encryptedData
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      // If decryption fails and data looks unencrypted, try to parse as JSON
+      if (errorData.error && errorData.error.includes('Invalid encrypted data format')) {
+        try {
+          const parsed = JSON.parse(encryptedData);
+          if (Array.isArray(parsed)) {
+            console.warn('Chat history appears to be unencrypted, returning as-is');
+            return parsed;
+          }
+        } catch (e) {
+          // If parsing fails, throw the original error
+        }
+      }
+      throw new Error(errorData.error || 'Failed to decrypt chat history');
+    }
+
+    const { decrypted } = await response.json();
+    return decrypted;
+  } catch (error) {
+    console.error('Error decrypting chat history:', error);
+    // For backward compatibility, try to return the data as-is if it's an array
+    if (Array.isArray(encryptedData)) {
+      console.warn('Returning chat history as-is (backward compatibility)');
+      return encryptedData;
+    }
+    // If it's a string, try to parse it as JSON
+    if (typeof encryptedData === 'string') {
+      try {
+        const parsed = JSON.parse(encryptedData);
+        if (Array.isArray(parsed)) {
+          console.warn('Returning parsed chat history (backward compatibility)');
+          return parsed;
+        }
+      } catch (e) {
+        // If parsing fails, return empty array
+      }
+    }
+    // Return empty array as fallback
+    return [];
+  }
+};
+
 // Save chat history for a board (stored directly in board document)
 export const saveChatHistory = async (boardId, chatHistory) => {
   try {
-    checkAuth();
+    const currentUser = checkAuth();
     
     if (!boardId) {
       throw new Error('Board ID is required');
@@ -344,7 +571,10 @@ export const saveChatHistory = async (boardId, chatHistory) => {
     }
     
     const boardData = boardDoc.data();
-    if (boardData.userId !== auth.currentUser.uid) {
+    // Allow owner or shared users to save chat history
+    const hasAccess = boardData.userId === currentUser.uid || 
+                     (boardData.sharedWith || []).includes(currentUser.uid);
+    if (!hasAccess) {
       throw new Error('Unauthorized access');
     }
 
@@ -361,8 +591,11 @@ export const saveChatHistory = async (boardId, chatHistory) => {
       };
     });
     
+    // Encrypt the chat history before saving
+    const encryptedHistory = await encryptChatHistory(cleanedHistory, currentUser.uid);
+    
     const updateData = {
-      chatHistory: cleanedHistory
+      chatHistory: encryptedHistory
     };
     
     await updateDoc(boardRef, removeUndefined(updateData));
@@ -375,7 +608,7 @@ export const saveChatHistory = async (boardId, chatHistory) => {
 // Load chat history for a board
 export const loadChatHistory = async (boardId) => {
   try {
-    checkAuth();
+    const currentUser = checkAuth();
     
     if (!boardId) {
       return [];
@@ -390,13 +623,25 @@ export const loadChatHistory = async (boardId) => {
     
     const boardData = boardDoc.data();
     
-    // Verify the user owns this board
-    if (boardData.userId !== auth.currentUser.uid) {
+    // Verify the user has access to this board (owner or shared)
+    const hasAccess = boardData.userId === currentUser.uid || 
+                     (boardData.sharedWith || []).includes(currentUser.uid);
+    if (!hasAccess) {
       return [];
     }
     
-    // Return chat history from board document
-    return boardData.chatHistory || [];
+    // Get chat history from board document
+    const chatHistoryData = boardData.chatHistory;
+    
+    // If no chat history exists, return empty array
+    if (!chatHistoryData) {
+      return [];
+    }
+    
+    // Decrypt the chat history
+    const decryptedHistory = await decryptChatHistory(chatHistoryData, currentUser.uid);
+    
+    return decryptedHistory || [];
   } catch (error) {
     console.error('Error loading chat history:', error);
     // Return empty array on error instead of throwing

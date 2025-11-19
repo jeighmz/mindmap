@@ -1668,6 +1668,13 @@
   flex-shrink: 0;
 }
 
+.history-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .history-item-name {
   font-weight: 600;
   font-size: 16px;

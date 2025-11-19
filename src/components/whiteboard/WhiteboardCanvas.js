@@ -6,6 +6,7 @@ import Connector from './Connector';
 import SavedWhiteboardsMenu from './SavedWhiteboardsMenu';
 import SearchPanel from './SearchPanel';
 import ChartConfigPanel from './ChartConfigPanel';
+import CollaboratorsBar from './CollaboratorsBar';
 // import PublishModal from './PublishModal';  // Temporarily removed
 import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref as storageRef, uploadString, getDownloadURL, getStorage, uploadBytes, getMetadata } from 'firebase/storage';
@@ -14,9 +15,11 @@ import { db, storage } from '../../firebase-config';
 /* eslint-disable-next-line no-unused-vars */
 import { useAuth } from '../../contexts/AuthContext';
 import UserMenu from '../UserMenu';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { useTierPermissions } from '../../hooks/useTierPermissions';
-import { saveBoard, getDemoBoards } from '../../services/boardService';
+import { saveBoard, getDemoBoards, subscribeToBoardContent } from '../../services/boardService';
+import websocketService from '../../services/websocketService';
+import CursorIndicator from './CursorIndicator';
 import { getApiBaseUrl, getGroqApiKey } from '../../utils/api';
 import { canGenerateMindMap, canExpandConcept, incrementMindMapCount, incrementExpandCount, getUsageStats } from '../../utils/usageTracker';
 import { createNotionPage, writeToNotionDatabase } from './agent/tools/notion';
@@ -67,6 +70,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [isGeneratingMindMap, setIsGeneratingMindMap] = useState(false);
   const [chartGenerationType, setChartGenerationType] = useState('mindmap'); // 'mindmap', 'xy', 'sine', 'sankey'
   const [searchParams, setSearchParams] = useSearchParams();
+  const { boardId: urlBoardId } = useParams();
   const [contextMenu, setContextMenu] = useState({
     visible: false,
     x: 0,
@@ -81,6 +85,10 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [currentBoardId, setCurrentBoardId] = useState(null);
   const [currentBoardName, setCurrentBoardName] = useState(null);
   const { user } = useAuth();
+  const [collaborators, setCollaborators] = useState([]);
+  const cursorUpdateTimeoutRef = useRef(null);
+  const boardContentUnsubscribeRef = useRef(null);
+  const websocketConnectedRef = useRef(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [editingChartId, setEditingChartId] = useState(null);
   const [isSavedBoardsMenuOpen, setIsSavedBoardsMenuOpen] = useState(false);
@@ -106,6 +114,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const lastSavedContentRef = useRef(null); // Track last saved content to detect actual changes
   const isAutoSavingRef = useRef(false); // Mutex-like lock to prevent concurrent auto-saves
   const originalSavedAtRef = useRef(null); // Track the original savedAt timestamp - never changes after board creation
+  const originalBoardOwnerIdRef = useRef(null); // Track the original board owner's userId - never changes
   // Add state for color picker
   const [colorPicker, setColorPicker] = useState({
     background: '#fff740',
@@ -249,6 +258,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         }
       }
     },
+    handleLoadWhiteboard: handleLoadWhiteboard,
     handleOpenSearchPanel: () => {
       // Toggle the search panel
       if (isSearchPanelOpen) {
@@ -337,6 +347,20 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       const x = (e.clientX - rect.left - panOffset.x) / effectiveScale;
       const y = (e.clientY - rect.top - panOffset.y) / effectiveScale;
       setMousePosition({ x, y });
+      
+      // Update cursor position for collaborators via WebSocket (throttled for real-time updates)
+      // Use the same coordinate system as items (canvas space, 0-4000px)
+      if (currentBoardId && user && websocketConnectedRef.current) {
+        if (cursorUpdateTimeoutRef.current) {
+          clearTimeout(cursorUpdateTimeoutRef.current);
+        }
+        cursorUpdateTimeoutRef.current = setTimeout(() => {
+          // Clamp coordinates to canvas bounds (0-4000)
+          const clampedX = Math.max(0, Math.min(4000, x));
+          const clampedY = Math.max(0, Math.min(4000, y));
+          websocketService.updateCursorPosition(currentBoardId, { x: clampedX, y: clampedY });
+        }, 16); // Throttle to every 16ms (~60fps) for smooth real-time cursor updates
+      }
 
       if (isSelecting && selectionStart) {
         const width = x - selectionStart.x;
@@ -943,6 +967,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       setPanOffset({ x: 0, y: 0 });
       setScale(1.0);
       setCurrentBoardName(null);
+      originalBoardOwnerIdRef.current = null; // Reset board owner tracking
     }
   };
 
@@ -1205,6 +1230,21 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     loadDemoBoards();
   }, []);
 
+  // Cleanup collaboration on unmount or board change
+  useEffect(() => {
+    return () => {
+      if (boardContentUnsubscribeRef.current) {
+        boardContentUnsubscribeRef.current();
+      }
+      if (cursorUpdateTimeoutRef.current) {
+        clearTimeout(cursorUpdateTimeoutRef.current);
+      }
+      if (currentBoardId) {
+        websocketService.leaveBoard();
+      }
+    };
+  }, [currentBoardId]);
+
   // Sync Library state with parent
   useEffect(() => {
     if (onLibraryStateChange) {
@@ -1348,9 +1388,16 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         return cleaned;
       });
 
+      // Determine the board owner's userId
+      // For existing boards, use the original owner (prevents ownership transfer)
+      // For new boards, use the current user's ID
+      const boardOwnerId = currentBoardId && originalBoardOwnerIdRef.current 
+        ? originalBoardOwnerIdRef.current 
+        : user.uid;
+
       const boardData = {
         name: name || currentBoardName || 'Untitled Board',
-        userId: user.uid,
+        userId: boardOwnerId, // Use original owner for existing boards, current user for new boards
         lastEditedAt: serverTimestamp(), // Manual save - update lastEditedAt
         content: {
           items: processedItems,
@@ -1372,7 +1419,10 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       }
 
       // Save to Firestore
-      const savedBoard = await saveBoard(boardData, user.uid);
+      // saveBoard will check permissions and preserve the original owner's userId for existing boards
+      // For new boards, pass the current user's ID
+      const saveUserId = user.uid; // This is used for new boards; existing boards will use their original owner
+      const savedBoard = await saveBoard(boardData, saveUserId);
       
       // Store the original savedAt timestamp for new boards
       // For existing boards, preserve the originalSavedAtRef value
@@ -1414,6 +1464,148 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }
   };
 
+  // Initialize collaboration features (cursor tracking and live updates)
+  const initializeCollaboration = useCallback((boardId) => {
+    if (!boardId || !user) {
+      console.log('initializeCollaboration: missing boardId or user', { boardId, user: !!user });
+      return;
+    }
+    
+    console.log('Initializing collaboration for board:', boardId);
+
+    // Connect to WebSocket if not already connected
+    if (!websocketService.socket || !websocketService.socket.connected) {
+      websocketService.connect();
+    }
+
+    // Handle connection status
+    const handleConnectionStatus = ({ connected, error }) => {
+      websocketConnectedRef.current = connected;
+      if (error) {
+        console.error('WebSocket connection error:', error);
+      }
+    };
+
+    // Handle cursor updates from other users
+    const handleCursorUpdate = ({ userId, position, userData }) => {
+      if (userId === user.uid) return; // Ignore own cursor updates
+      
+      setCollaborators(prev => {
+        const existing = prev.find(c => c.userId === userId);
+        if (existing) {
+          // Update existing collaborator's cursor
+          return prev.map(c => 
+            c.userId === userId 
+              ? { ...c, cursorPosition: position }
+              : c
+          );
+        } else {
+          // Add new collaborator
+          return [...prev, {
+            userId,
+            userName: userData.userName,
+            userEmail: userData.userEmail,
+            userPhotoURL: userData.userPhotoURL,
+            cursorPosition: position,
+            cursorColor: userData.cursorColor
+          }];
+        }
+      });
+    };
+
+    // Handle user joined
+    const handleUserJoined = ({ userId, userData }) => {
+      if (userId === user.uid) return;
+      
+      setCollaborators(prev => {
+        const exists = prev.some(c => c.userId === userId);
+        if (!exists) {
+          return [...prev, {
+            userId,
+            userName: userData.userName,
+            userEmail: userData.userEmail,
+            userPhotoURL: userData.userPhotoURL,
+            cursorPosition: null,
+            cursorColor: userData.cursorColor
+          }];
+        }
+        return prev;
+      });
+    };
+
+    // Handle user left
+    const handleUserLeft = ({ userId }) => {
+      setCollaborators(prev => prev.filter(c => c.userId !== userId));
+    };
+
+    // Handle board users list (when joining)
+    const handleBoardUsers = (users) => {
+      const otherUsers = users.filter(u => u.userId !== user.uid);
+      setCollaborators(otherUsers.map(u => ({
+        userId: u.userId,
+        userName: u.userData.userName,
+        userEmail: u.userData.userEmail,
+        userPhotoURL: u.userData.userPhotoURL,
+        cursorPosition: null,
+        cursorColor: u.userData.cursorColor
+      })));
+    };
+
+    // Subscribe to WebSocket events
+    websocketService.on('connection-status', handleConnectionStatus);
+    websocketService.on('cursor-update', handleCursorUpdate);
+    websocketService.on('user-joined', handleUserJoined);
+    websocketService.on('user-left', handleUserLeft);
+    websocketService.on('board-users', handleBoardUsers);
+
+    // Join the board room
+    websocketService.joinBoard(boardId, user.uid, {
+      displayName: user.displayName,
+      email: user.email,
+      photoURL: user.photoURL
+    });
+
+    // Subscribe to real-time board content updates (still using Firestore for board content)
+    boardContentUnsubscribeRef.current = subscribeToBoardContent(boardId, (content) => {
+      if (content && !isInitialLoadRef.current) {
+        // Only update if not currently loading (to avoid conflicts during initial load)
+        // Accept remote updates immediately for real-time collaboration
+        // The auto-save mechanism will handle saving our local changes
+        
+        // Update items from remote changes
+        if (content.items) {
+          setItems(content.items);
+        }
+        if (content.connections) {
+          setConnections(content.connections);
+        }
+        if (content.scale !== undefined) {
+          setScale(content.scale);
+        }
+        if (content.panOffset) {
+          setPanOffset(content.panOffset);
+        }
+      }
+    });
+
+    // Cleanup function
+    return () => {
+      websocketService.off('connection-status', handleConnectionStatus);
+      websocketService.off('cursor-update', handleCursorUpdate);
+      websocketService.off('user-joined', handleUserJoined);
+      websocketService.off('user-left', handleUserLeft);
+      websocketService.off('board-users', handleBoardUsers);
+      websocketService.leaveBoard();
+      
+      if (boardContentUnsubscribeRef.current) {
+        boardContentUnsubscribeRef.current();
+      }
+      if (cursorUpdateTimeoutRef.current) {
+        clearTimeout(cursorUpdateTimeoutRef.current);
+      }
+    };
+  }, [user]);
+
   const handleLoadWhiteboard = async (boardId) => {
     try {
       // CRITICAL: Set isInitialLoadRef BEFORE clearing anything to prevent auto-save
@@ -1426,6 +1618,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       }
       lastAutoSaveBoardIdRef.current = null; // Reset so new board can save
       lastSavedContentRef.current = null; // Reset - will be set after loading
+      originalBoardOwnerIdRef.current = null; // Reset board owner tracking
       
       // Clear state before loading new board to prevent stale data
       setItems([]);
@@ -1439,6 +1632,10 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       }
 
       const boardData = boardDoc.data();
+      
+      // Store the original board owner's userId when loading a board
+      // This ensures ownership never changes, even if a shared user saves
+      originalBoardOwnerIdRef.current = boardData.userId || null;
       
       // Store the original savedAt timestamp when loading a board
       // This ensures it never changes, even if the board is refreshed
@@ -1642,6 +1839,14 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       } else {
         setCurrentBoardId(boardId);
         setCurrentBoardName(boardData.name || null);
+        
+        // Navigate to board URL so CollaboratorsBar can track presence
+        navigate(`/whiteboard/${boardId}`, { replace: true });
+        
+        // Initialize collaboration features (cursor tracking and live updates)
+        if (user) {
+          initializeCollaboration(boardId);
+        }
       }
       
       // Keep isInitialLoadRef true for 2 seconds after load to prevent auto-save
@@ -1855,6 +2060,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   }, [currentBoardId]);
 
   // Auto-save effect - debounced (only for items and connections, not viewport changes)
+  // Use shorter debounce (300ms) when collaborators are active for real-time updates
   useEffect(() => {
     // Clear any pending auto-save when board changes
     if (autoSaveTimeoutRef.current) {
@@ -1871,13 +2077,18 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     const boardIdForThisSave = currentBoardId;
     const boardNameForThisSave = currentBoardName;
 
-    // Set new timeout for auto-save (2 seconds after last change)
+    // Use shorter debounce (300ms) when collaborators are active for real-time collaboration
+    // Otherwise use 2 seconds for normal auto-save
+    const hasActiveCollaborators = collaborators.length > 0;
+    const debounceTime = hasActiveCollaborators ? 300 : 2000;
+
+    // Set new timeout for auto-save
     autoSaveTimeoutRef.current = setTimeout(() => {
       if (currentBoardId === boardIdForThisSave && currentBoardName === boardNameForThisSave) {
         autoSave();
       }
       autoSaveTimeoutRef.current = null;
-    }, 2000);
+    }, debounceTime);
 
     // Cleanup - clear timeout if component unmounts or dependencies change
     return () => {
@@ -1886,7 +2097,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         autoSaveTimeoutRef.current = null;
       }
     };
-  }, [items, connections, currentBoardId, currentBoardName, autoSave, isInitialLoadRef, isGeneratingMindMapRef]);
+  }, [items, connections, currentBoardId, currentBoardName, autoSave, isInitialLoadRef, isGeneratingMindMapRef, collaborators]);
 
   const handleDeleteSavedWhiteboard = (boardId) => {
     const updatedBoards = savedWhiteboards.filter(b => b.id !== boardId);
@@ -6664,6 +6875,11 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
           </button>
           */}
         </div>
+        {(currentBoardId || urlBoardId) && user && (
+          <div className="header-center-controls">
+            <CollaboratorsBar boardId={currentBoardId || urlBoardId} />
+          </div>
+        )}
         <div className="header-right-controls">
           <button 
             className="header-button save-button"
@@ -7082,6 +7298,23 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
               zIndex: 1000
             }}
           />
+        )}
+
+        {/* Collaborator cursors */}
+        {collaborators.length > 0 && (
+          <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10000 }}>
+            {collaborators.map(collab => {
+              if (!collab.cursorPosition) return null;
+              return (
+                <CursorIndicator
+                  key={collab.userId}
+                  collaborator={collab}
+                  scale={scale}
+                  panOffset={panOffset}
+                />
+              );
+            })}
+          </div>
         )}
       </div>
 

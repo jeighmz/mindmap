@@ -2549,6 +2549,7 @@
   z-index: 1500;
   box-sizing: border-box;
   pointer-events: none;
+  gap: 12px;
 }
 
 .whiteboard-header > * {
@@ -2607,6 +2608,15 @@
   color: #495057;
 }
 
+
+.header-center-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  pointer-events: auto;
+}
 
 .header-right-controls {
   display: flex;
