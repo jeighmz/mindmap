@@ -18,20 +18,80 @@ const getStripe = () => {
 
 // Get the base URL for API calls
 const getBaseUrl = () => {
-  if (process.env.NODE_ENV === 'development') {
+  // Check if we're in development mode
+  if (process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost') {
     // In development, call Netlify Functions directly
     return 'http://localhost:8888/.netlify/functions';
   }
-  // In production, use the /api redirect
+  
+  // In production, use the /api redirect (handled by netlify.toml)
+  // This will redirect /api/* to /.netlify/functions/*
   return '/api';
 };
 
-// Map our tiers to Stripe product IDs
-const STRIPE_PRODUCT_IDS = {
-  [USER_TIERS.STARTER]: 'prod_TSG73qEwSrGdpr',
-  [USER_TIERS.PRO]: 'prod_TSG8miwSS3czd7',
-  [USER_TIERS.CREATOR_AI]: 'prod_TSG8Fh0h21SEhc',
+// Detect if we're using live/production Stripe keys
+const isProductionMode = () => {
+  const publishableKey = process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY;
+  return publishableKey && publishableKey.startsWith('pk_live_');
 };
+
+// Get Stripe product IDs based on environment
+// Production product IDs can be set via environment variables
+// Falls back to test product IDs for development
+//
+// Production Product IDs (set via environment variables):
+// - Starter: prod_TNlcRbyRR0NBAU
+// - Pro: prod_TNlcHMU8qci7qi
+// - Creator AI: prod_TNlcORK76OVe4q
+//
+// Test Product IDs (hardcoded fallback):
+// - Starter: prod_TSG73qEwSrGdpr
+// - Pro: prod_TSG8miwSS3czd7
+// - Creator AI: prod_TSG8Fh0h21SEhc
+const getStripeProductIds = () => {
+  const isProduction = isProductionMode();
+  
+  if (isProduction) {
+    // Use production product IDs from environment variables
+    // If not set, will use test IDs as fallback (should be set in production!)
+    return {
+      [USER_TIERS.STARTER]: process.env.REACT_APP_STRIPE_PRODUCT_ID_STARTER || 'prod_TSG73qEwSrGdpr',
+      [USER_TIERS.PRO]: process.env.REACT_APP_STRIPE_PRODUCT_ID_PRO || 'prod_TSG8miwSS3czd7',
+      [USER_TIERS.CREATOR_AI]: process.env.REACT_APP_STRIPE_PRODUCT_ID_CREATOR_AI || 'prod_TSG8Fh0h21SEhc',
+    };
+  } else {
+    // Use test product IDs for development
+    return {
+      [USER_TIERS.STARTER]: 'prod_TSG73qEwSrGdpr',
+      [USER_TIERS.PRO]: 'prod_TSG8miwSS3czd7',
+      [USER_TIERS.CREATOR_AI]: 'prod_TSG8Fh0h21SEhc',
+    };
+  }
+};
+
+// Map our tiers to Stripe product IDs (environment-aware)
+const STRIPE_PRODUCT_IDS = getStripeProductIds();
+
+// Log product IDs being used (for debugging)
+if (process.env.NODE_ENV === 'development' || process.env.REACT_APP_DEBUG_STRIPE) {
+  const isProduction = isProductionMode();
+  console.log(`[Stripe] Using ${isProduction ? 'PRODUCTION' : 'TEST'} product IDs:`, {
+    STARTER: STRIPE_PRODUCT_IDS[USER_TIERS.STARTER],
+    PRO: STRIPE_PRODUCT_IDS[USER_TIERS.PRO],
+    CREATOR_AI: STRIPE_PRODUCT_IDS[USER_TIERS.CREATOR_AI],
+    mode: isProduction ? 'LIVE' : 'TEST'
+  });
+  
+  // Warn if in production mode but using test product IDs
+  if (isProduction) {
+    const testProductIds = ['prod_TSG73qEwSrGdpr', 'prod_TSG8miwSS3czd7', 'prod_TSG8Fh0h21SEhc'];
+    const usingTestIds = Object.values(STRIPE_PRODUCT_IDS).some(id => testProductIds.includes(id));
+    if (usingTestIds) {
+      console.warn('[Stripe] ⚠️ WARNING: Production mode detected but using TEST product IDs!');
+      console.warn('[Stripe] Set REACT_APP_STRIPE_PRODUCT_ID_STARTER, REACT_APP_STRIPE_PRODUCT_ID_PRO, and REACT_APP_STRIPE_PRODUCT_ID_CREATOR_AI environment variables.');
+    }
+  }
+}
 
 // Stripe uses 'month' and 'year' for intervals
 const INTERVAL_MAPPING = {
@@ -66,8 +126,23 @@ class StripeService {
       }
       const userData = userDoc.data();
 
-      // Create checkout session through Firebase Function
-      const response = await fetch(`${getBaseUrl()}/create-checkout-session`, {
+      // Create checkout session through Netlify Function
+      const baseUrl = getBaseUrl();
+      const apiUrl = `${baseUrl}/create-checkout-session`;
+      
+      // Fallback URL: try direct function path if /api redirect doesn't work
+      const fallbackUrl = `/.netlify/functions/create-checkout-session`;
+      
+      console.log('[Stripe] Creating checkout session:', {
+        url: apiUrl,
+        fallbackUrl,
+        baseUrl,
+        environment: process.env.NODE_ENV,
+        hostname: window.location.hostname
+      });
+      
+      // Try the primary URL first
+      let response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -82,9 +157,51 @@ class StripeService {
         }),
       });
 
+      // If 404, try the fallback direct function path
+      if (response.status === 404 && baseUrl === '/api') {
+        console.log('[Stripe] Primary URL returned 404, trying fallback:', fallbackUrl);
+        response = await fetch(fallbackUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId,
+            productId,
+            interval: INTERVAL_MAPPING[interval],
+            customerEmail: userData.email,
+            currentTier: userData.tier || 'FREE',
+            newTier: tier,
+          }),
+        });
+      }
+
       if (!response.ok) {
         const errorData = await response.text();
-        throw new Error(`Checkout session creation failed: ${errorData}`);
+        console.error('[Stripe] Checkout session creation failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          url: apiUrl,
+          fallbackTried: response.status === 404 && baseUrl === '/api',
+          error: errorData.substring(0, 500) // Limit error message length
+        });
+        
+        // Provide more helpful error message
+        if (response.status === 404) {
+          throw new Error(`API endpoint not found (404). 
+
+Troubleshooting steps:
+1. Go to Netlify Dashboard → Deploys → Trigger deploy → Deploy site
+2. Wait for deployment to complete
+3. Verify the function exists: Netlify Dashboard → Functions → create-checkout-session
+4. Check build logs for any errors
+
+URLs tried:
+- ${apiUrl}
+- ${fallbackUrl}`);
+        }
+        
+        throw new Error(`Checkout session creation failed (${response.status}): ${errorData.substring(0, 200)}`);
       }
 
       const responseData = await response.json();

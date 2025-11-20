@@ -63,23 +63,20 @@
 
 ### 4. Verify Product IDs
 
-- [ ] **Check Product IDs Match**
-  - Go to https://dashboard.stripe.com/products (Live mode)
-  - Verify product IDs in `src/services/stripeService.js` match your live products:
-    ```javascript
-    const STRIPE_PRODUCT_IDS = {
-      [USER_TIERS.STARTER]: 'prod_...', // Verify this matches
-      [USER_TIERS.PRO]: 'prod_...',     // Verify this matches
-      [USER_TIERS.CREATOR_AI]: 'prod_...', // Verify this matches
-    };
-    ```
+- [ ] **Set Production Product IDs in Environment Variables**
+  - Your production product IDs are:
+    - Starter: `prod_TNlcRbyRR0NBAU`
+    - Pro: `prod_TNlcHMU8qci7qi`
+    - Creator AI: `prod_TNlcORK76OVe4q`
+  - Set these in Netlify environment variables:
+    - `REACT_APP_STRIPE_PRODUCT_ID_STARTER=prod_TNlcRbyRR0NBAU`
+    - `REACT_APP_STRIPE_PRODUCT_ID_PRO=prod_TNlcHMU8qci7qi`
+    - `REACT_APP_STRIPE_PRODUCT_ID_CREATOR_AI=prod_TNlcORK76OVe4q`
+  - The code automatically uses these when `REACT_APP_STRIPE_PUBLISHABLE_KEY` starts with `pk_live_`
 
-- [ ] **Create Products if Needed**
-  - If products don't exist in live mode, create them:
-    - Starter: $9/month
-    - Pro: $29/month
-    - Creator AI: $59/month
-  - Copy the product IDs and update your code
+- [ ] **Verify Products in Stripe Dashboard**
+  - Go to https://dashboard.stripe.com/products (Live mode)
+  - Verify all three products exist and have both monthly and annual prices configured
 
 ### 5. Test in Live Mode (with Real Card)
 
@@ -252,16 +249,18 @@ https://yourdomain.com/.netlify/functions/stripe-webhook
 - `invoice.payment_succeeded`
 - `invoice.payment_failed`
 
-### Product IDs Location
+### Product IDs Configuration
 
-File: `src/services/stripeService.js`
-```javascript
-const STRIPE_PRODUCT_IDS = {
-  [USER_TIERS.STARTER]: 'prod_...',
-  [USER_TIERS.PRO]: 'prod_...',
-  [USER_TIERS.CREATOR_AI]: 'prod_...',
-};
-```
+Product IDs are now environment-aware and set via environment variables:
+
+**Production Product IDs** (set in Netlify environment variables):
+- `REACT_APP_STRIPE_PRODUCT_ID_STARTER=prod_TNlcRbyRR0NBAU`
+- `REACT_APP_STRIPE_PRODUCT_ID_PRO=prod_TNlcHMU8qci7qi`
+- `REACT_APP_STRIPE_PRODUCT_ID_CREATOR_AI=prod_TNlcORK76OVe4q`
+
+The system automatically detects production mode when `REACT_APP_STRIPE_PUBLISHABLE_KEY` starts with `pk_live_`.
+
+See `PRODUCTION_SETUP.md` for detailed setup instructions.
 
 ## Rollback Plan
 
