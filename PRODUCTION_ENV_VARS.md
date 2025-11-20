@@ -11,7 +11,10 @@ REACT_APP_STRIPE_PUBLISHABLE_KEY=pk_live_YOUR_PUBLISHABLE_KEY_HERE
 REACT_APP_STRIPE_PRODUCT_ID_STARTER=prod_TNlcRbyRR0NBAU
 REACT_APP_STRIPE_PRODUCT_ID_PRO=prod_TNlcHMU8qci7qi
 REACT_APP_STRIPE_PRODUCT_ID_CREATOR_AI=prod_TNlcORK76OVe4q
+SITE_URL=https://yourdomain.com
 ```
+
+**Note**: `SITE_URL` is optional but recommended. If not set, the code will try to detect it from request headers. Set it explicitly to ensure checkout redirects work correctly.
 
 ## Product IDs (Already Set Above)
 

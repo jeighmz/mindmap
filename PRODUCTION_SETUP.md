@@ -60,6 +60,7 @@ REACT_APP_STRIPE_PUBLISHABLE_KEY=pk_live_...
 REACT_APP_STRIPE_PRODUCT_ID_STARTER=prod_TNlcRbyRR0NBAU
 REACT_APP_STRIPE_PRODUCT_ID_PRO=prod_TNlcHMU8qci7qi
 REACT_APP_STRIPE_PRODUCT_ID_CREATOR_AI=prod_TNlcORK76OVe4q
+SITE_URL=https://yourdomain.com
 ```
 
 ### Variable Descriptions:
@@ -67,9 +68,10 @@ REACT_APP_STRIPE_PRODUCT_ID_CREATOR_AI=prod_TNlcORK76OVe4q
 - **STRIPE_SECRET_KEY**: Your live Stripe secret key (`sk_live_...`)
 - **STRIPE_WEBHOOK_SECRET**: Your live webhook signing secret (`whsec_...`)
 - **REACT_APP_STRIPE_PUBLISHABLE_KEY**: Your live Stripe publishable key (`pk_live_...`)
-- **REACT_APP_STRIPE_PRODUCT_ID_STARTER**: Live product ID for Starter tier (`prod_...`)
-- **REACT_APP_STRIPE_PRODUCT_ID_PRO**: Live product ID for Pro tier (`prod_...`)
-- **REACT_APP_STRIPE_PRODUCT_ID_CREATOR_AI**: Live product ID for Creator AI tier (`prod_...`)
+- **REACT_APP_STRIPE_PRODUCT_ID_STARTER**: Live product ID for Starter tier (`prod_TNlcRbyRR0NBAU`)
+- **REACT_APP_STRIPE_PRODUCT_ID_PRO**: Live product ID for Pro tier (`prod_TNlcHMU8qci7qi`)
+- **REACT_APP_STRIPE_PRODUCT_ID_CREATOR_AI**: Live product ID for Creator AI tier (`prod_TNlcORK76OVe4q`)
+- **SITE_URL**: (Optional) Your production site URL (e.g., `https://aimindmap.netlify.app`). If not set, the code will try to detect it from request headers. Setting it explicitly ensures checkout redirects work correctly.
 
 ## Step 5: Verify Configuration
 

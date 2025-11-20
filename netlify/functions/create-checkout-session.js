@@ -343,12 +343,66 @@ exports.handler = async (event, context) => {
     }
 
     // Simple success and cancel URLs - route to landing page
-    const baseUrl = process.env.NODE_ENV === 'production' 
-      ? 'https://aimindmap.netlify.app'
-      : 'http://localhost:3000';
+    // Use environment variable for production URL, or detect from request
+    const getBaseUrl = () => {
+      // First, check for explicit environment variable (most reliable)
+      if (process.env.SITE_URL) {
+        return process.env.SITE_URL;
+      }
+      
+      // Check if we have a referer header (most reliable for detecting actual domain)
+      const referer = event.headers.referer || event.headers.Referer;
+      if (referer) {
+        try {
+          const url = new URL(referer);
+          // If it's localhost, use localhost
+          if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+            return 'http://localhost:3000';
+          }
+          // Otherwise use the actual domain from the referer
+          return `${url.protocol}//${url.host}`;
+        } catch (e) {
+          console.warn('Failed to parse referer URL:', referer);
+        }
+      }
+      
+      // Check origin header as fallback
+      const origin = event.headers.origin || event.headers.Origin;
+      if (origin) {
+        try {
+          const url = new URL(origin);
+          if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+            return 'http://localhost:3000';
+          }
+          return `${url.protocol}//${url.host}`;
+        } catch (e) {
+          console.warn('Failed to parse origin URL:', origin);
+        }
+      }
+      
+      // Default based on NODE_ENV (may not be set in Netlify Functions)
+      if (process.env.NODE_ENV === 'production') {
+        return 'https://aimindmap.netlify.app';
+      }
+      
+      // Final fallback - assume production if not localhost
+      // This handles the case where we're in production but headers aren't available
+      return 'https://aimindmap.netlify.app';
+    };
     
+    const baseUrl = getBaseUrl();
     const successUrl = `${baseUrl}/?payment=success&session_id={CHECKOUT_SESSION_ID}&tier=${newTier}`;
     const cancelUrl = `${baseUrl}/?payment=cancelled`;
+    
+    console.log('Checkout URLs:', {
+      baseUrl,
+      successUrl,
+      cancelUrl,
+      referer: event.headers.referer || event.headers.Referer,
+      origin: event.headers.origin || event.headers.Origin,
+      nodeEnv: process.env.NODE_ENV,
+      siteUrl: process.env.SITE_URL
+    });
 
     // Create checkout session
     // If user has existing subscription, we need to handle it differently
