@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { getUserBoards, saveBoard, deleteBoard } from '../../services/boardService';
 import { serverTimestamp } from 'firebase/firestore';
 import ShareBoardModal from './ShareBoardModal';
+import { TIER_FEATURES, USER_TIERS } from '../../config/userTiers';
 import '../../styles/SavedWhiteboardsMenu.css';
 
 const SavedWhiteboardsMenu = ({ 
@@ -13,7 +14,7 @@ const SavedWhiteboardsMenu = ({
   onToggle, // Receive toggle function from parent
   currentBoardId // Add this prop to track current board
 }) => {
-  const { user } = useAuth();
+  const { user, userTier } = useAuth();
   const [newBoardName, setNewBoardName] = useState('');
   const [activeTab, setActiveTab] = useState(user ? 'personal' : 'demo');
   const [userBoards, setUserBoards] = useState([]);
@@ -476,7 +477,7 @@ const SavedWhiteboardsMenu = ({
   };
 
   return (
-    <div className="saved-whiteboards-container">
+    <div className={`saved-whiteboards-container ${isOpen ? 'menu-open' : ''}`}>
       <button 
         className="menu-toggle header-button"
         onClick={onToggle}
@@ -638,80 +639,87 @@ const SavedWhiteboardsMenu = ({
             ) : (
               <>
                 {displayedBoards.length > 0 ? (
-                  displayedBoards.map((board) => {
-                    const isCurrentlyOpen = board.id === currentBoardId;
-                    
-                    return (
-                    <div 
-                      key={board.id} 
-                      className={`saved-board-item ${isCurrentlyOpen ? 'selected' : ''}`}
-                    >
-                      <span>
-                        {board.name}
-                      </span>
-                      <span className="saved-date">
-                        {getDisplayDate(board.savedAt || board.lastEditedAt).toLocaleString(undefined, {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                          hour: 'numeric',
-                          minute: '2-digit'
-                        })}
-                      </span>
-                      <div className="board-actions">
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            onLoad(board.id);
-                            onToggle();
-                          }}
-                          disabled={isLoading}
-                          title="Load board"
-                        >
-                          <svg 
-                            width="14" 
-                            height="14" 
-                            viewBox="0 0 24 24" 
-                            fill="none" 
-                            stroke="currentColor" 
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
+                  <>
+                    {displayedBoards.map((board) => {
+                      const isCurrentlyOpen = board.id === currentBoardId;
+                      
+                      return (
+                      <div 
+                        key={board.id} 
+                        className={`saved-board-item ${isCurrentlyOpen ? 'selected' : ''}`}
+                      >
+                        <span>
+                          {board.name}
+                        </span>
+                        <span className="saved-date">
+                          {getDisplayDate(board.savedAt || board.lastEditedAt).toLocaleString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                        <div className="board-actions">
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              onLoad(board.id);
+                              onToggle();
+                            }}
+                            disabled={isLoading}
+                            title="Load board"
                           >
-                            <path d="M3 15v4c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2v-4" />
-                            <polyline points="17 8 12 3 7 8" />
-                            <line x1="12" y1="3" x2="12" y2="15" />
-                          </svg>
-                        </button>
-                        {(activeTab === 'personal' && user?.uid === board.userId) && (
-                          <>
-                            <button 
-                              type="button"
-                              className="share-btn"
-                              onClick={() => {
-                                setSelectedBoardForShare({ id: board.id, name: board.name });
-                                setShareModalOpen(true);
-                              }}
-                              disabled={isLoading}
-                              title="Share board"
+                            <svg 
+                              width="14" 
+                              height="14" 
+                              viewBox="0 0 24 24" 
+                              fill="none" 
+                              stroke="currentColor" 
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
                             >
-                              <svg 
-                                width="14" 
-                                height="14" 
-                                viewBox="0 0 24 24" 
-                                fill="none" 
-                                stroke="currentColor" 
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <circle cx="18" cy="5" r="3"></circle>
-                                <circle cx="6" cy="12" r="3"></circle>
-                                <circle cx="18" cy="19" r="3"></circle>
-                                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-                                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
-                              </svg>
-                            </button>
+                              <path d="M3 15v4c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2v-4" />
+                              <polyline points="17 8 12 3 7 8" />
+                              <line x1="12" y1="3" x2="12" y2="15" />
+                            </svg>
+                          </button>
+                          {(activeTab === 'personal' && user?.uid === board.userId) && (() => {
+                            const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
+                            const canCollaborate = tierFeatures.features.realTimeCollaboration;
+                            
+                            return (
+                              <>
+                                {canCollaborate && (
+                                  <button 
+                                    type="button"
+                                    className="share-btn"
+                                    onClick={() => {
+                                      setSelectedBoardForShare({ id: board.id, name: board.name });
+                                      setShareModalOpen(true);
+                                    }}
+                                    disabled={isLoading}
+                                    title="Share board"
+                                  >
+                                <svg 
+                                  width="14" 
+                                  height="14" 
+                                  viewBox="0 0 24 24" 
+                                  fill="none" 
+                                  stroke="currentColor" 
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <circle cx="18" cy="5" r="3"></circle>
+                                  <circle cx="6" cy="12" r="3"></circle>
+                                  <circle cx="18" cy="19" r="3"></circle>
+                                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                                </svg>
+                                  </button>
+                                )}
                             <button 
                               type="button"
                               className="delete-btn"
@@ -736,11 +744,25 @@ const SavedWhiteboardsMenu = ({
                               </svg>
                             </button>
                           </>
-                        )}
+                            );
+                          })()}
+                        </div>
                       </div>
-                    </div>
-                    );
-                  })
+                      );
+                    })}
+                    {activeTab === 'personal' && user && (() => {
+                      const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
+                      const maxBoards = tierFeatures.maxMindMaps;
+                      if (maxBoards !== -1 && userBoards.length >= maxBoards) {
+                        return (
+                          <div className="board-limit-message">
+                            You've reached your limit of {maxBoards} saved board{maxBoards !== 1 ? 's' : ''}. Upgrade your plan to save more boards.
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </>
                 ) : (
                   <div className="no-boards-message">
                     <svg 
@@ -765,6 +787,7 @@ const SavedWhiteboardsMenu = ({
               </>
             )}
           </div>
+          <div className="saved-whiteboards-menu-spacer"></div>
         </div>
         </>
       )}

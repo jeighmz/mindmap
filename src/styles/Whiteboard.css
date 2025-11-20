@@ -1799,7 +1799,11 @@
   left: 50%;
   transform: translateX(-50%);
   z-index: 3000;
-  animation: slideUp 0.3s ease;
+  animation: slideUpFromCenter 0.3s ease;
+}
+
+.mind-map-floating-prompt.closing {
+  animation: slideDownFromCenter 0.3s ease;
 }
 
 .mind-map-prompt-container {
@@ -1875,24 +1879,22 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
+  min-width: 36px;
   height: 36px;
   border: none;
   background: #007bff;
   color: white;
-  border-radius: 50%;
+  border-radius: 18px;
   cursor: pointer;
   transition: all 0.2s ease;
   flex-shrink: 0;
-  padding: 0;
+  padding: 0 8px;
   position: relative;
+  gap: 6px;
 }
 
 .mind-map-prompt-button svg {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  flex-shrink: 0;
   margin: 0;
 }
 
@@ -1907,6 +1909,7 @@
 .mind-map-prompt-button:hover:not(:disabled) {
   background: #0056b3;
   transform: scale(1.05);
+  cursor: pointer;
 }
 
 .mind-map-prompt-button:disabled {
@@ -1941,7 +1944,7 @@
   color: #333;
 }
 
-@keyframes slideUp {
+@keyframes slideUpFromCenter {
   from {
     opacity: 0;
     transform: translateX(-50%) translateY(20px);
@@ -1949,6 +1952,17 @@
   to {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes slideDownFromCenter {
+  from {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
   }
 }
 

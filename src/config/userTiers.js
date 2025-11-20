@@ -9,7 +9,7 @@ export const USER_TIERS = {
 // Feature flags for each tier
 export const TIER_FEATURES = {
   [USER_TIERS.FREE]: {
-    maxMindMaps: 1, // Saved boards (cloud)
+    maxMindMaps: 3, // Saved boards (cloud)
     maxNodesPerMap: -1, // Unlimited (Manual mind maps: Unlimited)
     maxCollaborators: 0,
     allowedExportFormats: ['png'],

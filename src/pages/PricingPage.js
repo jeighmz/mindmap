@@ -13,7 +13,7 @@ const plans = [
     features: [
       'Unlimited manual mind maps',
       '4 AI-generated maps per day',
-      '1 saved board',
+      '3 saved boards',
       'PNG export',
     ],
     fullFeatures: [
@@ -21,7 +21,7 @@ const plans = [
       'AI-generated maps: 4 per day',
       'AI Analysis Panel messages: 0',
       'Expand Tool: 0',
-      'Saved boards (cloud): 1',
+      'Saved boards (cloud): 3',
       'Autosave: Yes',
       'Vision model support: No',
       'Full AI editing tools: No',
@@ -150,7 +150,7 @@ const comparisonTable = [
   { feature: 'AI-Generated Maps', free: '4 per day', starter: 'Unlimited', pro: 'Unlimited', creator: 'Unlimited' },
   { feature: 'AI Analysis Panel (messages per day)', free: '—', starter: '4 per day', pro: 'Unlimited', creator: 'Unlimited' },
   { feature: 'Expand Tool', free: '—', starter: '4 per day', pro: 'Unlimited', creator: 'Unlimited' },
-  { feature: 'Saved Boards (Cloud)', free: '1', starter: '20', pro: '100', creator: 'Unlimited' },
+  { feature: 'Saved Boards (Cloud)', free: '3', starter: '20', pro: '100', creator: 'Unlimited' },
   { feature: 'Autosave', free: '✓', starter: '✓', pro: '✓', creator: '✓' },
   { feature: 'Vision Model Support (image → map)', free: '—', starter: '✓', pro: '✓', creator: '✓' },
   { feature: 'Full AI Editing Tools (Rewrite / Summarize / Structure)', free: '—', starter: '—', pro: '✓', creator: '✓' },

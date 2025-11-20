@@ -206,6 +206,37 @@ exports.handler = async (event, context) => {
           console.log(`✅ Tier update confirmed: ${newTier}`);
         }
         
+        // Create upgrade notification
+        try {
+          const userDoc = await db.collection('users').doc(firebaseUserId).get();
+          const userData = userDoc.data();
+          const userEmail = userData?.email;
+          
+          // Format tier name for display
+          const tierDisplayNames = {
+            'STARTER': 'Starter',
+            'PRO': 'Pro',
+            'CREATOR_AI': 'Creator AI'
+          };
+          const tierDisplayName = tierDisplayNames[newTier] || newTier;
+          
+          // Create notification
+          await db.collection('notifications').add({
+            userId: firebaseUserId,
+            userEmail: userEmail ? userEmail.toLowerCase() : null,
+            title: 'Account Upgraded',
+            message: `You have upgraded your account tier to ${tierDisplayName}`,
+            read: false,
+            createdAt: new Date(),
+            type: 'upgrade'
+          });
+          
+          console.log(`✅ Upgrade notification created for user ${firebaseUserId}`);
+        } catch (notificationError) {
+          console.error('Error creating upgrade notification:', notificationError);
+          // Don't fail the webhook if notification creation fails
+        }
+        
         break;
       }
 

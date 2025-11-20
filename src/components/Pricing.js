@@ -14,7 +14,7 @@ const plans = [
     features: [
       'Unlimited manual mind maps',
       '4 AI-generated maps per day',
-      '1 saved board',
+      '3 saved boards',
       'PNG export',
     ],
     cta: 'Get Started Free',

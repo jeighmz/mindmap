@@ -182,7 +182,29 @@ exports.handler = async (event, context) => {
     const userData = userDoc.data();
 
     if (userData.stripeCustomerId) {
-      customer = await stripe.customers.retrieve(userData.stripeCustomerId);
+      try {
+        customer = await stripe.customers.retrieve(userData.stripeCustomerId);
+        console.log('Retrieved existing customer:', customer.id);
+      } catch (err) {
+        // Customer doesn't exist in Stripe (may have been deleted or wrong mode)
+        console.warn(`Customer ${userData.stripeCustomerId} not found in Stripe:`, err.message);
+        console.log('Creating new customer...');
+        
+        // Create a new customer
+        customer = await stripe.customers.create({
+          email: customerEmail,
+          metadata: {
+            firebaseUserId: userId,
+          },
+        });
+        
+        // Update Firestore with new customer ID
+        await db.collection('users').doc(userId).update({
+          stripeCustomerId: customer.id,
+        });
+        
+        console.log('Created new customer:', customer.id);
+      }
     } else {
       customer = await stripe.customers.create({
         email: customerEmail,
@@ -195,6 +217,8 @@ exports.handler = async (event, context) => {
       await db.collection('users').doc(userId).update({
         stripeCustomerId: customer.id,
       });
+      
+      console.log('Created new customer:', customer.id);
     }
 
     // Check if user has an existing active subscription (for upgrades)
@@ -363,13 +387,17 @@ exports.handler = async (event, context) => {
     console.log('Created checkout session:', {
       sessionId: session.id,
       sessionMetadata: session.metadata,
-      subscriptionMetadata: subscriptionData.metadata
+      subscriptionMetadata: subscriptionData.metadata,
+      stripeKeyMode: process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_') ? 'test' : 'live'
     });
 
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ sessionId: session.id })
+      body: JSON.stringify({ 
+        sessionId: session.id,
+        stripeKeyMode: process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_') ? 'test' : 'live'
+      })
     };
   } catch (error) {
     console.error('Error creating checkout session:', error);

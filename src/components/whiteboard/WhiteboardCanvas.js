@@ -22,6 +22,8 @@ import websocketService from '../../services/websocketService';
 import CursorIndicator from './CursorIndicator';
 import { getApiBaseUrl, getGroqApiKey } from '../../utils/api';
 import { canGenerateMindMap, canExpandConcept, incrementMindMapCount, incrementExpandCount, getUsageStats } from '../../utils/usageTracker';
+import { canUseFeatureByTier, incrementUsage, getRemainingUsage, getUserUsageData } from '../../utils/tierUsageTracker';
+import { TIER_FEATURES, USER_TIERS } from '../../config/userTiers';
 import { createNotionPage, writeToNotionDatabase } from './agent/tools/notion';
 import { ChromePicker } from 'react-color';
 import UsageTracker from './UsageTracker';
@@ -65,7 +67,9 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [highlightedItems, setHighlightedItems] = useState([]);
   const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(false);
   const [isSearchPanelFullscreen, setIsSearchPanelFullscreen] = useState(false);
+  const [isSearchPanelClosing, setIsSearchPanelClosing] = useState(false);
   const [isMindMapPanelOpen, setIsMindMapPanelOpen] = useState(false);
+  const [isMindMapPanelClosing, setIsMindMapPanelClosing] = useState(false);
   const [mindMapPrompt, setMindMapPrompt] = useState('');
   const [isGeneratingMindMap, setIsGeneratingMindMap] = useState(false);
   const [chartGenerationType, setChartGenerationType] = useState('mindmap'); // 'mindmap', 'xy', 'sine', 'sankey'
@@ -84,7 +88,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [savedWhiteboards, setSavedWhiteboards] = useState([]);
   const [currentBoardId, setCurrentBoardId] = useState(null);
   const [currentBoardName, setCurrentBoardName] = useState(null);
-  const { user } = useAuth();
+  const { user, userTier } = useAuth();
   const [collaborators, setCollaborators] = useState([]);
   const cursorUpdateTimeoutRef = useRef(null);
   const boardContentUnsubscribeRef = useRef(null);
@@ -94,8 +98,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [isSavedBoardsMenuOpen, setIsSavedBoardsMenuOpen] = useState(false);
   const [isInstructionsCollapsed, setIsInstructionsCollapsed] = useState(true);
   const navigate = useNavigate();
-  const { userTier } = useAuth();
   const { canExport, getCurrentTier } = useTierPermissions();
+  const [aiMapUsage, setAiMapUsage] = useState({ used: 0, limit: -1, remaining: -1 });
   // Add clipboard state
   const [clipboardData, setClipboardData] = useState(null);
   const [windowDimensions, setWindowDimensions] = useState({
@@ -217,6 +221,49 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }
   }, [externalIsMindMapPanelOpen]);
 
+  // Update AI map usage when panel opens or user/tier changes
+  useEffect(() => {
+    const updateUsage = async () => {
+      if (!isMindMapPanelOpen) return;
+      
+      const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
+      const limit = tierFeatures.dailyAIGeneratedMaps;
+      
+      if (limit === -1) {
+        // Unlimited
+        setAiMapUsage({ used: 0, limit: -1, remaining: -1 });
+        return;
+      }
+      
+      if (!user) {
+        // Non-signed-in users
+        const stats = getUsageStats();
+        setAiMapUsage({ 
+          used: stats.mindMapsGenerated || 0, 
+          limit: stats.mindMapLimit || 4, 
+          remaining: stats.remainingMindMaps || 0 
+        });
+      } else {
+        // Signed-in users
+        try {
+          const remaining = await getRemainingUsage(user.uid, userTier, 'aiGeneratedMaps');
+          const usageData = await getUserUsageData(user.uid);
+          const used = usageData.aiGeneratedMaps || 0;
+          setAiMapUsage({ 
+            used, 
+            limit, 
+            remaining: remaining === -1 ? -1 : Math.max(0, remaining) 
+          });
+        } catch (error) {
+          console.error('Error fetching usage:', error);
+          setAiMapUsage({ used: 0, limit, remaining: limit });
+        }
+      }
+    };
+    
+    updateUsage();
+  }, [isMindMapPanelOpen, user, userTier]);
+
   // Check for prompt in URL params and set it
   useEffect(() => {
     const prompt = searchParams.get('prompt');
@@ -237,10 +284,14 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       setIsInstructionsCollapsed(prev => !prev);
     },
     handleCloseMindMapPanel: () => {
-      setIsMindMapPanelOpen(false);
-      if (onMindMapPanelClose) {
-        onMindMapPanelClose();
-      }
+      setIsMindMapPanelClosing(true);
+      setTimeout(() => {
+        setIsMindMapPanelOpen(false);
+        setIsMindMapPanelClosing(false);
+        if (onMindMapPanelClose) {
+          onMindMapPanelClose();
+        }
+      }, 300); // Match animation duration
     },
     handleOpenMindMapPanel: () => {
       // Toggle the mind map panel
@@ -277,8 +328,12 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       }
     },
     handleCloseSearchPanel: () => {
-      setIsSearchPanelOpen(false);
-      setIsSearchPanelFullscreen(false);
+      setIsSearchPanelClosing(true);
+      setTimeout(() => {
+        setIsSearchPanelOpen(false);
+        setIsSearchPanelFullscreen(false);
+        setIsSearchPanelClosing(false);
+      }, 300); // Match animation duration
     }
   }), [selectedItems, items, isSearchPanelOpen, isMindMapPanelOpen, externalIsMindMapPanelOpen, onMindMapPanelClose, onMindMapPanelOpen]);
 
@@ -1468,6 +1523,13 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const initializeCollaboration = useCallback((boardId) => {
     if (!boardId || !user) {
       console.log('initializeCollaboration: missing boardId or user', { boardId, user: !!user });
+      return;
+    }
+    
+    // Check if collaboration is available for this tier
+    const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
+    if (!tierFeatures.features.realTimeCollaboration) {
+      console.log('Collaboration not available for tier:', userTier);
       return;
     }
     
@@ -2811,6 +2873,43 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           alert(`You've reached the limit of 4 concept expansions. Please sign in to continue expanding unlimited concepts.`);
           return;
         }
+      } else {
+        // Check tier limits for signed-in users
+        const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
+        const limit = tierFeatures.dailyExpandTool;
+        
+        if (limit === 0) {
+          alert('Expand Tool is not available on the Free plan. Please upgrade to Starter or higher to use this feature.');
+          return;
+        }
+        
+        if (limit !== -1) {
+          const usageCheck = await canUseFeatureByTier(user.uid, userTier, 'expandTool');
+          if (!usageCheck.allowed) {
+            if (usageCheck.reason === 'limit_reached') {
+              alert(`You've reached your daily limit of ${limit} Expand Tool uses. Please upgrade to Pro or higher for unlimited uses, or try again tomorrow.`);
+            } else {
+              alert('Expand Tool is not available on your current plan. Please upgrade to use this feature.');
+            }
+            return;
+          }
+          
+          // Increment usage immediately after check passes (reserve the usage)
+          try {
+            await incrementUsage(user.uid, 'expandToolUses');
+          } catch (usageError) {
+            console.error('Error incrementing usage:', usageError);
+            // Show more detailed error for debugging
+            const errorMessage = usageError?.message || usageError?.code || 'Unknown error';
+            console.error('Usage increment error details:', {
+              code: usageError?.code,
+              message: usageError?.message,
+              stack: usageError?.stack
+            });
+            alert(`Failed to record usage: ${errorMessage}. Please check the console for details.`);
+            return;
+          }
+        }
       }
       
       setExpandingItemId(itemId);
@@ -2964,7 +3063,7 @@ Performance Metrics Analysis`
           return [...prevConnections, ...validConnections];
         });
 
-        // Increment usage counter for non-signed-in users
+        // Increment usage for non-signed-in users (signed-in users already incremented above)
         if (!user) {
           incrementExpandCount();
         }
@@ -3310,6 +3409,12 @@ Performance Metrics Analysis`
   }, [calculateContentBounds, waitForAllImages]);
 
   const exportToJSON = useCallback(() => {
+    // Check if JSON export is allowed for this tier
+    if (!canExport('json')) {
+      alert('JSON export is not available on the Free plan. Please upgrade to Pro or higher to use this feature.');
+      return;
+    }
+    
     const data = {
       items,
       connections,
@@ -3326,9 +3431,15 @@ Performance Metrics Analysis`
     link.download = 'mindmap.json';
     link.click();
     URL.revokeObjectURL(url);
-  }, [items, connections]);
+  }, [items, connections, canExport]);
 
   const exportToMarkdown = useCallback(() => {
+    // Check if Markdown export is allowed for this tier
+    if (!canExport('markdown')) {
+      alert('Markdown export is not available on the Free plan. Please upgrade to Starter or higher to use this feature.');
+      return;
+    }
+    
     let markdown = '# Mind Map\n\n';
     
     // Helper function to get item by id
@@ -3372,7 +3483,7 @@ Performance Metrics Analysis`
     link.download = 'mindmap.md';
     link.click();
     URL.revokeObjectURL(url);
-  }, [items, connections]);
+  }, [items, connections, canExport]);
 
   // Function to toggle Saved Boards menu (closes others)
   const toggleSavedBoardsMenu = useCallback(() => {
@@ -4524,6 +4635,27 @@ Performance Metrics Analysis`
         alert(`You've reached the limit of 4 mind map generations. Please sign in to continue generating unlimited mind maps.`);
         return;
       }
+    } else {
+      // Check tier limits for signed-in users
+      const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
+      const limit = tierFeatures.dailyAIGeneratedMaps;
+      
+      if (limit === 0) {
+        alert('AI-generated maps are not available on the Free plan. Please upgrade to Starter or higher to use this feature.');
+        return;
+      }
+      
+      if (limit !== -1) {
+        const usageCheck = await canUseFeatureByTier(user.uid, userTier, 'aiGeneratedMaps');
+        if (!usageCheck.allowed) {
+          if (usageCheck.reason === 'limit_reached') {
+            alert(`You've reached your daily limit of ${limit} AI-generated maps. Please upgrade to Starter or higher for unlimited maps, or try again tomorrow.`);
+          } else {
+            alert('AI-generated maps are not available on your current plan. Please upgrade to use this feature.');
+          }
+          return;
+        }
+      }
     }
 
     setIsGeneratingMindMap(true);
@@ -4987,13 +5119,37 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
         // Update connections in the same state update to ensure they're in sync
         setConnections(prevConnections => [...prevConnections, ...validConnections]);
         
-        // Increment usage counter for non-signed-in users
-        if (!user) {
-          incrementMindMapCount();
-        }
-        
         return allItems;
       });
+      
+      // Increment usage counter (outside setItems callback)
+      if (user) {
+        incrementUsage(user.uid, 'aiGeneratedMaps').then(() => {
+          // Update usage display
+          const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
+          const limit = tierFeatures.dailyAIGeneratedMaps;
+          if (limit !== -1) {
+            getRemainingUsage(user.uid, userTier, 'aiGeneratedMaps').then(remaining => {
+              getUserUsageData(user.uid).then(usageData => {
+                setAiMapUsage({ 
+                  used: usageData.aiGeneratedMaps || 0, 
+                  limit, 
+                  remaining: remaining === -1 ? -1 : Math.max(0, remaining) 
+                });
+              });
+            });
+          }
+        }).catch(err => console.error('Error incrementing usage:', err));
+      } else {
+        incrementMindMapCount();
+        // Update usage display for non-signed-in users
+        const stats = getUsageStats();
+        setAiMapUsage({ 
+          used: stats.mindMapsGenerated || 0, 
+          limit: stats.mindMapLimit || 4, 
+          remaining: stats.remainingMindMaps || 0 
+        });
+      }
       
       // Center view on the mind map after a short delay to ensure rendering
       setTimeout(() => {
@@ -5053,6 +5209,27 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
       if (!canGenerateMindMap()) {
         alert(`You've reached the limit of 4 generations. Please sign in to continue generating unlimited charts.`);
         return;
+      }
+    } else {
+      // Check tier limits for signed-in users
+      const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
+      const limit = tierFeatures.dailyAIGeneratedMaps;
+      
+      if (limit === 0) {
+        alert('AI-generated maps are not available on the Free plan. Please upgrade to Starter or higher to use this feature.');
+        return;
+      }
+      
+      if (limit !== -1) {
+        const usageCheck = await canUseFeatureByTier(user.uid, userTier, 'aiGeneratedMaps');
+        if (!usageCheck.allowed) {
+          if (usageCheck.reason === 'limit_reached') {
+            alert(`You've reached your daily limit of ${limit} AI-generated maps. Please upgrade to Starter or higher for unlimited maps, or try again tomorrow.`);
+          } else {
+            alert('AI-generated maps are not available on your current plan. Please upgrade to use this feature.');
+          }
+          return;
+        }
       }
     }
 
@@ -5519,9 +5696,33 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
         setItems(prevItems => [...prevItems, chartItem]);
       }
 
-      // Increment usage count
-      if (!user) {
+      // Increment usage counter
+      if (user) {
+        incrementUsage(user.uid, 'aiGeneratedMaps').then(() => {
+          // Update usage display
+          const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
+          const limit = tierFeatures.dailyAIGeneratedMaps;
+          if (limit !== -1) {
+            getRemainingUsage(user.uid, userTier, 'aiGeneratedMaps').then(remaining => {
+              getUserUsageData(user.uid).then(usageData => {
+                setAiMapUsage({ 
+                  used: usageData.aiGeneratedMaps || 0, 
+                  limit, 
+                  remaining: remaining === -1 ? -1 : Math.max(0, remaining) 
+                });
+              });
+            });
+          }
+        }).catch(err => console.error('Error incrementing usage:', err));
+      } else {
         incrementMindMapCount();
+        // Update usage display for non-signed-in users
+        const stats = getUsageStats();
+        setAiMapUsage({ 
+          used: stats.mindMapsGenerated || 0, 
+          limit: stats.mindMapLimit || 4, 
+          remaining: stats.remainingMindMaps || 0 
+        });
       }
 
       // Don't clear the prompt - allow user to generate again
@@ -7195,7 +7396,14 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                     <line x1="5" y1="12" x2="19" y2="12"></line>
                   </svg>
                 </span>
-                Expand - Click the purple plus button
+                <div>
+                  <div>Expand - Click the purple plus button</div>
+                  {(!userTier || userTier === USER_TIERS.FREE) && (
+                    <div style={{ fontSize: '11px', color: '#999', marginTop: '2px', fontStyle: 'italic' }}>
+                      (Upgrade to Starter to unlock)
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             <div className="control-tip-container">
@@ -7405,13 +7613,14 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
         </div>
       )}
 
-      {isSearchPanelOpen && (
+      {(isSearchPanelOpen || isSearchPanelClosing) && (
         <SearchPanel
           highlightedItems={highlightedItems}
           onClose={handleCloseSearchPanel}
           onFullscreenChange={setIsSearchPanelFullscreen}
           currentBoardId={currentBoardId}
           onHighlightedItemsChange={setHighlightedItems}
+          isClosing={isSearchPanelClosing}
         />
       )}
 
@@ -7477,8 +7686,8 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
         );
       })()}
 
-      {isMindMapPanelOpen && !isSearchPanelFullscreen && (
-        <div className="mind-map-floating-prompt">
+      {(isMindMapPanelOpen || isMindMapPanelClosing) && !isSearchPanelFullscreen && (
+        <div className={`mind-map-floating-prompt ${isMindMapPanelClosing ? 'closing' : ''}`}>
           <div className="mind-map-prompt-container">
             <input
               type="text"
@@ -7525,10 +7734,25 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
               {isGeneratingMindMap ? (
                 <span className="loading-spinner"></span>
               ) : (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="22" y1="2" x2="11" y2="13"></line>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                </svg>
+                <>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  </svg>
+                  {aiMapUsage.limit !== -1 && (
+                    <span 
+                      style={{ 
+                        fontSize: '11px', 
+                        opacity: 0.95,
+                        fontWeight: 500,
+                        whiteSpace: 'nowrap',
+                        lineHeight: 1
+                      }}
+                    >
+                      {aiMapUsage.remaining > 0 ? `${aiMapUsage.remaining} left` : `${aiMapUsage.used}/${aiMapUsage.limit}`}
+                    </span>
+                  )}
+                </>
               )}
             </button>
             <button 

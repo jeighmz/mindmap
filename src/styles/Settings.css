@@ -790,12 +790,102 @@
   padding: 6px 0;
 }
 
+.tier-features li > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+}
+
 .tier-features li svg {
   flex-shrink: 0;
   margin-top: 4px;
-  color: #10b981;
   width: 18px;
   height: 18px;
+}
+
+.tier-features li svg {
+  flex-shrink: 0;
+  margin-top: 4px;
+  width: 18px;
+  height: 18px;
+}
+
+.tier-features li svg.check-icon {
+  color: #10b981; /* Check icon - green */
+}
+
+.tier-features li svg.x-icon {
+  color: #ef4444; /* X icon - red */
+}
+
+.usage-progress-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.usage-progress-section h5 {
+  margin: 0 0 16px 0;
+  color: #1a1a1a;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.usage-progress-item {
+  margin-bottom: 16px;
+}
+
+.usage-progress-item:last-child {
+  margin-bottom: 0;
+}
+
+.usage-progress-label {
+  font-size: 0.8125rem;
+  color: #666;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.usage-progress-container {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.usage-progress-bar {
+  flex: 1;
+  height: 10px;
+  background: #e5e7eb;
+  border-radius: 5px;
+  overflow: hidden;
+  position: relative;
+}
+
+.usage-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  border-radius: 5px;
+  transition: width 0.3s ease;
+}
+
+.usage-progress-text {
+  font-size: 0.75rem;
+  color: #666;
+  font-weight: 500;
+  white-space: nowrap;
+  min-width: 60px;
+  text-align: right;
+}
+
+.usage-upgrade-message {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: #666;
+  font-style: italic;
+  padding-left: 2px;
 }
 
 /* Profile Picture Styles */
@@ -1400,6 +1490,34 @@
 }
 
 .dark-mode .tier-features li {
+  color: var(--text-secondary);
+}
+
+.dark-mode .usage-progress-section {
+  border-top-color: var(--border-color);
+}
+
+.dark-mode .usage-progress-section h5 {
+  color: var(--text-primary);
+}
+
+.dark-mode .usage-progress-label {
+  color: var(--text-secondary);
+}
+
+.dark-mode .usage-progress-bar {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.dark-mode .usage-progress-fill {
+  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+}
+
+.dark-mode .usage-progress-text {
+  color: var(--text-secondary);
+}
+
+.dark-mode .usage-upgrade-message {
   color: var(--text-secondary);
 }
 

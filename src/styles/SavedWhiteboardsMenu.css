@@ -47,6 +47,16 @@
   pointer-events: auto;
 }
 
+.saved-whiteboards-menu-spacer {
+  position: absolute;
+  top: calc(100% + 8px + 400px + 8px);
+  right: 0;
+  width: 480px;
+  height: 8px;
+  pointer-events: none;
+  z-index: 999;
+}
+
 .saved-whiteboards-menu::-webkit-scrollbar {
   display: none; /* Chrome, Safari, Opera */
 }
@@ -212,6 +222,24 @@ input.search-input:disabled {
   flex-direction: column;
   align-items: center;
   gap: 8px;
+}
+
+.board-limit-message {
+  margin-top: 12px;
+  padding: 8px 10px;
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #856404;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.dark-mode .board-limit-message {
+  background: rgba(255, 193, 7, 0.15);
+  border-color: rgba(255, 193, 7, 0.3);
+  color: #ffc107;
 }
 
 .saved-board-item {

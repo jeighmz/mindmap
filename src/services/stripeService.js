@@ -28,9 +28,9 @@ const getBaseUrl = () => {
 
 // Map our tiers to Stripe product IDs
 const STRIPE_PRODUCT_IDS = {
-  [USER_TIERS.STARTER]: 'prod_S9iMpACtlPv8kv',
-  [USER_TIERS.PRO]: 'prod_S9iNjKTuDUKWLZ',
-  [USER_TIERS.CREATOR_AI]: 'prod_S9iOBu7jGBlJyp',
+  [USER_TIERS.STARTER]: 'prod_TSG73qEwSrGdpr',
+  [USER_TIERS.PRO]: 'prod_TSG8miwSS3czd7',
+  [USER_TIERS.CREATOR_AI]: 'prod_TSG8Fh0h21SEhc',
 };
 
 // Stripe uses 'month' and 'year' for intervals
@@ -93,12 +93,56 @@ class StripeService {
       // Stripe will handle payment confirmation and subscription updates
       const { sessionId } = responseData;
       
+      if (!sessionId) {
+        throw new Error('No session ID returned from checkout session creation');
+      }
+      
+      // Verify publishable key is set
+      const publishableKey = process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY;
+      if (!publishableKey) {
+        throw new Error('Stripe publishable key is not configured. Please set REACT_APP_STRIPE_PUBLISHABLE_KEY in your environment variables.');
+      }
+      
+      // Verify key mode matches
+      const isTestKey = publishableKey.startsWith('pk_test_');
+      const isLiveKey = publishableKey.startsWith('pk_live_');
+      
+      if (!isTestKey && !isLiveKey) {
+        throw new Error(`Invalid publishable key format. Must start with pk_test_ or pk_live_. Got: ${publishableKey.substring(0, 10)}...`);
+      }
+      
+      // Log for debugging
+      console.log('Redirecting to checkout:', {
+        sessionId,
+        publishableKeyPrefix: publishableKey.substring(0, 12) + '...',
+        keyMode: isTestKey ? 'TEST' : 'LIVE',
+        sessionCreatedInMode: 'test' // From backend logs
+      });
+      
       // Get Stripe instance and redirect to checkout
       const stripe = await getStripe();
+      
+      // Double-check the key matches
+      if (isTestKey && responseData.stripeKeyMode && responseData.stripeKeyMode !== 'test') {
+        console.warn('WARNING: Publishable key is TEST but session was created in different mode');
+      }
+      
       const { error } = await stripe.redirectToCheckout({ sessionId });
       
       if (error) {
-        throw new Error(error.message);
+        console.error('Stripe redirect error details:', {
+          error: error.message,
+          type: error.type,
+          publishableKeyPrefix: publishableKey.substring(0, 12) + '...',
+          sessionId
+        });
+        throw new Error(`Checkout redirect failed: ${error.message}. 
+        
+Troubleshooting:
+1. Verify REACT_APP_STRIPE_PUBLISHABLE_KEY is set correctly
+2. Make sure it's a TEST key (pk_test_...) if using test mode
+3. Ensure it's from the same Stripe account as STRIPE_SECRET_KEY
+4. Check browser console for the publishable key being used`);
       }
     } catch (error) {
       console.error('Error creating checkout session:', error);
@@ -207,37 +251,6 @@ class StripeService {
     }
   }
 
-  /**
-   * Manually sync subscription tier from Stripe
-   * Useful when webhook fails or tier is out of sync
-   * @param {string} userId - Firebase user ID
-   * @returns {Promise<{tier: string, updated: boolean, message: string}>}
-   * @throws {Error} If the sync fails
-   */
-  static async syncSubscriptionTier(userId) {
-    try {
-      if (!userId) throw new Error('User ID is required');
-
-      const response = await fetch(`${getBaseUrl()}/sync-subscription`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ userId }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Subscription sync failed: ${errorData}`);
-      }
-
-      const result = await response.json();
-      return result;
-    } catch (error) {
-      console.error('Error syncing subscription tier:', error);
-      throw error;
-    }
-  }
 }
 
 export default StripeService; 

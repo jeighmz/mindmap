@@ -1,79 +1,48 @@
-.notifications-container {
-  position: relative;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
-.notifications-menu-item {
-  background: none;
-  border: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 15px;
-  text-align: left;
-  color: #495057;
-  cursor: pointer;
-  font-size: 14px;
-  white-space: nowrap;
-  position: relative;
+@keyframes scaleIn {
+  from {
+    transform: scale(0.95);
+  }
+  to {
+    transform: scale(1);
+  }
 }
 
-.notifications-menu-item:hover {
-  background-color: #f1f3f5;
-}
-
-.notifications-menu-text {
-  flex: 1;
-}
-
-.notifications-badge-menu {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  color: white;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 10px;
-  min-width: 18px;
-  text-align: center;
-  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
-  line-height: 1.2;
-  flex-shrink: 0;
-}
-
-.notifications-overlay {
+/* Notifications modal styles - matching Settings modal */
+.notifications-modal {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 3999;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4000;
+  animation: fadeIn 0.2s ease;
 }
 
-.notifications-dropdown {
-  position: fixed;
-  width: 380px;
-  max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 100px);
+.notifications-content-wrapper {
+  width: 90%;
+  max-width: 600px;
+  height: 80vh;
+  max-height: 80vh;
   background: white;
   border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-  z-index: 4000;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   display: flex;
   flex-direction: column;
+  animation: scaleIn 0.2s ease;
   overflow: hidden;
-  animation: slideDown 0.2s ease;
-  /* Position will be calculated dynamically via JavaScript */
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .notifications-header {
@@ -82,14 +51,51 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background: white;
+  border-radius: 12px 12px 0 0;
   flex-shrink: 0;
 }
 
 .notifications-header h3 {
   margin: 0;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
   color: #333;
+}
+
+.notifications-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  cursor: pointer;
+  color: #666;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.notifications-close:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #333;
+}
+
+.notifications-close svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+}
+
+.notifications-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .mark-all-read-button {
@@ -238,16 +244,36 @@
   color: var(--text-primary, #fff);
 }
 
+.dark-mode .notifications-modal {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.dark-mode .notifications-content-wrapper {
+  background: var(--bg-primary, #1a1a1a);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
 .dark-mode .notifications-dropdown {
   background: var(--bg-primary, #1a1a1a);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 .dark-mode .notifications-header {
+  background: var(--bg-primary, #1a1a1a);
   border-bottom-color: var(--border-color, #333);
 }
 
 .dark-mode .notifications-header h3 {
+  color: var(--text-primary, #fff);
+}
+
+.dark-mode .notifications-close {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary, #999);
+}
+
+.dark-mode .notifications-close:hover {
+  background: rgba(255, 255, 255, 0.15);
   color: var(--text-primary, #fff);
 }
 
@@ -304,6 +330,13 @@
 
 /* Responsive */
 @media (max-width: 768px) {
+  .notifications-content-wrapper {
+    width: 95%;
+    max-width: 95%;
+    height: 85vh;
+    max-height: 85vh;
+  }
+
   .notifications-dropdown {
     width: calc(100vw - 32px);
     right: -16px;

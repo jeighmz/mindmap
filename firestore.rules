@@ -133,6 +133,18 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // User usage tracking rules
+    match /userUsage/{userId} {
+      // Allow read if user is authenticated and accessing their own data
+      allow read: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow create if user is authenticated and creating their own document
+      allow create: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow update if user is authenticated and updating their own document
+      allow update: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;

@@ -7,6 +7,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import '../../styles/SearchPanel.css';
 import { getApiBaseUrl, getGroqApiKey } from '../../utils/api';
 import { canSendQuery, incrementQueryCount, getRemainingQueries, getUsageStats } from '../../utils/usageTracker';
+import { canUseFeatureByTier, incrementUsage } from '../../utils/tierUsageTracker';
+import { TIER_FEATURES, USER_TIERS } from '../../config/userTiers';
 import { saveChatHistory, loadChatHistory } from '../../services/boardService';
 
 // SVG Icons as components
@@ -85,8 +87,8 @@ const SpinnerIcon = () => (
   </svg>
 );
 
-const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoardId, onHighlightedItemsChange }) => {
-  const { user } = useAuth();
+const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoardId, onHighlightedItemsChange, isClosing = false }) => {
+  const { user, userTier } = useAuth();
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [tabs, setTabs] = useState([{ 
     id: 'default', 
@@ -148,13 +150,17 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
     { id: 'whisper-large-v3-turbo', name: 'Whisper Large V3 Turbo (Speech-to-Text)', provider: 'OpenAI', disabled: true }
   ];
 
+  // Check if vision model support is available for this tier
+  const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
+  const canUseVisionModels = tierFeatures.features.visionModelSupport;
+  
   // Vision models that support image input
   const visionModels = [
     'meta-llama/llama-4-maverick-17b-128e-instruct',
     'meta-llama/llama-4-scout-17b-16e-instruct'
   ];
 
-  const isVisionModel = visionModels.includes(selectedModel.id);
+  const isVisionModel = canUseVisionModels && visionModels.includes(selectedModel.id);
   
   // Check if we should show vision model prompt (must be after isVisionModel is defined)
   const shouldShowVisionModelPrompt = allHighlightedImages.length > 0 && !isVisionModel;
@@ -754,6 +760,13 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
 
+    // Check if user is trying to use a vision model without permission
+    if (isVisionModel && !canUseVisionModels) {
+      setQueryLimitError('Vision models are not available on the Free plan. Please upgrade to Starter or higher to use vision models.');
+      setTimeout(() => setQueryLimitError(null), 5000);
+      return;
+    }
+
     // Check query limit for non-signed-in users
     if (!user && !canSendQuery()) {
       const { queryLimit } = getUsageStats();
@@ -762,14 +775,41 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
       return;
     }
 
+    // Check tier limits for signed-in users (AI Analysis Panel)
+    if (user) {
+      const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
+      const limit = tierFeatures.dailyAIAnalysisMessages;
+      
+      if (limit === 0) {
+        setQueryLimitError('AI Analysis Panel is not available on the Free plan. Please upgrade to Starter or higher to use this feature.');
+        setTimeout(() => setQueryLimitError(null), 5000);
+        return;
+      }
+      
+      if (limit !== -1) {
+        const usageCheck = await canUseFeatureByTier(user.uid, userTier, 'aiAnalysis');
+        if (!usageCheck.allowed) {
+          if (usageCheck.reason === 'limit_reached') {
+            setQueryLimitError(`You've reached your daily limit of ${limit} AI Analysis messages. Please upgrade to Pro or higher for unlimited messages, or try again tomorrow.`);
+          } else {
+            setQueryLimitError('AI Analysis Panel is not available on your current plan. Please upgrade to use this feature.');
+          }
+          setTimeout(() => setQueryLimitError(null), 5000);
+          return;
+        }
+      }
+    }
+
     try {
       setIsLoading(true);
       setQueryLimitError(null);
       const userMessage = inputMessage.trim();
       setInputMessage('');
       
-      // Increment query count for non-signed-in users
-      if (!user) {
+      // Increment query count
+      if (user) {
+        await incrementUsage(user.uid, 'aiAnalysisMessages');
+      } else {
         incrementQueryCount();
       }
 
@@ -946,26 +986,37 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
               </div>
               {isModelDropdownOpen && (
                 <div className="custom-select-dropdown">
-                  {availableModels.map(model => (
-                    <div
-                      key={model.id}
-                      className={`custom-select-option ${model.disabled ? 'disabled' : ''} ${selectedModel.id === model.id ? 'selected' : ''}`}
-                      onClick={() => {
-                        if (!model.disabled) {
+                  {availableModels.map(model => {
+                    const isVisionModelDisabled = model.isVision && !canUseVisionModels;
+                    const isModelDisabled = model.disabled || isVisionModelDisabled;
+                    
+                    return (
+                      <div
+                        key={model.id}
+                        className={`custom-select-option ${isModelDisabled ? 'disabled' : ''} ${selectedModel.id === model.id ? 'selected' : ''}`}
+                        onClick={() => {
+                          if (isModelDisabled) {
+                            if (isVisionModelDisabled) {
+                              setQueryLimitError('Vision models are not available on the Free plan. Please upgrade to Starter or higher to use vision models.');
+                              setTimeout(() => setQueryLimitError(null), 5000);
+                            }
+                            return;
+                          }
                           setSelectedModel(model);
                           setIsModelDropdownOpen(false);
-                        }
-                      }}
-                    >
-                      {model.isVision && (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px', verticalAlign: 'middle' }}>
-                          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                          <circle cx="12" cy="13" r="4" />
-                        </svg>
-                      )}
-                      {model.name}
-                    </div>
-                  ))}
+                        }}
+                      >
+                        {model.isVision && (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px', verticalAlign: 'middle' }}>
+                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                            <circle cx="12" cy="13" r="4" />
+                          </svg>
+                        )}
+                        {model.name}
+                        {isVisionModelDisabled && <span style={{ fontSize: '11px', color: '#999', marginLeft: '8px' }}>(Upgrade required)</span>}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1245,23 +1296,25 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
 
   return (
     <>
-      <div className={`search-panel chat-focused ${isFullscreen ? 'faded-out' : ''}`}>
+      <div className={`search-panel chat-focused ${isFullscreen ? 'faded-out' : ''} ${isClosing ? 'closing' : ''}`}>
         <div className="chat-header">
           <h3>AI Analysis Chat</h3>
           <div className="header-actions">
-            <button 
-              className={`history-button ${isSavingHistory ? 'saving' : ''}`}
-              onClick={() => {
-                if (currentBoardId && user) {
-                  loadBoardChatHistory();
-                }
-                setIsHistoryOpen(true);
-              }}
-              title={isSavingHistory ? "Saving chat history..." : "View chat history"}
-              disabled={!currentBoardId || !user}
-            >
-              {isSavingHistory ? <SpinnerIcon /> : <HistoryIcon />}
-            </button>
+            {(userTier === USER_TIERS.PRO || userTier === USER_TIERS.CREATOR_AI) && (
+              <button 
+                className={`history-button ${isSavingHistory ? 'saving' : ''}`}
+                onClick={() => {
+                  if (currentBoardId && user) {
+                    loadBoardChatHistory();
+                  }
+                  setIsHistoryOpen(true);
+                }}
+                title={isSavingHistory ? "Saving chat history..." : "View chat history"}
+                disabled={!currentBoardId || !user}
+              >
+                {isSavingHistory ? <SpinnerIcon /> : <HistoryIcon />}
+              </button>
+            )}
             <button 
               className="fullscreen-button"
               onClick={() => {
@@ -1299,19 +1352,21 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
             <div className="modal-header">
               <h3>AI Analysis Chat</h3>
               <div className="header-actions">
-                <button 
-                  className={`history-button ${isSavingHistory ? 'saving' : ''}`}
-                  onClick={() => {
-                    if (currentBoardId && user) {
-                      loadBoardChatHistory();
-                    }
-                    setIsHistoryOpen(true);
-                  }}
-                  title={isSavingHistory ? "Saving chat history..." : "View chat history"}
-                  disabled={!currentBoardId || !user}
-                >
-                  {isSavingHistory ? <SpinnerIcon /> : <HistoryIcon />}
-                </button>
+                {(userTier === USER_TIERS.PRO || userTier === USER_TIERS.CREATOR_AI) && (
+                  <button 
+                    className={`history-button ${isSavingHistory ? 'saving' : ''}`}
+                    onClick={() => {
+                      if (currentBoardId && user) {
+                        loadBoardChatHistory();
+                      }
+                      setIsHistoryOpen(true);
+                    }}
+                    title={isSavingHistory ? "Saving chat history..." : "View chat history"}
+                    disabled={!currentBoardId || !user}
+                  >
+                    {isSavingHistory ? <SpinnerIcon /> : <HistoryIcon />}
+                  </button>
+                )}
                 <button 
                   className={`settings-button ${shouldShowVisionModelPrompt ? 'vision-model-prompt' : ''}`}
                   onClick={() => setShowSettings(!showSettings)}

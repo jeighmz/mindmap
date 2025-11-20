@@ -100,6 +100,17 @@ const LandingPage = () => {
             </ul>
           </nav>
           <div className="header-actions">
+            <a 
+              href="https://x.com/aimindmap" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="header-x-link"
+              aria-label="Follow us on X"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+              </svg>
+            </a>
             {user ? (
               <UserMenu />
             ) : (
@@ -140,15 +151,27 @@ const LandingPage = () => {
               Visually organize thoughts, brainstorm concepts, and collaborate in real-time with cutting-edge AI technology.
             </p>
             <div className="hero-cta-group">
-              <button
-                className="hero-cta-button"
-                onClick={() => navigate('/whiteboard')}
-              >
-                <span>Start Mind Mapping Now</span>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M5 12h14M12 5l7 7-7 7"/>
-                </svg>
-              </button>
+              <div className="hero-cta-buttons">
+                <button
+                  className="hero-cta-button"
+                  onClick={() => navigate('/whiteboard')}
+                >
+                  <span>Start Mind Mapping Now</span>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                  </svg>
+                </button>
+                <button
+                  className="hero-contact-button"
+                  onClick={() => window.location.href = 'mailto:aimindmap22@gmail.com'}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                    <polyline points="22,6 12,13 2,6"/>
+                  </svg>
+                  <span>Contact the Team</span>
+                </button>
+              </div>
               <div className="hero-features-preview">
                 <span className="feature-pill">
                   <InstantGenerationIcon className="feature-pill-icon" />

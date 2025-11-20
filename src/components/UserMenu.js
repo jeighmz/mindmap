@@ -4,10 +4,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { getUserProfilePicture, handleImageError } from '../utils/profilePicture';
 import Login from './Login';
 import Settings from './Settings';
-import Notifications from './Notifications';
+import Notifications, { useNotificationsBadge } from './Notifications';
 import '../styles/UserMenu.css';
 
 export default function UserMenu({ onSettingsOpen }) {
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const unreadCount = useNotificationsBadge();
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -72,9 +74,37 @@ export default function UserMenu({ onSettingsOpen }) {
                   </div>
                 </div>
                 <div className="menu-divider" />
-                <div className="menu-item-notifications-wrapper">
-                  <Notifications />
-                </div>
+                <button
+                  className="menu-item"
+                  onClick={() => setIsNotificationsOpen(true)}
+                  title="Notifications"
+                  style={{ position: 'relative' }}
+                >
+                  <span className="menu-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                      <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                    </svg>
+                  </span>
+                  Notifications
+                  {unreadCount > 0 && (
+                    <span style={{
+                      background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                      color: 'white',
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      padding: '2px 6px',
+                      borderRadius: '10px',
+                      minWidth: '18px',
+                      textAlign: 'center',
+                      boxShadow: '0 2px 4px rgba(239, 68, 68, 0.3)',
+                      lineHeight: '1.2',
+                      marginLeft: 'auto'
+                    }}>
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </button>
                 {isWhiteboardPage && (
                   <button 
                     className="menu-item"
@@ -147,6 +177,10 @@ export default function UserMenu({ onSettingsOpen }) {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         onUpgradeClick={handleUpgradeClick}
+      />
+      <Notifications
+        isOpen={isNotificationsOpen}
+        onClose={() => setIsNotificationsOpen(false)}
       />
     </div>
   );

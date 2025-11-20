@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../firebase-config';
 import { getApiBaseUrl } from '../utils/api';
+import { TIER_FEATURES, USER_TIERS } from '../config/userTiers';
 
 const BOARDS_COLLECTION = 'boards';
 
@@ -246,6 +247,27 @@ export const saveBoard = async (boardData, userId) => {
       // For new boards, verify the requesting user matches the userId
       if (currentUser.uid !== userId) {
         throw new Error('Unauthorized access');
+      }
+      
+      // Check saved boards limit for new boards
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      const userData = userDoc.exists() ? userDoc.data() : {};
+      const userTier = userData.tier || USER_TIERS.FREE;
+      const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
+      const maxBoards = tierFeatures.maxMindMaps;
+      
+      if (maxBoards !== -1) {
+        // Count existing boards owned by this user
+        const boardsQuery = query(
+          collection(db, BOARDS_COLLECTION),
+          where('userId', '==', userId)
+        );
+        const boardsSnapshot = await getDocs(boardsQuery);
+        const boardCount = boardsSnapshot.size;
+        
+        if (boardCount >= maxBoards) {
+          throw new Error(`You've reached your limit of ${maxBoards} saved board${maxBoards !== 1 ? 's' : ''}. Please upgrade your plan to save more boards.`);
+        }
       }
     }
 

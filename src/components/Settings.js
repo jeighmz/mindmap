@@ -8,6 +8,8 @@ import { USER_TIERS, TIER_FEATURES } from '../config/userTiers';
 import '../styles/Settings.css';
 import { getApiBaseUrl } from '../utils/api';
 import { getUserProfilePicture, handleImageError } from '../utils/profilePicture';
+import { getUserUsageData } from '../utils/tierUsageTracker';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import {
   getAuth,
   updateProfile
@@ -49,8 +51,15 @@ const TierIcon = ({ tier }) => {
 };
 
 const CheckIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg className="check-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="20 6 9 17 4 12"/>
+  </svg>
+);
+
+const XIcon = () => (
+  <svg className="x-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="6" x2="6" y2="18"/>
+    <line x1="6" y1="6" x2="18" y2="18"/>
   </svg>
 );
 
@@ -68,6 +77,13 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
   const [displayName, setDisplayName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [usageData, setUsageData] = useState({
+    aiGeneratedMaps: { used: 0, limit: 0 },
+    aiAnalysisMessages: { used: 0, limit: 0 },
+    expandToolUses: { used: 0, limit: 0 },
+    savedBoards: { used: 0, limit: 0 }
+  });
+  const [isLoadingUsage, setIsLoadingUsage] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [error, setError] = useState('');
   const [activeSection, setActiveSection] = useState(SETTINGS_SECTIONS.GENERAL);
@@ -159,6 +175,57 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
       loadSettings();
     }
   }, [isOpen, loadSettings]);
+
+  // Fetch usage data when subscription section is active or when settings opens
+  useEffect(() => {
+    const fetchUsageData = async () => {
+      // Only fetch if settings is open, user is signed in, and on subscription section
+      if (!isOpen || !user?.uid || activeSection !== SETTINGS_SECTIONS.SUBSCRIPTION) {
+        return;
+      }
+
+      setIsLoadingUsage(true);
+      try {
+        const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
+        
+        // Fetch daily usage data (this will get fresh data from Firestore)
+        const dailyUsage = await getUserUsageData(user.uid);
+        
+        // Count saved boards
+        const boardsQuery = query(
+          collection(db, 'boards'),
+          where('userId', '==', user.uid)
+        );
+        const boardsSnapshot = await getDocs(boardsQuery);
+        const savedBoardsCount = boardsSnapshot.size;
+        
+        setUsageData({
+          aiGeneratedMaps: {
+            used: dailyUsage.aiGeneratedMaps || 0,
+            limit: tierFeatures.dailyAIGeneratedMaps
+          },
+          aiAnalysisMessages: {
+            used: dailyUsage.aiAnalysisMessages || 0,
+            limit: tierFeatures.dailyAIAnalysisMessages
+          },
+          expandToolUses: {
+            used: dailyUsage.expandToolUses || 0,
+            limit: tierFeatures.dailyExpandTool
+          },
+          savedBoards: {
+            used: savedBoardsCount,
+            limit: tierFeatures.maxMindMaps
+          }
+        });
+      } catch (error) {
+        console.error('Error fetching usage data:', error);
+      } finally {
+        setIsLoadingUsage(false);
+      }
+    };
+
+    fetchUsageData();
+  }, [isOpen, user?.uid, userTier, activeSection]);
 
   // Update profile picture preview when user photoURL changes (but not if user is actively selecting a new picture)
   useEffect(() => {
@@ -635,58 +702,6 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
               <span className="tier-name">{userTier} Plan</span>
             </span>
             <div className="tier-actions">
-              <button 
-                type="button" 
-                className="refresh-tier-button" 
-                onClick={async () => {
-                  if (refreshUserData) {
-                    await refreshUserData();
-                  }
-                }}
-                title="Refresh tier from Firestore"
-              >
-                ↻ Refresh
-              </button>
-              <button 
-                type="button" 
-                className="sync-tier-button" 
-                onClick={async () => {
-                  if (!user?.uid) return;
-                  try {
-                    setIsSaving(true);
-                    setMessage({ type: '', text: '' });
-                    const StripeService = (await import('../services/stripeService')).default;
-                    const result = await StripeService.syncSubscriptionTier(user.uid);
-                    if (result.updated) {
-                      setMessage({ 
-                        type: 'success', 
-                        text: result.message || `Tier updated to ${result.tier}` 
-                      });
-                      // Refresh user data to get updated tier
-                      if (refreshUserData) {
-                        await refreshUserData();
-                      }
-                    } else {
-                      setMessage({ 
-                        type: 'info', 
-                        text: result.message || `Tier is already correct: ${result.tier}` 
-                      });
-                    }
-                  } catch (error) {
-                    console.error('Error syncing subscription:', error);
-                    setMessage({ 
-                      type: 'error', 
-                      text: error.message || 'Failed to sync subscription tier' 
-                    });
-                  } finally {
-                    setIsSaving(false);
-                  }
-                }}
-                title="Sync tier from Stripe subscription"
-                disabled={isSaving}
-              >
-                {isSaving ? 'Syncing...' : '🔄 Sync from Stripe'}
-              </button>
               <button type="button" className="upgrade-button" onClick={handleUpgradeClick}>
                 Upgrade Plan
               </button>
@@ -700,18 +715,100 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
               <li><CheckIcon /> AI Analysis Panel messages: {formatDailyLimit(tierFeatures.dailyAIAnalysisMessages)}</li>
               <li><CheckIcon /> Expand Tool: {formatDailyLimit(tierFeatures.dailyExpandTool)}</li>
               <li><CheckIcon /> Saved boards (cloud): {formatLimit(tierFeatures.maxMindMaps)}</li>
-              <li><CheckIcon /> {formatFeatureDisplayName('autosave')}: {tierFeatures.features.autosave ? 'Yes' : 'No'}</li>
-              <li><CheckIcon /> Vision model support: {tierFeatures.features.visionModelSupport ? 'Yes' : 'No'}</li>
-              <li><CheckIcon /> Full AI editing tools: {tierFeatures.features.fullAIEditingTools ? 'Yes' : 'No'}</li>
+              <li><div>{tierFeatures.features.autosave ? <CheckIcon /> : <XIcon />} {formatFeatureDisplayName('autosave')}: {tierFeatures.features.autosave ? 'Yes' : 'No'}</div></li>
+              <li><div>{tierFeatures.features.visionModelSupport ? <CheckIcon /> : <XIcon />} Vision model support: {tierFeatures.features.visionModelSupport ? 'Yes' : 'No'}</div></li>
+              <li><div>{tierFeatures.features.fullAIEditingTools ? <CheckIcon /> : <XIcon />} Full AI editing tools: {tierFeatures.features.fullAIEditingTools ? 'Yes' : 'No'}</div></li>
               <li><CheckIcon /> Multi-board AI chat memory: {formatChatMemory(tierFeatures.multiBoardAIChatMemory)}</li>
               <li><CheckIcon /> Exports: PNG</li>
-              <li><CheckIcon /> Exports: PDF & Markdown: {tierFeatures.allowedExportFormats.includes('pdf') && tierFeatures.allowedExportFormats.includes('markdown') ? 'Yes' : 'No'}</li>
-              <li><CheckIcon /> Exports: JSON & .mm: {tierFeatures.allowedExportFormats.includes('json') && tierFeatures.allowedExportFormats.includes('mm') ? 'Yes' : 'No'}</li>
-              <li><CheckIcon /> No watermark: {tierFeatures.features.noWatermark ? 'Yes' : 'No'}</li>
-              <li><CheckIcon /> Collaboration (real-time): {tierFeatures.features.realTimeCollaboration ? 'Yes' : 'No'}</li>
-              <li><CheckIcon /> Fastest compute priority: {tierFeatures.features.fastestComputePriority ? 'Yes' : 'No'}</li>
-              <li><CheckIcon /> Experimental features: {tierFeatures.features.experimentalFeatures ? 'Yes' : 'No'}</li>
+              <li><div>{(tierFeatures.allowedExportFormats.includes('pdf') && tierFeatures.allowedExportFormats.includes('markdown')) ? <CheckIcon /> : <XIcon />} Exports: PDF & Markdown: {(tierFeatures.allowedExportFormats.includes('pdf') && tierFeatures.allowedExportFormats.includes('markdown')) ? 'Yes' : 'No'}</div></li>
+              <li><div>{(tierFeatures.allowedExportFormats.includes('json') && tierFeatures.allowedExportFormats.includes('mm')) ? <CheckIcon /> : <XIcon />} Exports: JSON & .mm: {(tierFeatures.allowedExportFormats.includes('json') && tierFeatures.allowedExportFormats.includes('mm')) ? 'Yes' : 'No'}</div></li>
+              <li><div>{tierFeatures.features.noWatermark ? <CheckIcon /> : <XIcon />} No watermark: {tierFeatures.features.noWatermark ? 'Yes' : 'No'}</div></li>
+              <li><div>{tierFeatures.features.realTimeCollaboration ? <CheckIcon /> : <XIcon />} Collaboration (real-time): {tierFeatures.features.realTimeCollaboration ? 'Yes' : 'No'}</div></li>
+              <li><div>{tierFeatures.features.fastestComputePriority ? <CheckIcon /> : <XIcon />} Fastest compute priority: {tierFeatures.features.fastestComputePriority ? 'Yes' : 'No'}</div></li>
+              <li><div>{tierFeatures.features.experimentalFeatures ? <CheckIcon /> : <XIcon />} Experimental features: {tierFeatures.features.experimentalFeatures ? 'Yes' : 'No'}</div></li>
             </ul>
+            
+            {/* Usage Progress Bars Section */}
+            <div className="usage-progress-section">
+              <h5>Usage Progress</h5>
+              {tierFeatures.dailyAIGeneratedMaps !== -1 && tierFeatures.dailyAIGeneratedMaps !== 0 && (
+                <div className="usage-progress-item">
+                  <div className="usage-progress-label">AI-generated maps</div>
+                  <div className="usage-progress-container">
+                    <div className="usage-progress-bar">
+                      <div 
+                        className="usage-progress-fill" 
+                        style={{ 
+                          width: `${Math.min(100, (usageData.aiGeneratedMaps.used / usageData.aiGeneratedMaps.limit) * 100)}%` 
+                        }}
+                      />
+                    </div>
+                    <span className="usage-progress-text">
+                      {isLoadingUsage ? '...' : `${usageData.aiGeneratedMaps.used} / ${usageData.aiGeneratedMaps.limit}`}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {tierFeatures.dailyAIAnalysisMessages !== -1 && tierFeatures.dailyAIAnalysisMessages !== 0 && (
+                <div className="usage-progress-item">
+                  <div className="usage-progress-label">AI Analysis Panel messages</div>
+                  <div className="usage-progress-container">
+                    <div className="usage-progress-bar">
+                      <div 
+                        className="usage-progress-fill" 
+                        style={{ 
+                          width: `${Math.min(100, (usageData.aiAnalysisMessages.used / usageData.aiAnalysisMessages.limit) * 100)}%` 
+                        }}
+                      />
+                    </div>
+                    <span className="usage-progress-text">
+                      {isLoadingUsage ? '...' : `${usageData.aiAnalysisMessages.used} / ${usageData.aiAnalysisMessages.limit}`}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {tierFeatures.dailyExpandTool !== -1 && tierFeatures.dailyExpandTool !== 0 && (
+                <div className="usage-progress-item">
+                  <div className="usage-progress-label">Expand Tool</div>
+                  <div className="usage-progress-container">
+                    <div className="usage-progress-bar">
+                      <div 
+                        className="usage-progress-fill" 
+                        style={{ 
+                          width: `${Math.min(100, (usageData.expandToolUses.used / usageData.expandToolUses.limit) * 100)}%` 
+                        }}
+                      />
+                    </div>
+                    <span className="usage-progress-text">
+                      {isLoadingUsage ? '...' : `${usageData.expandToolUses.used} / ${usageData.expandToolUses.limit}`}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {tierFeatures.maxMindMaps !== -1 && (
+                <div className="usage-progress-item">
+                  <div className="usage-progress-label">Saved boards (cloud)</div>
+                  <div className="usage-progress-container">
+                    <div className="usage-progress-bar">
+                      <div 
+                        className="usage-progress-fill" 
+                        style={{ 
+                          width: `${Math.min(100, (usageData.savedBoards.used / usageData.savedBoards.limit) * 100)}%` 
+                        }}
+                      />
+                    </div>
+                    <span className="usage-progress-text">
+                      {isLoadingUsage ? '...' : `${usageData.savedBoards.used} / ${usageData.savedBoards.limit}`}
+                    </span>
+                  </div>
+                  {usageData.savedBoards.used >= usageData.savedBoards.limit && (
+                    <div className="usage-upgrade-message">
+                      Upgrade your plan to save more boards
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

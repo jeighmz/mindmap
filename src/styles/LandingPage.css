@@ -208,6 +208,13 @@ a:hover {
   animation: fadeInUp 0.8s ease-out 0.7s both;
 }
 
+.hero-cta-buttons {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .hero-cta-button {
   display: inline-flex;
   align-items: center;
@@ -261,6 +268,45 @@ a:hover {
 
 .hero-cta-button:hover svg {
   transform: translateX(4px);
+}
+
+.hero-contact-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px 32px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(10px);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-contact-button:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 30px rgba(255, 255, 255, 0.1);
+}
+
+.hero-contact-button:active {
+  transform: translateY(-1px);
+}
+
+.hero-contact-button svg {
+  transition: transform 0.3s ease;
+  flex-shrink: 0;
+}
+
+.hero-contact-button:hover svg {
+  transform: scale(1.1);
 }
 
 .hero-features-preview {
@@ -768,8 +814,17 @@ a:hover {
     align-items: center;
   }
 
+  .hero-cta-buttons {
+    justify-content: center;
+    width: 100%;
+  }
+
   .hero-cta-button {
-    margin: 0 auto;
+    margin: 0;
+  }
+
+  .hero-contact-button {
+    margin: 0;
   }
 
   .hero-features-preview {
@@ -858,7 +913,19 @@ a:hover {
     align-items: center;
   }
 
+  .hero-cta-buttons {
+    flex-direction: column;
+    width: 100%;
+  }
+
   .hero-cta-button {
+    padding: 14px 28px;
+    font-size: 0.95rem;
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .hero-contact-button {
     padding: 14px 28px;
     font-size: 0.95rem;
     width: 100%;
@@ -1028,6 +1095,13 @@ a:hover {
   }
 
   .hero-cta-button {
+    padding: 12px 24px;
+    font-size: 0.9rem;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .hero-contact-button {
     padding: 12px 24px;
     font-size: 0.9rem;
     width: 100%;
@@ -2223,10 +2297,42 @@ a:hover {
   color: #007AFF;
 }
 
+/* Landing page nav links - light text for dark background */
+.landing-page .nav-links a {
+  color: #ffffff;
+}
+
+.landing-page .nav-links a:hover {
+  color: #a5b4fc;
+}
+
 .header-actions {
   display: flex;
   gap: 0.5rem;
   flex-shrink: 0;
+  align-items: center;
+}
+
+.header-x-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  color: #ffffff;
+  transition: all 0.2s ease;
+  border-radius: 6px;
+  text-decoration: none;
+}
+
+.header-x-link:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  transform: scale(1.1);
+}
+
+.header-x-link svg {
+  width: 20px;
+  height: 20px;
 }
 
 .login-button, .signup-button {
@@ -2385,6 +2491,25 @@ html {
 .dark-mode .nav-links a:hover {
   color: #60a5fa;
 }
+
+/* Landing page nav links in dark mode - still light for dark background */
+.dark-mode .landing-page .nav-links a {
+  color: #ffffff;
+}
+
+.dark-mode .landing-page .nav-links a:hover {
+  color: #a5b4fc;
+}
+
+.dark-mode .header-x-link {
+  color: #ffffff;
+}
+
+.dark-mode .header-x-link:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
 
 .dark-mode .login-button {
   background: transparent;
@@ -2729,4 +2854,4 @@ html {
 
 .dark-mode .cta-note {
   color: #94a3b8;
-} 
+}

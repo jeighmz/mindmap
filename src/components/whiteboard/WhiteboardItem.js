@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useApp } from '../../contexts/AppContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { TIER_FEATURES, USER_TIERS } from '../../config/userTiers';
 
 
 const formatDateLabel = (timestamp) => {
@@ -108,6 +110,11 @@ const WhiteboardItem = ({
   onShowColorMenu
 }) => {
   const { isDarkMode } = useApp();
+  const { userTier } = useAuth();
+  
+  // Check if expand tool is available for this tier
+  const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
+  const canUseExpandTool = tierFeatures.dailyExpandTool !== 0;
   
   // Text colors for charts based on dark mode
   const chartTextColor = isDarkMode ? '#e5e5e5' : '#404040';
@@ -3326,15 +3333,17 @@ const WhiteboardItem = ({
                 }}
                 scale={scale}
               />
-              <ExpandButton 
-                onExpandConcept={() => {
-                  if (window.expandSelectedConcept && typeof window.expandSelectedConcept === 'function') {
-                    window.expandSelectedConcept(item.id, item.text);
-                  }
-                }}
-                scale={scale}
-                isExpanding={isExpanding}
-              />
+              {canUseExpandTool && (
+                <ExpandButton 
+                  onExpandConcept={() => {
+                    if (window.expandSelectedConcept && typeof window.expandSelectedConcept === 'function') {
+                      window.expandSelectedConcept(item.id, item.text);
+                    }
+                  }}
+                  scale={scale}
+                  isExpanding={isExpanding}
+                />
+              )}
             </>
           )}
 
