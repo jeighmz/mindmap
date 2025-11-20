@@ -629,6 +629,63 @@
   border-bottom: 2px solid rgba(0, 0, 0, 0.08);
 }
 
+.tier-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.refresh-tier-button {
+  background: transparent;
+  color: var(--pricing-text-secondary);
+  border: 1px solid var(--pricing-border);
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  font-size: 0.8125rem;
+  letter-spacing: -0.01em;
+}
+
+.refresh-tier-button:hover {
+  background: var(--pricing-border);
+  color: var(--pricing-text-primary);
+  border-color: var(--pricing-primary);
+}
+
+.refresh-tier-button:active {
+  transform: scale(0.98);
+}
+
+.sync-tier-button {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  font-size: 0.8125rem;
+  letter-spacing: -0.01em;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.sync-tier-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+}
+
+.sync-tier-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.sync-tier-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .current-tier {
   display: flex;
   align-items: center;

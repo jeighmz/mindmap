@@ -51,4 +51,36 @@
 
 .export-menu button.disabled .upgrade-note {
   color: #007bff;
+}
+
+/* Dark Mode Styles */
+.dark-mode .export-menu {
+  background: var(--bg-primary, #1a1a1a);
+  border-color: var(--border-color, #404040);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.dark-mode .export-menu button {
+  color: var(--text-primary, #e5e5e5);
+}
+
+.dark-mode .export-menu button:hover:not(.disabled) {
+  background-color: var(--bg-tertiary, #2d2d2d);
+}
+
+.dark-mode .export-menu button.disabled {
+  background-color: var(--bg-secondary, #242424);
+  opacity: 0.6;
+}
+
+.dark-mode .export-menu button.disabled:hover {
+  background-color: var(--bg-secondary, #242424);
+}
+
+.dark-mode .export-menu .upgrade-note {
+  color: var(--text-secondary, #b3b3b3);
+}
+
+.dark-mode .export-menu button.disabled .upgrade-note {
+  color: #60a5fa;
 } 

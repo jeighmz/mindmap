@@ -103,3 +103,38 @@
   }
 }
 
+/* Dark Mode Styles */
+.dark-mode .usage-tracker {
+  background: var(--bg-primary, #1a1a1a);
+  border-color: var(--border-color, #333);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.dark-mode .usage-tracker-header {
+  border-bottom-color: var(--border-color, #333);
+}
+
+.dark-mode .usage-tracker-title {
+  color: var(--text-primary, #fff);
+}
+
+.dark-mode .usage-tracker-signin-hint {
+  color: var(--text-secondary, #999);
+}
+
+.dark-mode .usage-stat-label {
+  color: var(--text-secondary, #ccc);
+}
+
+.dark-mode .usage-stat-count {
+  color: var(--text-primary, #fff);
+}
+
+.dark-mode .usage-stat-bar {
+  background-color: var(--bg-secondary, #2a2a2a);
+}
+
+.dark-mode .usage-stat-remaining {
+  color: var(--text-secondary, #999);
+}
+

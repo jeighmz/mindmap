@@ -15,12 +15,14 @@
 
 .email-form input {
   padding: 0.75rem 1rem;
-  border: 1px solid #ddd;
+  border: 1px solid var(--input-border, #ddd);
   border-radius: 6px;
   font-size: 1rem;
   width: 100%;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   box-sizing: border-box;
+  background-color: var(--input-bg, white);
+  color: var(--text-primary, #333);
 }
 
 .email-form input:focus {
@@ -206,4 +208,111 @@
   font-size: 1.5rem;
   color: #333;
   text-align: center;
+}
+
+/* Dark Mode Styles */
+.dark-mode .email-form input {
+  background-color: var(--input-bg, #2d2d2d) !important;
+  border-color: var(--input-border, #404040) !important;
+  color: var(--text-primary, #e5e5e5) !important;
+}
+
+/* Override browser autofill styles for dark mode */
+.dark-mode .email-form input:-webkit-autofill,
+.dark-mode .email-form input:-webkit-autofill:hover,
+.dark-mode .email-form input:-webkit-autofill:focus,
+.dark-mode .email-form input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px var(--input-bg, #2d2d2d) inset !important;
+  -webkit-text-fill-color: var(--text-primary, #e5e5e5) !important;
+  background-color: var(--input-bg, #2d2d2d) !important;
+  color: var(--text-primary, #e5e5e5) !important;
+  caret-color: var(--text-primary, #e5e5e5) !important;
+}
+
+/* Firefox autofill */
+.dark-mode .email-form input:-moz-autofill {
+  background-color: var(--input-bg, #2d2d2d) !important;
+  color: var(--text-primary, #e5e5e5) !important;
+}
+
+.dark-mode .email-form input::placeholder {
+  color: var(--text-tertiary, #666);
+}
+
+.dark-mode .email-form input:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
+}
+
+.dark-mode .input-error {
+  border-color: #f87171 !important;
+  background-color: rgba(248, 113, 113, 0.1);
+}
+
+.dark-mode .input-error:focus {
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.2) !important;
+}
+
+.dark-mode .input-error-message {
+  color: #f87171;
+}
+
+.dark-mode .error-message {
+  color: #f87171;
+  background-color: rgba(248, 113, 113, 0.15);
+}
+
+.dark-mode .email-submit-button {
+  background-color: #4285f4;
+  color: white;
+}
+
+.dark-mode .email-submit-button:hover {
+  background-color: #357ae8;
+}
+
+.dark-mode .auth-divider {
+  color: var(--text-secondary, #999);
+}
+
+.dark-mode .auth-divider::before,
+.dark-mode .auth-divider::after {
+  background-color: var(--border-color, #444);
+}
+
+.dark-mode .google-sign-in-button {
+  background-color: var(--bg-secondary, #2a2a2a);
+  border-color: var(--border-color, #444);
+  color: var(--text-primary, #fff);
+}
+
+.dark-mode .google-sign-in-button:hover {
+  background-color: var(--bg-tertiary, #333);
+  border-color: var(--border-color, #555);
+}
+
+.dark-mode .switch-auth-mode {
+  color: #60a5fa;
+}
+
+.dark-mode .switch-auth-mode:hover {
+  color: #93c5fd;
+}
+
+.dark-mode .modal-content {
+  background: var(--bg-primary, #1a1a1a);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.dark-mode .modal-close {
+  color: var(--text-secondary, #999);
+}
+
+.dark-mode .modal-close:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary, #fff);
+}
+
+.dark-mode .login-modal h2 {
+  color: var(--text-primary, #fff);
 } 

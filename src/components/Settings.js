@@ -594,11 +594,35 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
 
   const renderSubscriptionSection = () => {
     const formatLimit = (value) => value === -1 ? 'Unlimited' : value;
+    const formatDailyLimit = (value) => {
+      if (value === -1) return 'Unlimited';
+      if (value === 0) return 'Not available';
+      return `${value} per day`;
+    };
     const formatCollaborators = (value) => {
       if (value === -1) return 'Unlimited collaborators';
       if (value === 0) return 'No collaborators';
       return `${value} collaborator${value !== 1 ? 's' : ''}`;
     };
+    const formatChatMemory = (value) => {
+      if (value === -1) return 'Unlimited';
+      if (value === 0) return 'Not available';
+      return `${value} chats`;
+    };
+    const formatFeatureDisplayName = (feature) => {
+      const featureMap = {
+        autosave: 'Autosave',
+        visionModelSupport: 'Vision model support',
+        fullAIEditingTools: 'Full AI editing tools (Rewrite / Summarize / Structure)',
+        noWatermark: 'No watermark',
+        realTimeCollaboration: 'Collaboration (real-time)',
+        fastestComputePriority: 'Fastest compute priority',
+        experimentalFeatures: 'Experimental features'
+      };
+      return featureMap[feature] || formatFeatureName(feature);
+    };
+    
+    const tierFeatures = TIER_FEATURES[userTier];
     
     return (
       <div className="settings-section">
@@ -610,23 +634,83 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
               <TierIcon tier={userTier} />
               <span className="tier-name">{userTier} Plan</span>
             </span>
-            <button type="button" className="upgrade-button" onClick={handleUpgradeClick}>
-              Upgrade Plan
-            </button>
+            <div className="tier-actions">
+              <button 
+                type="button" 
+                className="refresh-tier-button" 
+                onClick={async () => {
+                  if (refreshUserData) {
+                    await refreshUserData();
+                  }
+                }}
+                title="Refresh tier from Firestore"
+              >
+                ↻ Refresh
+              </button>
+              <button 
+                type="button" 
+                className="sync-tier-button" 
+                onClick={async () => {
+                  if (!user?.uid) return;
+                  try {
+                    setIsSaving(true);
+                    setMessage({ type: '', text: '' });
+                    const StripeService = (await import('../services/stripeService')).default;
+                    const result = await StripeService.syncSubscriptionTier(user.uid);
+                    if (result.updated) {
+                      setMessage({ 
+                        type: 'success', 
+                        text: result.message || `Tier updated to ${result.tier}` 
+                      });
+                      // Refresh user data to get updated tier
+                      if (refreshUserData) {
+                        await refreshUserData();
+                      }
+                    } else {
+                      setMessage({ 
+                        type: 'info', 
+                        text: result.message || `Tier is already correct: ${result.tier}` 
+                      });
+                    }
+                  } catch (error) {
+                    console.error('Error syncing subscription:', error);
+                    setMessage({ 
+                      type: 'error', 
+                      text: error.message || 'Failed to sync subscription tier' 
+                    });
+                  } finally {
+                    setIsSaving(false);
+                  }
+                }}
+                title="Sync tier from Stripe subscription"
+                disabled={isSaving}
+              >
+                {isSaving ? 'Syncing...' : '🔄 Sync from Stripe'}
+              </button>
+              <button type="button" className="upgrade-button" onClick={handleUpgradeClick}>
+                Upgrade Plan
+              </button>
+            </div>
           </div>
           <div className="tier-features">
             <h4>Your Features & Limits</h4>
             <ul>
-              <li><CheckIcon /> Up to {formatLimit(TIER_FEATURES[userTier].maxMindMaps)} mind maps</li>
-              <li><CheckIcon /> Maximum {formatLimit(TIER_FEATURES[userTier].maxNodesPerMap)} nodes per map</li>
-              <li><CheckIcon /> {formatCollaborators(TIER_FEATURES[userTier].maxCollaborators)}</li>
-              <li><CheckIcon /> Export: {TIER_FEATURES[userTier].allowedExportFormats.join(', ')}</li>
-              {Object.entries(TIER_FEATURES[userTier].features)
-                .filter(([_, enabled]) => enabled)
-                .map(([feature]) => (
-                  <li key={feature}><CheckIcon /> {formatFeatureName(feature)}</li>
-                ))
-              }
+              <li><CheckIcon /> Manual mind maps: {formatLimit(tierFeatures.maxNodesPerMap)}</li>
+              <li><CheckIcon /> AI-generated maps: {formatDailyLimit(tierFeatures.dailyAIGeneratedMaps)}</li>
+              <li><CheckIcon /> AI Analysis Panel messages: {formatDailyLimit(tierFeatures.dailyAIAnalysisMessages)}</li>
+              <li><CheckIcon /> Expand Tool: {formatDailyLimit(tierFeatures.dailyExpandTool)}</li>
+              <li><CheckIcon /> Saved boards (cloud): {formatLimit(tierFeatures.maxMindMaps)}</li>
+              <li><CheckIcon /> {formatFeatureDisplayName('autosave')}: {tierFeatures.features.autosave ? 'Yes' : 'No'}</li>
+              <li><CheckIcon /> Vision model support: {tierFeatures.features.visionModelSupport ? 'Yes' : 'No'}</li>
+              <li><CheckIcon /> Full AI editing tools: {tierFeatures.features.fullAIEditingTools ? 'Yes' : 'No'}</li>
+              <li><CheckIcon /> Multi-board AI chat memory: {formatChatMemory(tierFeatures.multiBoardAIChatMemory)}</li>
+              <li><CheckIcon /> Exports: PNG</li>
+              <li><CheckIcon /> Exports: PDF & Markdown: {tierFeatures.allowedExportFormats.includes('pdf') && tierFeatures.allowedExportFormats.includes('markdown') ? 'Yes' : 'No'}</li>
+              <li><CheckIcon /> Exports: JSON & .mm: {tierFeatures.allowedExportFormats.includes('json') && tierFeatures.allowedExportFormats.includes('mm') ? 'Yes' : 'No'}</li>
+              <li><CheckIcon /> No watermark: {tierFeatures.features.noWatermark ? 'Yes' : 'No'}</li>
+              <li><CheckIcon /> Collaboration (real-time): {tierFeatures.features.realTimeCollaboration ? 'Yes' : 'No'}</li>
+              <li><CheckIcon /> Fastest compute priority: {tierFeatures.features.fastestComputePriority ? 'Yes' : 'No'}</li>
+              <li><CheckIcon /> Experimental features: {tierFeatures.features.experimentalFeatures ? 'Yes' : 'No'}</li>
             </ul>
           </div>
         </div>

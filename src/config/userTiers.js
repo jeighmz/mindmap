@@ -9,79 +9,87 @@ export const USER_TIERS = {
 // Feature flags for each tier
 export const TIER_FEATURES = {
   [USER_TIERS.FREE]: {
-    maxMindMaps: 1,
-    maxNodesPerMap: 50,
+    maxMindMaps: 1, // Saved boards (cloud)
+    maxNodesPerMap: -1, // Unlimited (Manual mind maps: Unlimited)
     maxCollaborators: 0,
     allowedExportFormats: ['png'],
+    // Daily limits (-1 = unlimited, 0 = not available)
+    dailyAIGeneratedMaps: 4,
+    dailyAIAnalysisMessages: 0,
+    dailyExpandTool: 0,
+    // Multi-board AI chat memory (-1 = unlimited, 0 = not available)
+    multiBoardAIChatMemory: 0,
     features: {
-      basicTemplates: true,
-      customColors: false,
+      autosave: true,
+      visionModelSupport: false,
+      fullAIEditingTools: false, // Rewrite / Summarize / Structure
+      noWatermark: false,
       realTimeCollaboration: false,
-      versionHistory: false,
-      aiSuggestions: false,
-      aiExpand: false,
-      aiGeneration: false,
-      aiAnalysis: false,
-      communityTemplates: false,
-      prioritySupport: false,
-      earlyAccess: false
+      fastestComputePriority: false,
+      experimentalFeatures: false
     }
   },
   [USER_TIERS.STARTER]: {
-    maxMindMaps: 5,
-    maxNodesPerMap: 100,
-    maxCollaborators: 1,
+    maxMindMaps: 20, // Saved boards (cloud)
+    maxNodesPerMap: -1, // Unlimited (Manual mind maps: Unlimited)
+    maxCollaborators: 0,
     allowedExportFormats: ['png', 'pdf', 'markdown'],
+    // Daily limits
+    dailyAIGeneratedMaps: -1, // Unlimited
+    dailyAIAnalysisMessages: 4,
+    dailyExpandTool: 4,
+    // Multi-board AI chat memory
+    multiBoardAIChatMemory: 0,
     features: {
-      basicTemplates: true,
-      customColors: true,
+      autosave: true,
+      visionModelSupport: true,
+      fullAIEditingTools: false,
+      noWatermark: false,
       realTimeCollaboration: false,
-      versionHistory: true,
-      aiSuggestions: false,
-      aiExpand: false,
-      aiGeneration: false,
-      aiAnalysis: false,
-      communityTemplates: true,
-      prioritySupport: false,
-      earlyAccess: false
+      fastestComputePriority: false,
+      experimentalFeatures: false
     }
   },
   [USER_TIERS.PRO]: {
-    maxMindMaps: 20,
-    maxNodesPerMap: 500,
-    maxCollaborators: 5,
-    allowedExportFormats: ['png', 'pdf', 'markdown', 'json', 'mm', 'fig', 'notion'],
+    maxMindMaps: 100, // Saved boards (cloud)
+    maxNodesPerMap: -1, // Unlimited (Manual mind maps: Unlimited)
+    maxCollaborators: 0,
+    allowedExportFormats: ['png', 'pdf', 'markdown', 'json', 'mm'],
+    // Daily limits
+    dailyAIGeneratedMaps: -1, // Unlimited
+    dailyAIAnalysisMessages: -1, // Unlimited
+    dailyExpandTool: -1, // Unlimited
+    // Multi-board AI chat memory
+    multiBoardAIChatMemory: 3,
     features: {
-      basicTemplates: true,
-      customColors: true,
-      realTimeCollaboration: true,
-      versionHistory: true,
-      aiSuggestions: true,
-      aiExpand: true,
-      aiGeneration: false,
-      aiAnalysis: false,
-      communityTemplates: true,
-      prioritySupport: true,
-      earlyAccess: false
+      autosave: true,
+      visionModelSupport: true,
+      fullAIEditingTools: true,
+      noWatermark: true,
+      realTimeCollaboration: false,
+      fastestComputePriority: false,
+      experimentalFeatures: false
     }
   },
   [USER_TIERS.CREATOR_AI]: {
-    maxMindMaps: -1, // unlimited
-    maxNodesPerMap: -1, // unlimited
-    maxCollaborators: -1, // unlimited
-    allowedExportFormats: ['png', 'pdf', 'markdown', 'json', 'mm', 'svg', 'xml', 'yaml', 'docx', 'fig', 'notion'],
+    maxMindMaps: -1, // Unlimited (Saved boards: Unlimited)
+    maxNodesPerMap: -1, // Unlimited (Manual mind maps: Unlimited)
+    maxCollaborators: -1, // Unlimited
+    allowedExportFormats: ['png', 'pdf', 'markdown', 'json', 'mm'],
+    // Daily limits
+    dailyAIGeneratedMaps: -1, // Unlimited
+    dailyAIAnalysisMessages: -1, // Unlimited
+    dailyExpandTool: -1, // Unlimited
+    // Multi-board AI chat memory
+    multiBoardAIChatMemory: -1, // Unlimited
     features: {
-      basicTemplates: true,
-      customColors: true,
+      autosave: true,
+      visionModelSupport: true,
+      fullAIEditingTools: true,
+      noWatermark: true,
       realTimeCollaboration: true,
-      versionHistory: true,
-      aiSuggestions: true,
-      aiExpand: true,
-      aiGeneration: true,
-      aiAnalysis: true,
-      communityTemplates: true,
-      prioritySupport: true,
-      earlyAccess: true
+      fastestComputePriority: true,
+      experimentalFeatures: true
     }
   }
 };

@@ -3569,12 +3569,20 @@ Performance Metrics Analysis`
   const renderExportMenu = () => {
     const currentTier = getCurrentTier();
     
+    // Dark mode colors
+    const menuBg = isDarkMode ? '#1a1a1a' : '#fff';
+    const textColor = isDarkMode ? '#e5e5e5' : '#333';
+    const disabledTextColor = isDarkMode ? '#808080' : '#999';
+    const hoverBg = isDarkMode ? '#2d2d2d' : '#f5f5f5';
+    const upgradeNoteColor = isDarkMode ? '#b3b3b3' : '#666';
+    const boxShadow = isDarkMode ? '0 2px 10px rgba(0,0,0,0.4)' : '0 2px 10px rgba(0,0,0,0.1)';
+    
     return (
       <div className="export-menu" style={{
         padding: '8px 0',
-        background: '#fff',
+        background: menuBg,
         borderRadius: '8px',
-        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+        boxShadow: boxShadow,
         minWidth: '220px'
       }}>
         <button 
@@ -3592,10 +3600,15 @@ Performance Metrics Analysis`
             cursor: 'pointer',
             textAlign: 'left',
             fontSize: '14px',
-            color: canExport('png') ? '#333' : '#999',
-            ':hover': {
-              backgroundColor: canExport('png') ? '#f5f5f5' : 'transparent'
+            color: canExport('png') ? textColor : disabledTextColor
+          }}
+          onMouseEnter={(e) => {
+            if (canExport('png')) {
+              e.target.style.backgroundColor = hoverBg;
             }
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.backgroundColor = 'transparent';
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -3604,7 +3617,7 @@ Performance Metrics Analysis`
             <polyline points="21 15 16 10 5 21"/>
           </svg>
           <span style={{ flex: 1 }}>Export as PNG</span>
-          {!canExport('png') && <span className="upgrade-note" style={{ fontSize: '12px', color: '#666' }}>Free tier</span>}
+          {!canExport('png') && <span className="upgrade-note" style={{ fontSize: '12px', color: upgradeNoteColor }}>Free tier</span>}
         </button>
 
         <button 
@@ -3622,10 +3635,15 @@ Performance Metrics Analysis`
             cursor: 'pointer',
             textAlign: 'left',
             fontSize: '14px',
-            color: canExport('pdf') ? '#333' : '#999',
-            ':hover': {
-              backgroundColor: canExport('pdf') ? '#f5f5f5' : 'transparent'
+            color: canExport('pdf') ? textColor : disabledTextColor
+          }}
+          onMouseEnter={(e) => {
+            if (canExport('pdf')) {
+              e.target.style.backgroundColor = hoverBg;
             }
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.backgroundColor = 'transparent';
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -3636,7 +3654,7 @@ Performance Metrics Analysis`
             <polyline points="10 9 9 9 8 9"/>
           </svg>
           <span style={{ flex: 1 }}>Export as PDF</span>
-          {!canExport('pdf') && <span className="upgrade-note" style={{ fontSize: '12px', color: '#666' }}>Starter tier</span>}
+          {!canExport('pdf') && <span className="upgrade-note" style={{ fontSize: '12px', color: upgradeNoteColor }}>Starter tier</span>}
         </button>
 
         <button 
@@ -3654,10 +3672,15 @@ Performance Metrics Analysis`
             cursor: 'pointer',
             textAlign: 'left',
             fontSize: '14px',
-            color: canExport('markdown') ? '#333' : '#999',
-            ':hover': {
-              backgroundColor: canExport('markdown') ? '#f5f5f5' : 'transparent'
+            color: canExport('markdown') ? textColor : disabledTextColor
+          }}
+          onMouseEnter={(e) => {
+            if (canExport('markdown')) {
+              e.target.style.backgroundColor = hoverBg;
             }
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.backgroundColor = 'transparent';
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -3665,7 +3688,7 @@ Performance Metrics Analysis`
             <path d="M7 8h10M7 12h4"/>
           </svg>
           <span style={{ flex: 1 }}>Export as Markdown</span>
-          {!canExport('markdown') && <span className="upgrade-note" style={{ fontSize: '12px', color: '#666' }}>Starter tier</span>}
+          {!canExport('markdown') && <span className="upgrade-note" style={{ fontSize: '12px', color: upgradeNoteColor }}>Starter tier</span>}
         </button>
 
         <button 
@@ -3683,10 +3706,15 @@ Performance Metrics Analysis`
             cursor: 'pointer',
             textAlign: 'left',
             fontSize: '14px',
-            color: canExport('json') ? '#333' : '#999',
-            ':hover': {
-              backgroundColor: canExport('json') ? '#f5f5f5' : 'transparent'
+            color: canExport('json') ? textColor : disabledTextColor
+          }}
+          onMouseEnter={(e) => {
+            if (canExport('json')) {
+              e.target.style.backgroundColor = hoverBg;
             }
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.backgroundColor = 'transparent';
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -3696,7 +3724,7 @@ Performance Metrics Analysis`
             <path d="M14 16a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2"/>
           </svg>
           <span style={{ flex: 1 }}>Export as JSON</span>
-          {!canExport('json') && <span className="upgrade-note" style={{ fontSize: '12px', color: '#666' }}>Pro tier</span>}
+          {!canExport('json') && <span className="upgrade-note" style={{ fontSize: '12px', color: upgradeNoteColor }}>Pro tier</span>}
         </button>
 
         <button 
@@ -3714,10 +3742,15 @@ Performance Metrics Analysis`
             cursor: 'pointer',
             textAlign: 'left',
             fontSize: '14px',
-            color: canExport('mm') ? '#333' : '#999',
-            ':hover': {
-              backgroundColor: canExport('mm') ? '#f5f5f5' : 'transparent'
+            color: canExport('mm') ? textColor : disabledTextColor
+          }}
+          onMouseEnter={(e) => {
+            if (canExport('mm')) {
+              e.target.style.backgroundColor = hoverBg;
             }
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.backgroundColor = 'transparent';
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -3726,7 +3759,7 @@ Performance Metrics Analysis`
             <path d="M12 8 C9.79086 8 8 9.79086 8 12 C8 14.2091 9.79086 16 12 16"/>
           </svg>
           <span style={{ flex: 1 }}>Export as Mind Map (.mm)</span>
-          {!canExport('mm') && <span className="upgrade-note" style={{ fontSize: '12px', color: '#666' }}>Pro tier</span>}
+          {!canExport('mm') && <span className="upgrade-note" style={{ fontSize: '12px', color: upgradeNoteColor }}>Pro tier</span>}
         </button>
 
         <button 
@@ -3744,10 +3777,15 @@ Performance Metrics Analysis`
             cursor: 'pointer',
             textAlign: 'left',
             fontSize: '14px',
-            color: canExport('fig') ? '#333' : '#999',
-            ':hover': {
-              backgroundColor: canExport('fig') ? '#f5f5f5' : 'transparent'
+            color: canExport('fig') ? textColor : disabledTextColor
+          }}
+          onMouseEnter={(e) => {
+            if (canExport('fig')) {
+              e.target.style.backgroundColor = hoverBg;
             }
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.backgroundColor = 'transparent';
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -3757,7 +3795,7 @@ Performance Metrics Analysis`
             <path d="M16 12h4v4h-4z"/>
           </svg>
           <span style={{ flex: 1 }}>Export as Figma (.fig)</span>
-          {!canExport('fig') && <span className="upgrade-note" style={{ fontSize: '12px', color: '#666' }}>Pro tier</span>}
+          {!canExport('fig') && <span className="upgrade-note" style={{ fontSize: '12px', color: upgradeNoteColor }}>Pro tier</span>}
         </button>
 
         <button 
@@ -3775,10 +3813,15 @@ Performance Metrics Analysis`
             cursor: 'pointer',
             textAlign: 'left',
             fontSize: '14px',
-            color: canExport('notion') ? '#333' : '#999',
-            ':hover': {
-              backgroundColor: canExport('notion') ? '#f5f5f5' : 'transparent'
+            color: canExport('notion') ? textColor : disabledTextColor
+          }}
+          onMouseEnter={(e) => {
+            if (canExport('notion')) {
+              e.target.style.backgroundColor = hoverBg;
             }
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.backgroundColor = 'transparent';
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -3789,7 +3832,7 @@ Performance Metrics Analysis`
             <polyline points="10 9 9 9 8 9"/>
           </svg>
           <span style={{ flex: 1 }}>Export to Notion</span>
-          {!canExport('notion') && <span className="upgrade-note" style={{ fontSize: '12px', color: '#666' }}>Pro tier</span>}
+          {!canExport('notion') && <span className="upgrade-note" style={{ fontSize: '12px', color: upgradeNoteColor }}>Pro tier</span>}
         </button>
       </div>
     );

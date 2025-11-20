@@ -26,20 +26,38 @@ const LandingPage = () => {
     const shouldLogin = searchParams.get('login');
 
     if (paymentStatus === 'success' && sessionId && user) {
-      // Firestore listener will automatically update the tier when webhook processes
-      // Just refresh once to get the latest (if webhook already processed)
-      if (refreshUserData) {
-        // Small delay to let webhook process, then refresh once
-        setTimeout(async () => {
-          try {
-            await refreshUserData();
-          } catch (error) {
-            console.error('Error refreshing user tier:', error);
-          }
-        }, 3000); // Wait 3 seconds for webhook to process
-      }
+      // Poll for tier update - webhook might take a few seconds
+      const expectedTier = tier || 'CREATOR_AI'; // Fallback if tier param missing
+      let pollCount = 0;
+      const maxPolls = 10; // Poll for up to 20 seconds (10 * 2s)
       
-      // Remove query params immediately
+      const pollForTierUpdate = async () => {
+        try {
+          await refreshUserData();
+          pollCount++;
+          
+          // Check if tier has updated
+          const currentTier = userTier;
+          if (currentTier === expectedTier || pollCount >= maxPolls) {
+            console.log(`Tier update confirmed: ${currentTier} (expected: ${expectedTier})`);
+            return;
+          }
+          
+          // Continue polling if not updated yet
+          if (pollCount < maxPolls) {
+            setTimeout(pollForTierUpdate, 2000); // Poll every 2 seconds
+          } else {
+            console.warn('Tier update polling timeout - webhook may be delayed');
+          }
+        } catch (error) {
+          console.error('Error refreshing user tier:', error);
+        }
+      };
+      
+      // Start polling after initial delay
+      setTimeout(pollForTierUpdate, 2000);
+      
+      // Remove query params immediately (but keep polling in background)
       navigate('/', { replace: true });
     } else if (paymentStatus === 'cancelled') {
       // Remove query params for cancelled payments
@@ -51,7 +69,7 @@ const LandingPage = () => {
       // Remove query param from URL
       navigate('/', { replace: true });
     }
-  }, [searchParams, user, navigate, refreshUserData]);
+  }, [searchParams, user, navigate, refreshUserData, userTier]);
 
 
   const handleLoginClick = () => {

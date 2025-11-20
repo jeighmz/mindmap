@@ -206,6 +206,38 @@ class StripeService {
       throw error;
     }
   }
+
+  /**
+   * Manually sync subscription tier from Stripe
+   * Useful when webhook fails or tier is out of sync
+   * @param {string} userId - Firebase user ID
+   * @returns {Promise<{tier: string, updated: boolean, message: string}>}
+   * @throws {Error} If the sync fails
+   */
+  static async syncSubscriptionTier(userId) {
+    try {
+      if (!userId) throw new Error('User ID is required');
+
+      const response = await fetch(`${getBaseUrl()}/sync-subscription`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Subscription sync failed: ${errorData}`);
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      console.error('Error syncing subscription tier:', error);
+      throw error;
+    }
+  }
 }
 
 export default StripeService; 
