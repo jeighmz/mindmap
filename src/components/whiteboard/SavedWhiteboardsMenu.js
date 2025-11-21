@@ -829,6 +829,36 @@ const SavedWhiteboardsMenu = ({
     });
   };
 
+  // Categorize demo boards by use case
+  const categorizeDemoBoards = (boards) => {
+    const categories = {
+      'Business Strategy': [],
+      'Product & Development': [],
+      'Customer Experience': [],
+      'Personal Finances': [],
+      'Other': []
+    };
+
+    boards.forEach(board => {
+      const name = board.name?.toLowerCase() || '';
+      
+      if (name.includes('finance') || name.includes('budget') || name.includes('investment') || name.includes('debt') || name.includes('savings') || name.includes('retirement') || name.includes('portfolio')) {
+        categories['Personal Finances'].push(board);
+      } else if (name.includes('monetization') || name.includes('marketing') || name.includes('campaign') || name.includes('strategy')) {
+        categories['Business Strategy'].push(board);
+      } else if (name.includes('product') || name.includes('development') || name.includes('roadmap') || name.includes('technology') || name.includes('stack') || name.includes('architecture')) {
+        categories['Product & Development'].push(board);
+      } else if (name.includes('customer') || name.includes('journey') || name.includes('experience') || name.includes('user')) {
+        categories['Customer Experience'].push(board);
+      } else {
+        categories['Other'].push(board);
+      }
+    });
+
+    // Remove empty categories
+    return Object.entries(categories).filter(([_, boards]) => boards.length > 0);
+  };
+
   // Get boards filtered by selected folder and search
   const getFilteredAndGroupedBoards = () => {
     let boards = activeTab === 'demo' 
@@ -850,6 +880,7 @@ const SavedWhiteboardsMenu = ({
   };
 
   const displayedBoards = getFilteredAndGroupedBoards();
+  const categorizedDemoBoards = activeTab === 'demo' ? categorizeDemoBoards(displayedBoards) : null;
 
   const styles = {
     menuContainer: {
@@ -935,7 +966,7 @@ const SavedWhiteboardsMenu = ({
               className={`tab-button ${activeTab === 'demo' ? 'active' : ''}`}
               onClick={() => handleTabChange('demo')}
             >
-              Demo Boards
+              Templates
             </button>
             <button 
               type="button"
@@ -1086,7 +1117,107 @@ const SavedWhiteboardsMenu = ({
               <div className="loading-message">Loading...</div>
             ) : (
               <>
-                {displayedBoards.length > 0 ? (
+                {activeTab === 'demo' && categorizedDemoBoards ? (
+                  // Render demo boards with section headers
+                  categorizedDemoBoards.length > 0 ? (
+                    <>
+                      {categorizedDemoBoards.map(([categoryName, categoryBoards]) => (
+                        <div key={categoryName} className="demo-board-section">
+                          <h3 className="demo-section-header">{categoryName}</h3>
+                          {categoryBoards.map((board) => {
+                            const isCurrentlyOpen = board.id === currentBoardId;
+                            
+                            return (
+                              <div 
+                                key={board.id} 
+                                className={`saved-board-item board-item ${isCurrentlyOpen ? 'selected' : ''}`}
+                              >
+                                <div className="board-item-content">
+                                  <div className="board-item-header">
+                                    <h3 className="board-name">{board.name}</h3>
+                                    {isCurrentlyOpen && (
+                                      <span className="current-badge">Current</span>
+                                    )}
+                                  </div>
+                                  <div className="board-item-meta">
+                                    <svg 
+                                      width="12" 
+                                      height="12" 
+                                      viewBox="0 0 24 24" 
+                                      fill="none" 
+                                      stroke="currentColor" 
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      className="meta-icon"
+                                    >
+                                      <circle cx="12" cy="12" r="10" />
+                                      <polyline points="12 6 12 12 16 14" />
+                                    </svg>
+                                    <span className="saved-date">
+                                      {getDisplayDate(board.savedAt || board.lastEditedAt).toLocaleString(undefined, {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        year: 'numeric',
+                                        hour: 'numeric',
+                                        minute: '2-digit'
+                                      })}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="board-actions">
+                                  <button 
+                                    type="button"
+                                    onClick={() => {
+                                      onLoad(board.id);
+                                      onToggle();
+                                    }}
+                                    disabled={isLoading || isCurrentlyOpen}
+                                    title={isCurrentlyOpen ? "Already loaded" : "Load board"}
+                                    className="load-btn"
+                                  >
+                                    <svg 
+                                      width="16" 
+                                      height="16" 
+                                      viewBox="0 0 24 24" 
+                                      fill="none" 
+                                      stroke="currentColor" 
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    >
+                                      <path d="M3 15v4c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2v-4" />
+                                      <polyline points="17 8 12 3 7 8" />
+                                      <line x1="12" y1="3" x2="12" y2="15" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    <div className="no-boards-message">
+                      <svg 
+                        width="24" 
+                        height="24" 
+                        viewBox="0 0 24 24" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{ opacity: 0.5 }}
+                      >
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                        <line x1="8" y1="12" x2="16" y2="12" />
+                      </svg>
+                      No templates available
+                    </div>
+                  )
+                ) : displayedBoards.length > 0 ? (
                   <>
                     {displayedBoards.map((board) => {
                       const isCurrentlyOpen = board.id === currentBoardId;

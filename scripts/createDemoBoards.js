@@ -935,6 +935,416 @@ const createDemoBoards = async () => {
         scale: 1,
         panOffset: { x: 0, y: 0 }
       }
+    },
+    {
+      name: 'Personal Budget Planning',
+      content: {
+        items: [
+          {
+            id: generateId(),
+            type: 'circle',
+            text: 'Monthly Budget',
+            position: { x: 900, y: 500 },
+            width: 180,
+            height: 180,
+            order: 0,
+            backgroundColor: '#4CAF50'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Income',
+            position: { x: 600, y: 300 },
+            width: 200,
+            height: 70,
+            order: 1,
+            backgroundColor: '#C8E6C9'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Salary',
+            position: { x: 500, y: 150 },
+            width: 180,
+            height: 60,
+            order: 2,
+            backgroundColor: '#A5D6A7'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Side Hustle',
+            position: { x: 700, y: 150 },
+            width: 180,
+            height: 60,
+            order: 3,
+            backgroundColor: '#A5D6A7'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Investments',
+            position: { x: 900, y: 150 },
+            width: 180,
+            height: 60,
+            order: 4,
+            backgroundColor: '#A5D6A7'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Expenses',
+            position: { x: 1200, y: 300 },
+            width: 200,
+            height: 70,
+            order: 5,
+            backgroundColor: '#FF9800'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Housing',
+            position: { x: 1100, y: 150 },
+            width: 180,
+            height: 60,
+            order: 6,
+            backgroundColor: '#FFCC80'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Food & Groceries',
+            position: { x: 1300, y: 150 },
+            width: 200,
+            height: 60,
+            order: 7,
+            backgroundColor: '#FFCC80'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Transportation',
+            position: { x: 1520, y: 150 },
+            width: 200,
+            height: 60,
+            order: 8,
+            backgroundColor: '#FFCC80'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Savings',
+            position: { x: 900, y: 700 },
+            width: 200,
+            height: 70,
+            order: 9,
+            backgroundColor: '#2196F3'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Emergency Fund',
+            position: { x: 800, y: 850 },
+            width: 200,
+            height: 60,
+            order: 10,
+            backgroundColor: '#90CAF9'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Retirement',
+            position: { x: 1020, y: 850 },
+            width: 200,
+            height: 60,
+            order: 11,
+            backgroundColor: '#90CAF9'
+          },
+          {
+            id: generateId(),
+            type: 'sticky',
+            text: '50/30/20 Rule\n50% Needs\n30% Wants\n20% Savings',
+            position: { x: 600, y: 700 },
+            width: 200,
+            height: 200,
+            order: 12,
+            backgroundColor: '#FFEB3B'
+          }
+        ],
+        connections: [],
+        scale: 1,
+        panOffset: { x: 0, y: 0 }
+      }
+    },
+    {
+      name: 'Investment Portfolio Strategy',
+      content: {
+        items: [
+          {
+            id: generateId(),
+            type: 'circle',
+            text: 'Investment Portfolio',
+            position: { x: 900, y: 500 },
+            width: 180,
+            height: 180,
+            order: 0,
+            backgroundColor: '#9C27B0'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Stocks',
+            position: { x: 600, y: 300 },
+            width: 200,
+            height: 70,
+            order: 1,
+            backgroundColor: '#CE93D8'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Large Cap',
+            position: { x: 500, y: 150 },
+            width: 180,
+            height: 60,
+            order: 2,
+            backgroundColor: '#E1BEE7'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Small Cap',
+            position: { x: 700, y: 150 },
+            width: 180,
+            height: 60,
+            order: 3,
+            backgroundColor: '#E1BEE7'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'International',
+            position: { x: 900, y: 150 },
+            width: 200,
+            height: 60,
+            order: 4,
+            backgroundColor: '#E1BEE7'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Bonds',
+            position: { x: 1200, y: 300 },
+            width: 200,
+            height: 70,
+            order: 5,
+            backgroundColor: '#81C784'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Government',
+            position: { x: 1100, y: 150 },
+            width: 200,
+            height: 60,
+            order: 6,
+            backgroundColor: '#A5D6A7'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Corporate',
+            position: { x: 1320, y: 150 },
+            width: 200,
+            height: 60,
+            order: 7,
+            backgroundColor: '#A5D6A7'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Alternative Assets',
+            position: { x: 900, y: 700 },
+            width: 250,
+            height: 70,
+            order: 8,
+            backgroundColor: '#FF9800'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Real Estate',
+            position: { x: 800, y: 850 },
+            width: 200,
+            height: 60,
+            order: 9,
+            backgroundColor: '#FFCC80'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Commodities',
+            position: { x: 1020, y: 850 },
+            width: 200,
+            height: 60,
+            order: 10,
+            backgroundColor: '#FFCC80'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Crypto',
+            position: { x: 1240, y: 850 },
+            width: 180,
+            height: 60,
+            order: 11,
+            backgroundColor: '#FFCC80'
+          },
+          {
+            id: generateId(),
+            type: 'sticky',
+            text: 'Diversification\nReduce Risk\nMaximize Returns',
+            position: { x: 600, y: 700 },
+            width: 200,
+            height: 180,
+            order: 12,
+            backgroundColor: '#FFEB3B'
+          }
+        ],
+        connections: [],
+        scale: 1,
+        panOffset: { x: 0, y: 0 }
+      }
+    },
+    {
+      name: 'Debt Payoff Plan',
+      content: {
+        items: [
+          {
+            id: generateId(),
+            type: 'circle',
+            text: 'Debt Elimination',
+            position: { x: 900, y: 500 },
+            width: 180,
+            height: 180,
+            order: 0,
+            backgroundColor: '#F44336'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Credit Cards',
+            position: { x: 600, y: 300 },
+            width: 200,
+            height: 70,
+            order: 1,
+            backgroundColor: '#EF9A9A'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'High Interest',
+            position: { x: 500, y: 150 },
+            width: 200,
+            height: 60,
+            order: 2,
+            backgroundColor: '#FFCDD2'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Balance Transfer',
+            position: { x: 720, y: 150 },
+            width: 200,
+            height: 60,
+            order: 3,
+            backgroundColor: '#FFCDD2'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Student Loans',
+            position: { x: 1200, y: 300 },
+            width: 200,
+            height: 70,
+            order: 4,
+            backgroundColor: '#FFB74D'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Federal',
+            position: { x: 1100, y: 150 },
+            width: 180,
+            height: 60,
+            order: 5,
+            backgroundColor: '#FFE0B2'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Private',
+            position: { x: 1300, y: 150 },
+            width: 180,
+            height: 60,
+            order: 6,
+            backgroundColor: '#FFE0B2'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Mortgage',
+            position: { x: 900, y: 700 },
+            width: 200,
+            height: 70,
+            order: 7,
+            backgroundColor: '#64B5F6'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Refinance Option',
+            position: { x: 800, y: 850 },
+            width: 220,
+            height: 60,
+            order: 8,
+            backgroundColor: '#BBDEFB'
+          },
+          {
+            id: generateId(),
+            type: 'rectangle',
+            text: 'Extra Payments',
+            position: { x: 1040, y: 850 },
+            width: 200,
+            height: 60,
+            order: 9,
+            backgroundColor: '#BBDEFB'
+          },
+          {
+            id: generateId(),
+            type: 'sticky',
+            text: 'Debt Snowball\nPay smallest first\nBuild momentum',
+            position: { x: 600, y: 700 },
+            width: 200,
+            height: 180,
+            order: 10,
+            backgroundColor: '#C5E1A5'
+          },
+          {
+            id: generateId(),
+            type: 'sticky',
+            text: 'Debt Avalanche\nPay highest interest\nSave more money',
+            position: { x: 1300, y: 700 },
+            width: 200,
+            height: 180,
+            order: 11,
+            backgroundColor: '#FFE082'
+          }
+        ],
+        connections: [],
+        scale: 1,
+        panOffset: { x: 0, y: 0 }
+      }
     }
   ];
 
