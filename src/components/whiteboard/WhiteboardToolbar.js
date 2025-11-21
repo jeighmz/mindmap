@@ -385,14 +385,14 @@ const WhiteboardToolbar = ({ onOpenMindMapPanel, onOpenSearchPanel, items, conne
         </svg>
       </button>
       <button 
-        className={`toolbar-item ai-button ${isSpacePressed ? 'panning-mode' : ''}`}
+        className="toolbar-item ai-button"
         onMouseDown={handleChatButtonMouseDown}
         onClick={handleChatButtonClick}
         onMouseUp={handleChatButtonMouseUp}
         onMouseLeave={handleChatButtonMouseUp}
         title="AI Analysis Chat"
         style={{
-          cursor: isSpacePressed ? 'grab' : 'pointer',
+          cursor: 'pointer',
           transition: 'transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1)'
         }}
       >

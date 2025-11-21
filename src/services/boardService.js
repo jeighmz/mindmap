@@ -277,7 +277,8 @@ export const saveBoard = async (boardData, userId) => {
         ...boardData.content,
         items: cleanedItems
       },
-      userId: userId // Use the original owner's userId for existing boards
+      userId: userId, // Use the original owner's userId for existing boards
+      folderId: boardData.folderId !== undefined ? boardData.folderId : null // Support folder organization
     };
 
     // Handle savedAt (creation/first save time)

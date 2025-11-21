@@ -119,6 +119,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const isAutoSavingRef = useRef(false); // Mutex-like lock to prevent concurrent auto-saves
   const originalSavedAtRef = useRef(null); // Track the original savedAt timestamp - never changes after board creation
   const originalBoardOwnerIdRef = useRef(null); // Track the original board owner's userId - never changes
+  const originalFolderIdRef = useRef(null); // Track the board's folderId - preserve when saving
   // Add state for color picker
   const [colorPicker, setColorPicker] = useState({
     background: '#fff740',
@@ -1023,6 +1024,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       setScale(1.0);
       setCurrentBoardName(null);
       originalBoardOwnerIdRef.current = null; // Reset board owner tracking
+      originalFolderIdRef.current = null; // Reset folderId tracking
     }
   };
 
@@ -1450,10 +1452,30 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         ? originalBoardOwnerIdRef.current 
         : user.uid;
 
+      // Preserve folderId if board exists
+      // Fetch current folderId from Firestore to ensure we have the latest value
+      // This is important because the board might have been moved to a folder after it was loaded
+      let folderIdToPreserve = null;
+      if (currentBoardId) {
+        try {
+          const boardDoc = await getDoc(doc(db, 'boards', currentBoardId));
+          if (boardDoc.exists()) {
+            folderIdToPreserve = boardDoc.data().folderId || null;
+            // Update the ref with the latest value
+            originalFolderIdRef.current = folderIdToPreserve;
+          }
+        } catch (error) {
+          console.error('Error getting board folderId for manual save:', error);
+          // Fall back to stored value if fetch fails
+          folderIdToPreserve = originalFolderIdRef.current;
+        }
+      }
+
       const boardData = {
         name: name || currentBoardName || 'Untitled Board',
         userId: boardOwnerId, // Use original owner for existing boards, current user for new boards
         lastEditedAt: serverTimestamp(), // Manual save - update lastEditedAt
+        folderId: folderIdToPreserve, // Preserve folderId when saving
         content: {
           items: processedItems,
           connections: cleanedConnections,
@@ -1681,6 +1703,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       lastAutoSaveBoardIdRef.current = null; // Reset so new board can save
       lastSavedContentRef.current = null; // Reset - will be set after loading
       originalBoardOwnerIdRef.current = null; // Reset board owner tracking
+      originalFolderIdRef.current = null; // Reset folderId tracking
+      originalFolderIdRef.current = null; // Reset folderId tracking
       
       // Clear state before loading new board to prevent stale data
       setItems([]);
@@ -1698,6 +1722,10 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       // Store the original board owner's userId when loading a board
       // This ensures ownership never changes, even if a shared user saves
       originalBoardOwnerIdRef.current = boardData.userId || null;
+      
+      // Store the original folderId when loading a board
+      // This ensures folder association is preserved when saving
+      originalFolderIdRef.current = boardData.folderId || null;
       
       // Store the original savedAt timestamp when loading a board
       // This ensures it never changes, even if the board is refreshed
@@ -2050,6 +2078,24 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         return;
       }
 
+      // Fetch current folderId from Firestore to ensure we have the latest value
+      // This is important because the board might have been moved to a folder after it was loaded
+      let folderIdToPreserve = originalFolderIdRef.current;
+      if (boardIdToSave) {
+        try {
+          const boardDoc = await getDoc(doc(db, 'boards', boardIdToSave));
+          if (boardDoc.exists()) {
+            const currentFolderId = boardDoc.data().folderId || null;
+            folderIdToPreserve = currentFolderId;
+            // Update the ref with the latest value
+            originalFolderIdRef.current = currentFolderId;
+          }
+        } catch (error) {
+          console.error('Error getting board folderId for auto-save:', error);
+          // Fall back to stored value if fetch fails
+        }
+      }
+
       // Don't save viewport (scale, panOffset) in auto-save to avoid saving on every view change
       // IMPORTANT: Only update lastEditedAt if content actually changed
       // This ensures the "most recent edit" timestamp accurately reflects actual content changes
@@ -2057,6 +2103,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         id: boardIdToSave, // Use the stored boardId to ensure we save to the correct board
         name: boardNameToSave, // Use the stored boardName
         userId: user.uid,
+        folderId: folderIdToPreserve, // Preserve folderId when auto-saving (use latest from Firestore)
         // Only include lastEditedAt if content actually changed
         // This prevents auto-saves from updating timestamps for boards that weren't actually edited
         ...(contentChanged && { lastEditedAt: serverTimestamp() }),
@@ -7064,6 +7111,7 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
               scale,
               panOffset
             }}
+            currentBoardId={currentBoardId}
           />
           <div className="export-controls">
             <button 
@@ -7257,7 +7305,7 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
           // Don't prevent default for react-dnd items - let react-dnd handle them
         }}
         style={{
-          cursor: isPanning ? 'grabbing' : (isSpacePressed || isRightClickSelecting ? 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'20\' height=\'20\' viewBox=\'0 0 32 32\'%3E%3Ccircle cx=\'13\' cy=\'13\' r=\'8\' stroke=\'%23000000\' stroke-width=\'2.5\' fill=\'none\'/%3E%3Cline x1=\'20\' y1=\'20\' x2=\'28\' y2=\'28\' stroke=\'%23000000\' stroke-width=\'2.5\' stroke-linecap=\'round\'/%3E%3C/svg%3E") 10 10, crosshair' : 'grab'),
+          cursor: isPanning ? 'grabbing' : (isSpacePressed || isSelecting || isRightClickSelecting ? 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\'%3E%3Ccircle cx=\'10\' cy=\'10\' r=\'7\' stroke=\'%23000000\' stroke-width=\'2\' fill=\'none\'/%3E%3Cpath d=\'M15 15l5 5\' stroke=\'%23000000\' stroke-width=\'2\' stroke-linecap=\'round\'/%3E%3C/svg%3E") 10 10, crosshair' : 'default'),
           position: 'relative',
           overflow: 'hidden',
           width: '100%',

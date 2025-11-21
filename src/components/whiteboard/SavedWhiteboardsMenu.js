@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserBoards, saveBoard, deleteBoard } from '../../services/boardService';
-import { serverTimestamp } from 'firebase/firestore';
+import { getSharedBoards } from '../../services/sharingService';
+import { createFolder, getUserFolders, updateFolder, deleteFolder, moveBoardToFolder, getFolderStructure } from '../../services/folderService';
+import { serverTimestamp, doc, getDoc, updateDoc, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
+import { db } from '../../firebase-config';
 import ShareBoardModal from './ShareBoardModal';
 import { TIER_FEATURES, USER_TIERS } from '../../config/userTiers';
 import '../../styles/SavedWhiteboardsMenu.css';
@@ -18,11 +22,24 @@ const SavedWhiteboardsMenu = ({
   const [newBoardName, setNewBoardName] = useState('');
   const [activeTab, setActiveTab] = useState(user ? 'personal' : 'demo');
   const [userBoards, setUserBoards] = useState([]);
+  const [folders, setFolders] = useState([]);
+  const [folderStructure, setFolderStructure] = useState({ folders: new Map(), rootFolders: [], flatList: [] });
+  const [expandedFolders, setExpandedFolders] = useState(new Set());
+  const [selectedFolderId, setSelectedFolderId] = useState(null); // null = root, 'folderId' = specific folder
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [selectedBoardForShare, setSelectedBoardForShare] = useState(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [boardToDelete, setBoardToDelete] = useState(null);
+  const [isDeletingOwnedBoard, setIsDeletingOwnedBoard] = useState(false);
+  const [showCreateFolder, setShowCreateFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [editingFolderId, setEditingFolderId] = useState(null);
+  const [editingFolderName, setEditingFolderName] = useState('');
+  const [showMoveMenu, setShowMoveMenu] = useState(null); // boardId when showing move menu
+  const [moveMenuPosition, setMoveMenuPosition] = useState({ x: 0, y: 0 }); // Position for move menu portal
 
   // Helper function to safely convert timestamp to Date for display
   const getDisplayDate = (timestamp) => {
@@ -58,12 +75,43 @@ const SavedWhiteboardsMenu = ({
   }, [user]);
 
 
-  // Fetch boards when the menu is opened and tab is personal
+  // Fetch boards and folders when the menu is opened and tab is personal
   useEffect(() => {
     if (isOpen && activeTab === 'personal' && user) {
       fetchUserBoards();
+      fetchFolders();
     }
   }, [isOpen, activeTab, user]); // Removed hasLoadedBoards to allow refresh on open
+
+  // Close move menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showMoveMenu && !event.target.closest('.move-menu') && !event.target.closest('.move-btn')) {
+        setShowMoveMenu(null);
+      }
+    };
+
+    if (showMoveMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showMoveMenu]);
+
+  const fetchFolders = async () => {
+    if (!user) return;
+    
+    try {
+      const structure = await getFolderStructure(user.uid);
+      console.log('Fetched folder structure:', structure); // Debug log
+      setFolderStructure(structure);
+      setFolders(structure.flatList || []);
+    } catch (error) {
+      console.error('Error fetching folders:', error);
+      setError(error.message || 'Failed to load folders');
+    }
+  };
 
   const fetchUserBoards = async () => {
     if (!user) {
@@ -261,11 +309,23 @@ const SavedWhiteboardsMenu = ({
           processedItems.some(item => item.id === conn.to)
         );
 
+      // Get the existing board's folderId if updating, or use selected folder for new boards
+      let folderIdToUse = null;
+      if (existingBoardId) {
+        // Preserve existing folderId when updating
+        const existingBoard = userBoards.find(b => b.id === existingBoardId);
+        folderIdToUse = existingBoard?.folderId || null;
+      } else if (selectedFolderId) {
+        // Use selected folder for new boards
+        folderIdToUse = selectedFolderId;
+      }
+
       // Create the board data with cleaned values
       const boardData = {
         name: String(boardName.trim()),
         userId: String(user.uid),
         lastEditedAt: serverTimestamp(), // Update last edited time on manual save
+        folderId: folderIdToUse, // Include folderId
         content: {
           items: processedItems,
           connections: processedConnections,
@@ -311,6 +371,7 @@ const SavedWhiteboardsMenu = ({
             ...boardToUpdate, // Preserve all existing properties including raw timestamps
             name: savedBoard.name || boardToUpdate.name,
             content: savedBoard.content || boardToUpdate.content,
+            folderId: savedBoard.folderId !== undefined ? savedBoard.folderId : boardToUpdate.folderId, // Preserve folderId
             // CRITICAL: Always preserve the original savedAt from Firestore - never change it
             savedAt: originalSavedAt,
             // Use the new lastEditedAt from Firestore if we got one, otherwise keep original
@@ -390,26 +451,343 @@ const SavedWhiteboardsMenu = ({
     }
   };
 
-  const handleDelete = async (boardId) => {
+  const handleDeleteClick = (boardId, boardName, isOwner) => {
+    setBoardToDelete({ id: boardId, name: boardName });
+    setIsDeletingOwnedBoard(isOwner);
+    setDeleteConfirmOpen(true);
+  };
+
+  const removeSharedBoardAccess = async (boardId) => {
+    // Remove user from sharedWith array
+    const boardRef = doc(db, 'boards', boardId);
+    const boardDoc = await getDoc(boardRef);
+    
+    if (!boardDoc.exists()) {
+      throw new Error('Board not found');
+    }
+    
+    const boardData = boardDoc.data();
+    const sharedWith = (boardData.sharedWith || []).filter(uid => uid !== user.uid);
+    
+    await updateDoc(boardRef, {
+      sharedWith,
+      isShared: sharedWith.length > 0
+    });
+    
+    // Delete share document from boardShares collection
+    const sharesRef = collection(db, 'boardShares');
+    const shareQuery = query(
+      sharesRef,
+      where('boardId', '==', boardId),
+      where('sharedWithUserId', '==', user.uid)
+    );
+    const shareDocs = await getDocs(shareQuery);
+    
+    // Delete all share documents for this user and board
+    const deletePromises = shareDocs.docs.map(shareDoc => deleteDoc(shareDoc.ref));
+    await Promise.all(deletePromises);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!boardToDelete) return;
+    
+    const boardId = boardToDelete.id;
     if (!user) {
       setError('Please sign in to delete boards');
+      setDeleteConfirmOpen(false);
+      setBoardToDelete(null);
+      setIsDeletingOwnedBoard(false);
       return;
     }
     if (!boardId) {
       setError('Invalid board selected');
+      setDeleteConfirmOpen(false);
+      setBoardToDelete(null);
+      setIsDeletingOwnedBoard(false);
       return;
     }
 
     setIsLoading(true);
     setError(null);
     try {
-      await deleteBoard(boardId);
+      // Find the board to check if user is owner
+      const board = userBoards.find(b => b.id === boardId);
+      const isOwner = board && board.userId === user.uid;
+      
+      if (isOwner) {
+        // User owns the board - delete it completely
+        await deleteBoard(boardId);
+      } else {
+        // User doesn't own the board - just remove their access
+        await removeSharedBoardAccess(boardId);
+      }
+      
       setUserBoards(prev => prev.filter(board => board.id !== boardId));
+      setDeleteConfirmOpen(false);
+      setBoardToDelete(null);
+      setIsDeletingOwnedBoard(false);
     } catch (error) {
       setError(error.message || 'Failed to delete board');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false);
+    setBoardToDelete(null);
+    setIsDeletingOwnedBoard(false);
+  };
+
+  // Folder management functions
+  const handleCreateFolder = async (e) => {
+    e.preventDefault();
+    if (!newFolderName.trim() || !user) return;
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      const parentId = selectedFolderId || null;
+      console.log('Creating folder:', newFolderName.trim(), 'parent:', parentId); // Debug
+      const newFolder = await createFolder(newFolderName.trim(), parentId);
+      console.log('Created folder:', newFolder); // Debug
+      
+      setNewFolderName('');
+      setShowCreateFolder(false);
+      
+      // Refresh folders - wait for it to complete
+      await fetchFolders();
+      
+      // Expand the parent folder if the new folder has a parent
+      if (parentId) {
+        setExpandedFolders(prev => new Set([...prev, parentId]));
+      }
+      
+      // Select the newly created folder
+      setSelectedFolderId(newFolder.id);
+    } catch (error) {
+      console.error('Error creating folder:', error);
+      setError(error.message || 'Failed to create folder');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRenameFolder = async (folderId, newName) => {
+    if (!newName.trim() || !user) return;
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      await updateFolder(folderId, newName.trim());
+      setEditingFolderId(null);
+      setEditingFolderName('');
+      await fetchFolders();
+    } catch (error) {
+      setError(error.message || 'Failed to rename folder');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteFolder = async (folderId) => {
+    if (!user) return;
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      await deleteFolder(folderId, true); // Move boards to parent
+      if (selectedFolderId === folderId) {
+        setSelectedFolderId(null);
+      }
+      await fetchFolders();
+      await fetchUserBoards(); // Refresh boards to update folderId
+    } catch (error) {
+      setError(error.message || 'Failed to delete folder');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleMoveBoard = async (boardId, targetFolderId) => {
+    if (!user) return;
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      await moveBoardToFolder(boardId, targetFolderId || null);
+      setShowMoveMenu(null);
+      await fetchUserBoards();
+    } catch (error) {
+      setError(error.message || 'Failed to move board');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleFolder = (folderId) => {
+    setExpandedFolders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(folderId)) {
+        newSet.delete(folderId);
+      } else {
+        newSet.add(folderId);
+      }
+      return newSet;
+    });
+  };
+
+  const getFolderPath = (folderId) => {
+    if (!folderId) return [];
+    const path = [];
+    let currentFolderId = folderId;
+    
+    while (currentFolderId) {
+      const folder = folders.find(f => f.id === currentFolderId);
+      if (!folder) break;
+      path.unshift(folder);
+      currentFolderId = folder.parentFolderId;
+    }
+    
+    return path;
+  };
+
+  const getBoardsInFolder = (folderId) => {
+    return userBoards.filter(board => board.folderId === folderId);
+  };
+
+  const renderFolderTree = (folderList, level = 0) => {
+    return folderList.map(folder => {
+      const isExpanded = expandedFolders.has(folder.id);
+      const isSelected = selectedFolderId === folder.id;
+      const boardsInFolder = getBoardsInFolder(folder.id);
+      const hasChildren = folder.children && folder.children.length > 0;
+
+      return (
+        <div key={folder.id} className="folder-item-wrapper">
+          <div 
+            className={`folder-item ${isSelected ? 'selected' : ''}`}
+            style={{ paddingLeft: `${12 + level * 20}px` }}
+          >
+            <button
+              type="button"
+              className="folder-toggle"
+              onClick={() => toggleFolder(folder.id)}
+              disabled={!hasChildren}
+            >
+              {hasChildren ? (
+                <svg 
+                  width="12" 
+                  height="12" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+                >
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              ) : (
+                <span style={{ width: '12px', display: 'inline-block' }} />
+              )}
+            </button>
+            <button
+              type="button"
+              className="folder-name-button"
+              onClick={() => setSelectedFolderId(isSelected ? null : folder.id)}
+            >
+              <svg 
+                width="14" 
+                height="14" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ marginRight: '6px' }}
+              >
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+              {editingFolderId === folder.id ? (
+                <input
+                  type="text"
+                  value={editingFolderName}
+                  onChange={(e) => setEditingFolderName(e.target.value)}
+                  onBlur={() => {
+                    if (editingFolderName.trim()) {
+                      handleRenameFolder(folder.id, editingFolderName);
+                    } else {
+                      setEditingFolderId(null);
+                      setEditingFolderName('');
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      if (editingFolderName.trim()) {
+                        handleRenameFolder(folder.id, editingFolderName);
+                      }
+                    } else if (e.key === 'Escape') {
+                      setEditingFolderId(null);
+                      setEditingFolderName('');
+                    }
+                  }}
+                  autoFocus
+                  className="folder-rename-input"
+                />
+              ) : (
+                <>
+                  <span className="folder-name">{folder.name}</span>
+                  <span className="folder-count">({boardsInFolder.length})</span>
+                </>
+              )}
+            </button>
+            {editingFolderId !== folder.id && (
+              <div className="folder-actions">
+                <button
+                  type="button"
+                  className="folder-edit-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingFolderId(folder.id);
+                    setEditingFolderName(folder.name);
+                  }}
+                  title="Rename folder"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="folder-delete-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (window.confirm(`Delete folder "${folder.name}"? Boards will be moved to parent folder.`)) {
+                      handleDeleteFolder(folder.id);
+                    }
+                  }}
+                  title="Delete folder"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                </button>
+              </div>
+            )}
+          </div>
+          {isExpanded && hasChildren && (
+            <div className="folder-children">
+              {renderFolderTree(folder.children, level + 1)}
+            </div>
+          )}
+        </div>
+      );
+    });
   };
 
   // Filter boards based on search query
@@ -451,9 +829,27 @@ const SavedWhiteboardsMenu = ({
     });
   };
 
-  const displayedBoards = activeTab === 'demo' 
-    ? sortBoardsByDate(savedWhiteboards)
-    : sortBoardsByDate(getFilteredBoards(userBoards));
+  // Get boards filtered by selected folder and search
+  const getFilteredAndGroupedBoards = () => {
+    let boards = activeTab === 'demo' 
+      ? sortBoardsByDate(savedWhiteboards)
+      : sortBoardsByDate(getFilteredBoards(userBoards));
+
+    // Filter by selected folder (only for personal tab)
+    if (activeTab === 'personal') {
+      if (selectedFolderId === null) {
+        // Show all boards (no folder filter)
+        return boards;
+      } else {
+        // Show boards in selected folder
+        return boards.filter(board => board.folderId === selectedFolderId);
+      }
+    }
+
+    return boards;
+  };
+
+  const displayedBoards = getFilteredAndGroupedBoards();
 
   const styles = {
     menuContainer: {
@@ -482,63 +878,63 @@ const SavedWhiteboardsMenu = ({
         className="menu-toggle header-button"
         onClick={onToggle}
         title="Library"
+        aria-label="Open library"
       >
         <svg 
-          width="16" 
-          height="16" 
+          width="18" 
+          height="18" 
           viewBox="0 0 24 24" 
           fill="none" 
           stroke="currentColor" 
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          style={{ marginRight: '4px' }}
+          style={{ marginRight: '6px' }}
         >
           <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
           <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
         </svg>
-        Library 
+        <span className="menu-toggle-text">Library</span>
       </button>
 
-      {isOpen && (
+      {isOpen && createPortal(
         <>
           <div 
             className="saved-whiteboards-menu-overlay"
             onClick={onToggle}
+            style={{ display: 'block' }}
           />
           <div 
             className="saved-whiteboards-menu"
             onClick={(e) => e.stopPropagation()}
+            style={{ 
+              display: 'flex',
+              width: '90%',
+              maxWidth: '1000px',
+              height: '80vh',
+              maxHeight: '80vh',
+              borderRadius: '16px'
+            }}
           >
-            <button 
-              className="saved-whiteboards-menu-close"
-              onClick={onToggle}
-              aria-label="Close menu"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
+            <div className="menu-header">
+              <h2 className="menu-title">Library</h2>
+              <button 
+                className="saved-whiteboards-menu-close"
+                onClick={onToggle}
+                aria-label="Close menu"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
             <div className="board-tabs">
             <button 
               type="button"
               className={`tab-button ${activeTab === 'demo' ? 'active' : ''}`}
               onClick={() => handleTabChange('demo')}
             >
-              <svg 
-                width="14" 
-                height="14" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                <path d="M3.3 7l8.7 5 8.7-5" />
-              </svg>
               Demo Boards
             </button>
             <button 
@@ -546,19 +942,6 @@ const SavedWhiteboardsMenu = ({
               className={`tab-button ${activeTab === 'personal' ? 'active' : ''}`}
               onClick={() => handleTabChange('personal')}
             >
-              <svg 
-                width="14" 
-                height="14" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                <circle cx="12" cy="7" r="4" />
-              </svg>
               My Boards
             </button>
           </div>
@@ -585,52 +968,117 @@ const SavedWhiteboardsMenu = ({
           )}
 
           {activeTab === 'personal' && user && (
-            <div className="search-boards">
-              <svg 
-                width="16" 
-                height="16" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="search-icon"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <path d="m21 21-4.35-4.35" />
-              </svg>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search boards..."
-                disabled={isLoading}
-                className="search-input"
-              />
-              {searchQuery && (
+            <>
+              {/* Folder Navigation */}
+              <div className="folder-navigation">
                 <button
                   type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="clear-search"
-                  title="Clear search"
+                  className={`folder-nav-item ${selectedFolderId === null ? 'active' : ''}`}
+                  onClick={() => setSelectedFolderId(null)}
                 >
-                  <svg 
-                    width="14" 
-                    height="14" 
-                    viewBox="0 0 24 24" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                    <polyline points="9 22 9 12 15 12 15 22" />
                   </svg>
+                  All Boards
                 </button>
-              )}
-            </div>
+                {(folderStructure.rootFolders && folderStructure.rootFolders.length > 0) || folders.length > 0 ? (
+                  <div className="folder-tree">
+                    {folderStructure.rootFolders && folderStructure.rootFolders.length > 0 
+                      ? renderFolderTree(folderStructure.rootFolders)
+                      : renderFolderTree(folders.map(f => ({ ...f, children: [] })))
+                    }
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  className="create-folder-btn"
+                  onClick={() => {
+                    setShowCreateFolder(true);
+                    setNewFolderName('');
+                  }}
+                  disabled={isLoading}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  New Folder
+                </button>
+                {showCreateFolder && (
+                  <form onSubmit={handleCreateFolder} className="create-folder-form">
+                    <input
+                      type="text"
+                      value={newFolderName}
+                      onChange={(e) => setNewFolderName(e.target.value)}
+                      placeholder="Folder name..."
+                      autoFocus
+                      className="folder-name-input"
+                      onBlur={() => {
+                        if (!newFolderName.trim()) {
+                          setShowCreateFolder(false);
+                        }
+                      }}
+                    />
+                    <div className="folder-form-actions">
+                      <button type="submit" disabled={!newFolderName.trim() || isLoading}>Create</button>
+                      <button type="button" onClick={() => {
+                        setShowCreateFolder(false);
+                        setNewFolderName('');
+                      }}>Cancel</button>
+                    </div>
+                  </form>
+                )}
+              </div>
+
+              {/* Search */}
+              <div className="search-boards">
+                <svg 
+                  width="16" 
+                  height="16" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="search-icon"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.35-4.35" />
+                </svg>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search boards..."
+                  disabled={isLoading}
+                  className="search-input"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="clear-search"
+                    title="Clear search"
+                  >
+                    <svg 
+                      width="14" 
+                      height="14" 
+                      viewBox="0 0 24 24" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </>
           )}
 
           <div className="saved-boards-list">
@@ -646,20 +1094,41 @@ const SavedWhiteboardsMenu = ({
                       return (
                       <div 
                         key={board.id} 
-                        className={`saved-board-item ${isCurrentlyOpen ? 'selected' : ''}`}
+                        className={`saved-board-item board-item ${isCurrentlyOpen ? 'selected' : ''}`}
                       >
-                        <span>
-                          {board.name}
-                        </span>
-                        <span className="saved-date">
-                          {getDisplayDate(board.savedAt || board.lastEditedAt).toLocaleString(undefined, {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                            hour: 'numeric',
-                            minute: '2-digit'
-                          })}
-                        </span>
+                        <div className="board-item-content">
+                          <div className="board-item-header">
+                            <h3 className="board-name">{board.name}</h3>
+                            {isCurrentlyOpen && (
+                              <span className="current-badge">Current</span>
+                            )}
+                          </div>
+                          <div className="board-item-meta">
+                            <svg 
+                              width="12" 
+                              height="12" 
+                              viewBox="0 0 24 24" 
+                              fill="none" 
+                              stroke="currentColor" 
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="meta-icon"
+                            >
+                              <circle cx="12" cy="12" r="10" />
+                              <polyline points="12 6 12 12 16 14" />
+                            </svg>
+                            <span className="saved-date">
+                              {getDisplayDate(board.savedAt || board.lastEditedAt).toLocaleString(undefined, {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                                hour: 'numeric',
+                                minute: '2-digit'
+                              })}
+                            </span>
+                          </div>
+                        </div>
                         <div className="board-actions">
                           <button 
                             type="button"
@@ -667,12 +1136,13 @@ const SavedWhiteboardsMenu = ({
                               onLoad(board.id);
                               onToggle();
                             }}
-                            disabled={isLoading}
-                            title="Load board"
+                            disabled={isLoading || isCurrentlyOpen}
+                            title={isCurrentlyOpen ? "Already loaded" : "Load board"}
+                            className="load-btn"
                           >
                             <svg 
-                              width="14" 
-                              height="14" 
+                              width="16" 
+                              height="16" 
                               viewBox="0 0 24 24" 
                               fill="none" 
                               stroke="currentColor" 
@@ -685,13 +1155,14 @@ const SavedWhiteboardsMenu = ({
                               <line x1="12" y1="3" x2="12" y2="15" />
                             </svg>
                           </button>
-                          {(activeTab === 'personal' && user?.uid === board.userId) && (() => {
+                          {activeTab === 'personal' && user && (() => {
+                            const isOwner = board.userId === user.uid;
                             const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
                             const canCollaborate = tierFeatures.features.realTimeCollaboration;
                             
                             return (
                               <>
-                                {canCollaborate && (
+                                {isOwner && canCollaborate && (
                                   <button 
                                     type="button"
                                     className="share-btn"
@@ -703,8 +1174,8 @@ const SavedWhiteboardsMenu = ({
                                     title="Share board"
                                   >
                                 <svg 
-                                  width="14" 
-                                  height="14" 
+                                  width="16" 
+                                  height="16" 
                                   viewBox="0 0 24 24" 
                                   fill="none" 
                                   stroke="currentColor" 
@@ -722,14 +1193,59 @@ const SavedWhiteboardsMenu = ({
                                 )}
                             <button 
                               type="button"
-                              className="delete-btn"
-                              onClick={() => handleDelete(board.id)}
+                              className="move-btn"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  if (showMoveMenu === board.id) {
+                                    setShowMoveMenu(null);
+                                  } else {
+                                    // Refresh folders before opening menu to ensure latest folders are shown
+                                    await fetchFolders();
+                                    const target = e.currentTarget || e.target;
+                                    if (!target) return;
+                                    
+                                    const rect = target.getBoundingClientRect();
+                                    if (!rect) return;
+                                    
+                                    setMoveMenuPosition({
+                                      x: rect.right - 180, // Position to the left of button
+                                      y: rect.top
+                                    });
+                                    setShowMoveMenu(board.id);
+                                  }
+                                } catch (error) {
+                                  console.error('Error opening move menu:', error);
+                                  // Still try to open the menu even if positioning fails
+                                  setShowMoveMenu(board.id);
+                                }
+                              }}
                               disabled={isLoading}
-                              title="Delete board"
+                              title="Move to folder"
                             >
                               <svg 
-                                width="14" 
-                                height="14" 
+                                width="16" 
+                                height="16" 
+                                viewBox="0 0 24 24" 
+                                fill="none" 
+                                stroke="currentColor" 
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                              </svg>
+                            </button>
+                            <button 
+                              type="button"
+                              className="delete-btn"
+                              onClick={() => handleDeleteClick(board.id, board.name, isOwner)}
+                              disabled={isLoading}
+                              title={isOwner ? "Delete board" : "Remove from my boards"}
+                            >
+                              <svg 
+                                width="16" 
+                                height="16" 
                                 viewBox="0 0 24 24" 
                                 fill="none" 
                                 stroke="currentColor" 
@@ -787,9 +1303,9 @@ const SavedWhiteboardsMenu = ({
               </>
             )}
           </div>
-          <div className="saved-whiteboards-menu-spacer"></div>
-        </div>
-        </>
+          </div>
+        </>,
+        document.body
       )}
       {selectedBoardForShare && (
         <ShareBoardModal
@@ -801,6 +1317,127 @@ const SavedWhiteboardsMenu = ({
           boardId={selectedBoardForShare.id}
           boardName={selectedBoardForShare.name}
         />
+      )}
+
+      {/* Move Menu - Rendered via Portal */}
+      {showMoveMenu && (() => {
+        const board = userBoards.find(b => b.id === showMoveMenu);
+        if (!board) return null;
+        
+        // Use folderStructure.flatList to ensure we have the latest folders
+        const currentFolders = folderStructure.flatList || folders;
+        
+        return createPortal(
+          <>
+            <div 
+              className="move-menu-overlay"
+              onClick={() => setShowMoveMenu(null)}
+            />
+            <div 
+              className="move-menu"
+              style={{
+                position: 'fixed',
+                left: `${moveMenuPosition.x}px`,
+                top: `${moveMenuPosition.y}px`,
+                transform: 'translateY(8px)'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="move-menu-header">Move to folder</div>
+              <button
+                type="button"
+                className={`move-menu-item ${!board.folderId ? 'active' : ''}`}
+                onClick={() => handleMoveBoard(board.id, null)}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                  <polyline points="9 22 9 12 15 12 15 22" />
+                </svg>
+                Root (No folder)
+              </button>
+              {currentFolders.map(folder => (
+                <button
+                  key={folder.id}
+                  type="button"
+                  className={`move-menu-item ${board.folderId === folder.id ? 'active' : ''}`}
+                  onClick={() => handleMoveBoard(board.id, folder.id)}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                  </svg>
+                  {folder.name}
+                </button>
+              ))}
+              {currentFolders.length === 0 && (
+                <div className="move-menu-empty">No folders yet</div>
+              )}
+            </div>
+          </>,
+          document.body
+        );
+      })()}
+
+      {/* Delete Confirmation Dialog - Rendered via Portal */}
+      {deleteConfirmOpen && createPortal(
+        <>
+          <div 
+            className="delete-confirm-overlay"
+            onClick={handleDeleteCancel}
+          />
+          <div className="delete-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="delete-confirm-header">
+              <svg 
+                width="24" 
+                height="24" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="delete-confirm-icon"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              <h3 className="delete-confirm-title">Delete Board?</h3>
+            </div>
+            <p className="delete-confirm-message">
+              {isDeletingOwnedBoard ? (
+                <>
+                  Are you sure you want to delete <strong>"{boardToDelete?.name}"</strong>? This action cannot be undone and will permanently delete the board for all users.
+                </>
+              ) : (
+                <>
+                  Remove <strong>"{boardToDelete?.name}"</strong> from your boards? You'll lose access to this board, but it will remain available to the owner and other collaborators.
+                </>
+              )}
+            </p>
+            <div className="delete-confirm-actions">
+              <button
+                type="button"
+                className="delete-confirm-cancel"
+                onClick={handleDeleteCancel}
+                disabled={isLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="delete-confirm-delete"
+                onClick={handleDeleteConfirm}
+                disabled={isLoading}
+              >
+                {isLoading 
+                  ? (isDeletingOwnedBoard ? 'Deleting...' : 'Removing...') 
+                  : (isDeletingOwnedBoard ? 'Delete' : 'Remove')
+                }
+              </button>
+            </div>
+          </div>
+        </>,
+        document.body
       )}
     </div>
   );

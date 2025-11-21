@@ -145,6 +145,33 @@ service cloud.firestore {
       allow update: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Folders collection rules
+    match /folders/{folderId} {
+      function isFolderOwner() {
+        return request.auth != null && 
+          resource != null &&
+          resource.data.userId == request.auth.uid;
+      }
+      
+      // Allow reading if user owns the folder
+      // For queries, Firestore evaluates this for each document
+      allow read: if request.auth != null && 
+        (resource == null || resource.data.userId == request.auth.uid);
+      
+      // Allow creating folders if user is authenticated and userId matches
+      allow create: if request.auth != null && 
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.name != null;
+      
+      // Allow updating if user owns the folder
+      allow update: if request.auth != null && 
+        isFolderOwner() &&
+        request.resource.data.userId == request.auth.uid;
+      
+      // Allow deleting if user owns the folder
+      allow delete: if request.auth != null && isFolderOwner();
+    }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;

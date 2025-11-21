@@ -286,3 +286,4 @@ match /boards/{boardId} {
 - Board templates sharing
 - Team workspaces
 
+
