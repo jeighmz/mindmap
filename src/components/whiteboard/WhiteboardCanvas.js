@@ -819,9 +819,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   }), [scale, panOffset, saveState, constrainPositionToCanvas]);
 
   const handleWheel = useCallback((e) => {
-    // Enable scroll zoom without requiring Ctrl key
     e.preventDefault();
-    showZoomOverlay(); // Show zoom overlay when zooming
     
     // Get canvas element and its position
     const canvas = canvasRef.current;
@@ -829,58 +827,258 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     
     const rect = canvas.getBoundingClientRect();
     
-    // Get mouse position relative to canvas
+    // Detect device type: deltaMode 0 = trackpad (pixels), 1 = mouse wheel (lines), 2 = pages
+    const isTrackpad = e.deltaMode === 0;
+    const isMouseWheel = e.deltaMode === 1 || e.deltaMode === 2;
+    
+    // Additional detection: Some browsers may report mouse wheel as deltaMode 0
+    // but with larger, discrete delta values. Check for mouse wheel characteristics:
+    // - Large deltaY values (typically > 50 for mouse wheel)
+    // - No deltaX (mouse wheel usually only has vertical scroll)
+    // - Not a pinch gesture (no ctrlKey)
+    const hasLargeDelta = Math.abs(e.deltaY) > 50;
+    const hasNoHorizontalScroll = Math.abs(e.deltaX) < 5;
+    const isLikelyMouseWheel = hasLargeDelta && hasNoHorizontalScroll && !(e.ctrlKey || e.metaKey);
+    
+    // CRITICAL: Mouse wheel should ALWAYS zoom, never pan
+    // If it's a mouse wheel (by deltaMode or characteristics), force zoom behavior
+    if (isMouseWheel || isLikelyMouseWheel) {
+      showZoomOverlay();
+      
+      // Get mouse position relative to canvas (in screen coordinates)
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      let deltaY = e.deltaY;
+      if (e.deltaMode === 1) {
+        // Line mode (mouse wheel) - convert to pixel-like values
+        deltaY = e.deltaY * 20;
+      } else if (e.deltaMode === 2) {
+        // Page mode - convert to pixel-like values
+        deltaY = e.deltaY * 100;
+      }
+      // If deltaMode is 0 but it's a mouse wheel, use the raw deltaY
+      
+      const zoomSensitivity = 0.0015;
+      const zoomFactor = 1 - (deltaY * zoomSensitivity);
+      
+      // Zoom towards cursor position
+      // The canvas uses: translate(panOffset) scale(scale * dpr)
+      // So we need to account for dpr in our calculations
+      const dpr = window.devicePixelRatio || 1;
+      
+      setScale(s => {
+        const newScale = Math.min(Math.max(0.1, s * zoomFactor), 4);
+        
+        // Use functional update to get current pan offset
+        setPanOffset(currentPan => {
+          // Calculate the effective scale (what's actually applied to the canvas)
+          const currentEffectiveScale = s * dpr;
+          const newEffectiveScale = newScale * dpr;
+          
+          // Calculate the world coordinates of the point under the cursor before zoom
+          // World coordinates = (screen position - pan offset) / effective scale
+          const worldX = (mouseX - currentPan.x) / currentEffectiveScale;
+          const worldY = (mouseY - currentPan.y) / currentEffectiveScale;
+          
+          // Calculate new pan offset so the same world point stays under the cursor
+          // New pan = screen position - (world position * new effective scale)
+          const newPanX = mouseX - worldX * newEffectiveScale;
+          const newPanY = mouseY - worldY * newEffectiveScale;
+          
+          return { x: newPanX, y: newPanY };
+        });
+        
+        return newScale;
+      });
+      return; // Exit early - mouse wheel always zooms
+    }
+    
+    // For trackpad only from here on (mouse wheel already handled above)
+    // CRITICAL: Double-check we're not dealing with a mouse wheel
+    // If it's a mouse wheel, it should have been handled above, but add extra safety check
+    if (isMouseWheel || isLikelyMouseWheel) {
+      // This should never happen since mouse wheel is handled first, but add as safety
+      return;
+    }
+    
+    // Detect pinch-to-zoom (Ctrl key + wheel on macOS/Windows)
+    // On macOS trackpads, pinch zoom sends wheel events with ctrlKey = true
+    const isPinchZoom = e.ctrlKey || e.metaKey;
+    
+    // Detect two-finger pan (only for trackpad, not mouse wheel)
+    // Two-finger pan on trackpad sends wheel events with deltaX/deltaY but no ctrlKey
+    // CRITICAL: Only allow pan if it's definitely a trackpad (deltaMode === 0)
+    // and it doesn't match mouse wheel characteristics
+    // Mouse wheels typically have large deltaY values and no deltaX, so exclude those
+    const hasPanDelta = Math.abs(e.deltaX) > 0 || Math.abs(e.deltaY) > 0;
+    // Two-finger pan usually has significant horizontal movement (deltaX)
+    // Or if vertical, it should be small (not a mouse wheel which has large deltaY)
+    const hasSignificantHorizontalPan = Math.abs(e.deltaX) > Math.abs(e.deltaY) * 0.3;
+    const isSmallVerticalMovement = Math.abs(e.deltaY) < 30; // Mouse wheels have larger deltaY
+    const isTwoFingerPan = hasPanDelta && !isPinchZoom && isTrackpad && 
+                            (hasSignificantHorizontalPan || isSmallVerticalMovement);
+    
+    if (isTwoFingerPan) {
+      // Two-finger pan gesture (trackpad only, never mouse wheel)
+      const deltaX = e.deltaX;
+      const deltaY = e.deltaY;
+      
+      setPanOffset(currentPan => ({
+        x: currentPan.x + deltaX,
+        y: currentPan.y + deltaY
+      }));
+    } else if (isPinchZoom) {
+      // Pinch-to-zoom gesture (trackpad pinch)
+      showZoomOverlay();
+      
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      let deltaY = e.deltaY;
+      
+      // Much slower, smoother trackpad pinch-to-zoom
+      // Reduced sensitivity significantly for more controlled zoom
+      const zoomSensitivity = 0.0001; // Much slower for controlled pinch zoom
+      const zoomFactor = 1 - (deltaY * zoomSensitivity);
+      
+      // Account for device pixel ratio in zoom calculations
+      const dpr = window.devicePixelRatio || 1;
+      
+      setScale(s => {
+        const newScale = Math.min(Math.max(0.1, s * zoomFactor), 4);
+        
+        setPanOffset(currentPan => {
+          // Calculate the effective scale (what's actually applied to the canvas)
+          const currentEffectiveScale = s * dpr;
+          const newEffectiveScale = newScale * dpr;
+          
+          // Calculate the world coordinates of the point under the cursor before zoom
+          const worldX = (mouseX - currentPan.x) / currentEffectiveScale;
+          const worldY = (mouseY - currentPan.y) / currentEffectiveScale;
+          
+          // Calculate new pan offset so the same world point stays under the cursor
+          const newPanX = mouseX - worldX * newEffectiveScale;
+          const newPanY = mouseY - worldY * newEffectiveScale;
+          
+          return { x: newPanX, y: newPanY };
+        });
+        
+        return newScale;
+      });
+    } else {
+      // Default: vertical scroll for zoom (trackpad single-finger scroll)
+      showZoomOverlay();
+      
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      let deltaY = e.deltaY;
+      
+      // Slower, smoother trackpad single-finger scroll zoom
+      const zoomSensitivity = 0.0004; // Reduced for slower zoom
+      const zoomFactor = 1 - (deltaY * zoomSensitivity);
+      
+      // Account for device pixel ratio in zoom calculations
+      const dpr = window.devicePixelRatio || 1;
+      
+      setScale(s => {
+        const newScale = Math.min(Math.max(0.1, s * zoomFactor), 4);
+        
+        setPanOffset(currentPan => {
+          // Calculate the effective scale (what's actually applied to the canvas)
+          const currentEffectiveScale = s * dpr;
+          const newEffectiveScale = newScale * dpr;
+          
+          // Calculate the world coordinates of the point under the cursor before zoom
+          const worldX = (mouseX - currentPan.x) / currentEffectiveScale;
+          const worldY = (mouseY - currentPan.y) / currentEffectiveScale;
+          
+          // Calculate new pan offset so the same world point stays under the cursor
+          const newPanX = mouseX - worldX * newEffectiveScale;
+          const newPanY = mouseY - worldY * newEffectiveScale;
+          
+          return { x: newPanX, y: newPanY };
+        });
+        
+        return newScale;
+      });
+    }
+  }, [showZoomOverlay]);
+
+  // Handle gesture events for better trackpad support (especially on macOS)
+  const handleGestureStart = useCallback((e) => {
+    e.preventDefault();
+  }, []);
+
+  const handleGestureChange = useCallback((e) => {
+    e.preventDefault();
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
     
-    // Handle different scroll types (trackpad vs mouse wheel)
-    // deltaMode: 0 = pixels, 1 = lines, 2 = pages
-    let deltaY = e.deltaY;
-    if (e.deltaMode === 1) {
-      // Line mode (mouse wheel) - convert to pixel-like values
-      deltaY = e.deltaY * 20;
-    } else if (e.deltaMode === 2) {
-      // Page mode - convert to pixel-like values
-      deltaY = e.deltaY * 100;
-    }
-    
-    // Use a much smaller, smoother zoom factor for trackpad scrolling
-    // Trackpads send many small deltaY values, so we need a gentler multiplier
-    const zoomSensitivity = 0.0008; // Smooth sensitivity for trackpad
-    const zoomFactor = 1 - (deltaY * zoomSensitivity); // Negative deltaY = zoom in, positive = zoom out
-    
-    // Zoom towards cursor position
-    setScale(s => {
-      const newScale = Math.min(Math.max(0.1, s * zoomFactor), 4);
+    // e.scale represents the pinch zoom scale (1.0 = no change, >1.0 = zoom in, <1.0 = zoom out)
+    if (e.scale !== 1.0) {
+      showZoomOverlay();
       
-      // Use functional update to get current pan offset
-      setPanOffset(currentPan => {
-        // Calculate the world coordinates of the point under the cursor before zoom
-        const worldX = (mouseX - currentPan.x) / s;
-        const worldY = (mouseY - currentPan.y) / s;
+      // Much slower, smoother pinch-to-zoom by applying more dampening
+      const scaleDampening = 0.2; // Apply only 20% of the scale change for very slow, controlled zoom
+      const adjustedScale = 1 + (e.scale - 1) * scaleDampening;
+      
+      // Account for device pixel ratio in zoom calculations
+      const dpr = window.devicePixelRatio || 1;
+      
+      setScale(s => {
+        const newScale = Math.min(Math.max(0.1, s * adjustedScale), 4);
         
-        // Calculate new pan offset so the same world point stays under the cursor
-        const newPanX = mouseX - worldX * newScale;
-        const newPanY = mouseY - worldY * newScale;
+        setPanOffset(currentPan => {
+          // Calculate the effective scale (what's actually applied to the canvas)
+          const currentEffectiveScale = s * dpr;
+          const newEffectiveScale = newScale * dpr;
+          
+          // Calculate the world coordinates of the point under the cursor before zoom
+          const worldX = (mouseX - currentPan.x) / currentEffectiveScale;
+          const worldY = (mouseY - currentPan.y) / currentEffectiveScale;
+          
+          // Calculate new pan offset so the same world point stays under the cursor
+          const newPanX = mouseX - worldX * newEffectiveScale;
+          const newPanY = mouseY - worldY * newEffectiveScale;
+          
+          return { x: newPanX, y: newPanY };
+        });
         
-        return { x: newPanX, y: newPanY };
+        return newScale;
       });
-      
-      return newScale;
-    });
+    }
   }, [showZoomOverlay]);
 
-  // Add wheel event listener with passive: false to allow preventDefault
+  const handleGestureEnd = useCallback((e) => {
+    e.preventDefault();
+  }, []);
+
+  // Add wheel and gesture event listeners with passive: false to allow preventDefault
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     canvas.addEventListener('wheel', handleWheel, { passive: false });
+    
+    // Add gesture event listeners for better trackpad support (especially on macOS)
+    canvas.addEventListener('gesturestart', handleGestureStart, { passive: false });
+    canvas.addEventListener('gesturechange', handleGestureChange, { passive: false });
+    canvas.addEventListener('gestureend', handleGestureEnd, { passive: false });
 
     return () => {
       canvas.removeEventListener('wheel', handleWheel);
+      canvas.removeEventListener('gesturestart', handleGestureStart);
+      canvas.removeEventListener('gesturechange', handleGestureChange);
+      canvas.removeEventListener('gestureend', handleGestureEnd);
     };
-  }, [handleWheel]);
+  }, [handleWheel, handleGestureStart, handleGestureChange, handleGestureEnd]);
 
   const updateItemPosition = useCallback((id, position) => {
     setItems(items.map(item => {
@@ -1309,6 +1507,30 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }
   }, [isSavedBoardsMenuOpen, onLibraryStateChange]);
 
+  // Warn user before leaving if they have unsaved changes on a new board
+  useEffect(() => {
+    // Only warn if there's no board ID (new/unsaved board) and there's content
+    const hasUnsavedContent = !currentBoardId && (items.length > 0 || connections.length > 0);
+    
+    if (!hasUnsavedContent) {
+      return;
+    }
+
+    const handleBeforeUnload = (e) => {
+      // Standard way to show confirmation dialog
+      e.preventDefault();
+      // Modern browsers ignore custom messages, but we can still set a returnValue
+      e.returnValue = '';
+      return '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [currentBoardId, items.length, connections.length]);
+
   // Close connection settings menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -1378,6 +1600,81 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         return obj;
       };
 
+      // Helper function to clean items for Firestore (ensures all values are serializable)
+      const cleanItemForFirestore = (item) => {
+        if (!item || typeof item !== 'object') {
+          return item;
+        }
+
+        const cleaned = {};
+        
+        for (const key in item) {
+          const value = item[key];
+          
+          // Skip undefined values
+          if (value === undefined) {
+            continue;
+          }
+          
+          // Handle null
+          if (value === null) {
+            cleaned[key] = null;
+            continue;
+          }
+          
+          // Handle primitives (string, number, boolean)
+          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+            cleaned[key] = value;
+            continue;
+          }
+          
+          // Handle arrays
+          if (Array.isArray(value)) {
+            cleaned[key] = value.map(cleanItemForFirestore);
+            continue;
+          }
+          
+          // Handle Date objects - convert to ISO string
+          if (value instanceof Date) {
+            cleaned[key] = value.toISOString();
+            continue;
+          }
+          
+          // Handle plain objects (but not class instances or special objects)
+          if (typeof value === 'object') {
+            // Check if it's a plain object (not a class instance or special object)
+            const isPlainObject = Object.prototype.toString.call(value) === '[object Object]' &&
+                                 value.constructor === Object;
+            
+            if (isPlainObject) {
+              // Recursively clean nested objects
+              cleaned[key] = cleanItemForFirestore(value);
+            } else {
+              // Skip non-plain objects (functions, class instances, etc.)
+              // These can cause "invalid nested entity" errors
+              console.warn(`Skipping non-serializable property "${key}" in item:`, value);
+              continue;
+            }
+            continue;
+          }
+          
+          // Skip functions and other non-serializable types
+          if (typeof value === 'function') {
+            console.warn(`Skipping function property "${key}" in item`);
+            continue;
+          }
+          
+          // For any other type, try to convert to string as fallback
+          try {
+            cleaned[key] = String(value);
+          } catch (e) {
+            console.warn(`Could not serialize property "${key}" in item, skipping:`, e);
+          }
+        }
+        
+        return cleaned;
+      };
+
       // Process all items, with special handling for images
       let processedItems = [];
       if (items.length > 0) {
@@ -1423,6 +1720,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           
           // Remove undefined values from the item
           cleanedItem = removeUndefinedFromObject(cleanedItem);
+          
+          // Clean item to ensure all values are Firestore-compatible
+          // This prevents "invalid nested entity" errors
+          cleanedItem = cleanItemForFirestore(cleanedItem);
+          
           return cleanedItem;
         }));
       }
@@ -1995,6 +2297,81 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         return obj;
       };
 
+      // Helper function to clean items for Firestore (ensures all values are serializable)
+      const cleanItemForFirestore = (item) => {
+        if (!item || typeof item !== 'object') {
+          return item;
+        }
+
+        const cleaned = {};
+        
+        for (const key in item) {
+          const value = item[key];
+          
+          // Skip undefined values
+          if (value === undefined) {
+            continue;
+          }
+          
+          // Handle null
+          if (value === null) {
+            cleaned[key] = null;
+            continue;
+          }
+          
+          // Handle primitives (string, number, boolean)
+          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+            cleaned[key] = value;
+            continue;
+          }
+          
+          // Handle arrays
+          if (Array.isArray(value)) {
+            cleaned[key] = value.map(cleanItemForFirestore);
+            continue;
+          }
+          
+          // Handle Date objects - convert to ISO string
+          if (value instanceof Date) {
+            cleaned[key] = value.toISOString();
+            continue;
+          }
+          
+          // Handle plain objects (but not class instances or special objects)
+          if (typeof value === 'object') {
+            // Check if it's a plain object (not a class instance or special object)
+            const isPlainObject = Object.prototype.toString.call(value) === '[object Object]' &&
+                                 value.constructor === Object;
+            
+            if (isPlainObject) {
+              // Recursively clean nested objects
+              cleaned[key] = cleanItemForFirestore(value);
+            } else {
+              // Skip non-plain objects (functions, class instances, etc.)
+              // These can cause "invalid nested entity" errors
+              console.warn(`Skipping non-serializable property "${key}" in item:`, value);
+              continue;
+            }
+            continue;
+          }
+          
+          // Skip functions and other non-serializable types
+          if (typeof value === 'function') {
+            console.warn(`Skipping function property "${key}" in item`);
+            continue;
+          }
+          
+          // For any other type, try to convert to string as fallback
+          try {
+            cleaned[key] = String(value);
+          } catch (e) {
+            console.warn(`Could not serialize property "${key}" in item, skipping:`, e);
+          }
+        }
+        
+        return cleaned;
+      };
+
       // Process all items, with special handling for images
       let processedItems = [];
       if (items.length > 0) {
@@ -2026,6 +2403,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
           }
           
           cleanedItem = removeUndefinedFromObject(cleanedItem);
+          
+          // Clean item to ensure all values are Firestore-compatible
+          // This prevents "invalid nested entity" errors
+          cleanedItem = cleanItemForFirestore(cleanedItem);
+          
           return cleanedItem;
         }));
       }
@@ -2170,6 +2552,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
   // Auto-save effect - debounced (only for items and connections, not viewport changes)
   // Use shorter debounce (300ms) when collaborators are active for real-time updates
+  // Also saves to cache for new boards (when no initial save is made)
   useEffect(() => {
     // Clear any pending auto-save when board changes
     if (autoSaveTimeoutRef.current) {
@@ -2177,8 +2560,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       autoSaveTimeoutRef.current = null;
     }
 
-    // Don't auto-save if no board is loaded, during initial load, or during mind map generation
-    if (!currentBoardId || isInitialLoadRef.current || isGeneratingMindMapRef.current) {
+    // Don't auto-save during initial load or during mind map generation
+    if (isInitialLoadRef.current || isGeneratingMindMapRef.current) {
       return;
     }
 
@@ -2193,9 +2576,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
     // Set new timeout for auto-save
     autoSaveTimeoutRef.current = setTimeout(() => {
-      if (currentBoardId === boardIdForThisSave && currentBoardName === boardNameForThisSave) {
+      // For saved boards, use the regular auto-save
+      if (boardIdForThisSave && currentBoardId === boardIdForThisSave && currentBoardName === boardNameForThisSave) {
         autoSave();
       }
+      // For new boards, we don't auto-save (user will be warned before leaving)
       autoSaveTimeoutRef.current = null;
     }, debounceTime);
 
@@ -7260,7 +7645,13 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                 color: isAutoSaving ? '#2196F3' : '#666',
                 opacity: isAutoSaving ? 1 : 0.7
               }}
-              title={isAutoSaving ? 'Saving...' : lastSaveTime ? `Last saved: ${lastSaveTime.toLocaleTimeString()}` : 'Auto-save enabled'}
+              title={
+                isAutoSaving 
+                  ? 'Saving...'
+                  : lastSaveTime 
+                    ? `Last saved: ${lastSaveTime.toLocaleTimeString()}` 
+                    : 'Auto-save enabled'
+              }
             >
               {isAutoSaving ? (
                 <>
@@ -7383,13 +7774,79 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
             <button onClick={(e) => { 
               e.stopPropagation(); 
               showZoomOverlay();
-              setScale(s => Math.min(s * 1.1, 4)); 
+              
+              // Zoom in by 5% (0.05 scale units) from viewport center
+              const canvas = canvasRef.current;
+              if (canvas) {
+                const rect = canvas.getBoundingClientRect();
+                const viewportCenterX = rect.width / 2;
+                const viewportCenterY = rect.height / 2;
+                
+                setScale(s => {
+                  const newScale = Math.min(s + 0.05, 4);
+                  
+                  // Account for device pixel ratio
+                  const dpr = window.devicePixelRatio || 1;
+                  const currentEffectiveScale = s * dpr;
+                  const newEffectiveScale = newScale * dpr;
+                  
+                  setPanOffset(currentPan => {
+                    // Calculate world coordinates at viewport center before zoom
+                    const worldX = (viewportCenterX - currentPan.x) / currentEffectiveScale;
+                    const worldY = (viewportCenterY - currentPan.y) / currentEffectiveScale;
+                    
+                    // Calculate new pan offset so viewport center stays fixed
+                    const newPanX = viewportCenterX - worldX * newEffectiveScale;
+                    const newPanY = viewportCenterY - worldY * newEffectiveScale;
+                    
+                    return { x: newPanX, y: newPanY };
+                  });
+                  
+                  return newScale;
+                });
+              } else {
+                // Fallback if canvas ref not available
+                setScale(s => Math.min(s + 0.05, 4));
+              }
             }}>+</button>
             <span>{Math.round(scale * 100)}%</span>
             <button onClick={(e) => { 
               e.stopPropagation(); 
               showZoomOverlay();
-              setScale(s => Math.max(s * 0.9, 0.1)); 
+              
+              // Zoom out by 5% (0.05 scale units) from viewport center
+              const canvas = canvasRef.current;
+              if (canvas) {
+                const rect = canvas.getBoundingClientRect();
+                const viewportCenterX = rect.width / 2;
+                const viewportCenterY = rect.height / 2;
+                
+                setScale(s => {
+                  const newScale = Math.max(s - 0.05, 0.1);
+                  
+                  // Account for device pixel ratio
+                  const dpr = window.devicePixelRatio || 1;
+                  const currentEffectiveScale = s * dpr;
+                  const newEffectiveScale = newScale * dpr;
+                  
+                  setPanOffset(currentPan => {
+                    // Calculate world coordinates at viewport center before zoom
+                    const worldX = (viewportCenterX - currentPan.x) / currentEffectiveScale;
+                    const worldY = (viewportCenterY - currentPan.y) / currentEffectiveScale;
+                    
+                    // Calculate new pan offset so viewport center stays fixed
+                    const newPanX = viewportCenterX - worldX * newEffectiveScale;
+                    const newPanY = viewportCenterY - worldY * newEffectiveScale;
+                    
+                    return { x: newPanX, y: newPanY };
+                  });
+                  
+                  return newScale;
+                });
+              } else {
+                // Fallback if canvas ref not available
+                setScale(s => Math.max(s - 0.05, 0.1));
+              }
             }}>-</button>
             <button 
               className="home-button" 

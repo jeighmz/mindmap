@@ -163,6 +163,82 @@ const removeUndefined = (obj) => {
   return obj;
 };
 
+// Clean item to ensure all values are Firestore-compatible
+// This prevents "invalid nested entity" errors by removing non-serializable values
+const cleanItemForFirestore = (item) => {
+  if (!item || typeof item !== 'object') {
+    return item;
+  }
+
+  const cleaned = {};
+  
+  for (const key in item) {
+    const value = item[key];
+    
+    // Skip undefined values
+    if (value === undefined) {
+      continue;
+    }
+    
+    // Handle null
+    if (value === null) {
+      cleaned[key] = null;
+      continue;
+    }
+    
+    // Handle primitives (string, number, boolean)
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      cleaned[key] = value;
+      continue;
+    }
+    
+    // Handle arrays
+    if (Array.isArray(value)) {
+      cleaned[key] = value.map(cleanItemForFirestore);
+      continue;
+    }
+    
+    // Handle Date objects - convert to ISO string
+    if (value instanceof Date) {
+      cleaned[key] = value.toISOString();
+      continue;
+    }
+    
+    // Handle plain objects (but not class instances or special objects)
+    if (typeof value === 'object') {
+      // Check if it's a plain object (not a class instance or special object)
+      const isPlainObject = Object.prototype.toString.call(value) === '[object Object]' &&
+                           value.constructor === Object;
+      
+      if (isPlainObject) {
+        // Recursively clean nested objects
+        cleaned[key] = cleanItemForFirestore(value);
+      } else {
+        // Skip non-plain objects (functions, class instances, etc.)
+        // These can cause "invalid nested entity" errors
+        console.warn(`Skipping non-serializable property "${key}" in item:`, value);
+        continue;
+      }
+      continue;
+    }
+    
+    // Skip functions and other non-serializable types
+    if (typeof value === 'function') {
+      console.warn(`Skipping function property "${key}" in item`);
+      continue;
+    }
+    
+    // For any other type, try to convert to string as fallback
+    try {
+      cleaned[key] = String(value);
+    } catch (e) {
+      console.warn(`Could not serialize property "${key}" in item, skipping:`, e);
+    }
+  }
+  
+  return cleaned;
+};
+
 // Clean chart configuration
 const cleanChartConfig = (item) => {
   if (item.type !== 'chart') return item;
@@ -216,10 +292,17 @@ export const saveBoard = async (boardData, userId) => {
 
     // Clean and validate items, ensuring chart configurations are properly saved
     const cleanedItems = (boardData.content?.items || []).map(item => {
+      let cleaned = item;
+      
       if (item.type === 'chart') {
-        return cleanChartConfig(item);
+        cleaned = cleanChartConfig(item);
       }
-      return item;
+      
+      // Clean item to ensure all values are Firestore-compatible
+      // This prevents "invalid nested entity" errors
+      cleaned = cleanItemForFirestore(cleaned);
+      
+      return cleaned;
     });
 
     // If boardData has an id, it's an existing board - check permissions

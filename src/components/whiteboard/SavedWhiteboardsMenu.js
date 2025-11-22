@@ -217,13 +217,89 @@ const SavedWhiteboardsMenu = ({
     return baseConfig;
   };
 
+  // Helper function to clean items for Firestore (ensures all values are serializable)
+  const cleanItemForFirestore = (item) => {
+    if (!item || typeof item !== 'object') {
+      return item;
+    }
+
+    const cleaned = {};
+    
+    for (const key in item) {
+      const value = item[key];
+      
+      // Skip undefined values
+      if (value === undefined) {
+        continue;
+      }
+      
+      // Handle null
+      if (value === null) {
+        cleaned[key] = null;
+        continue;
+      }
+      
+      // Handle primitives (string, number, boolean)
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        cleaned[key] = value;
+        continue;
+      }
+      
+      // Handle arrays
+      if (Array.isArray(value)) {
+        cleaned[key] = value.map(cleanItemForFirestore);
+        continue;
+      }
+      
+      // Handle Date objects - convert to ISO string
+      if (value instanceof Date) {
+        cleaned[key] = value.toISOString();
+        continue;
+      }
+      
+      // Handle plain objects (but not class instances or special objects)
+      if (typeof value === 'object') {
+        // Check if it's a plain object (not a class instance or special object)
+        const isPlainObject = Object.prototype.toString.call(value) === '[object Object]' &&
+                             value.constructor === Object;
+        
+        if (isPlainObject) {
+          // Recursively clean nested objects
+          cleaned[key] = cleanItemForFirestore(value);
+        } else {
+          // Skip non-plain objects (functions, class instances, etc.)
+          // These can cause "invalid nested entity" errors
+          console.warn(`Skipping non-serializable property "${key}" in item:`, value);
+          continue;
+        }
+        continue;
+      }
+      
+      // Skip functions and other non-serializable types
+      if (typeof value === 'function') {
+        console.warn(`Skipping function property "${key}" in item`);
+        continue;
+      }
+      
+      // For any other type, try to convert to string as fallback
+      try {
+        cleaned[key] = String(value);
+      } catch (e) {
+        console.warn(`Could not serialize property "${key}" in item, skipping:`, e);
+      }
+    }
+    
+    return cleaned;
+  };
+
   const cleanItem = (item) => {
     if (!item || typeof item !== 'object') {
       return null;
     }
 
     if (item.type === 'chart') {
-      return cleanChartConfig(item);
+      const cleaned = cleanChartConfig(item);
+      return cleanItemForFirestore(cleaned);
     }
 
     if (item.type === 'image') {
@@ -246,24 +322,16 @@ const SavedWhiteboardsMenu = ({
       // Preserve imageUrl for data URLs (local images)
       if (item.imageUrl && item.imageUrl.startsWith('data:')) {
         cleanedImage.imageUrl = String(item.imageUrl);
+      } else if (item.imageUrl) {
+        cleanedImage.imageUrl = String(item.imageUrl);
       }
 
-      return cleanedImage;
+      return cleanItemForFirestore(cleanedImage);
     }
 
-    // Clean non-chart items (rectangles, circles, sticky notes)
-    return {
-      id: String(item.id || Date.now()),
-      type: String(item.type || 'sticky'),
-      position: {
-        x: Number(item.position?.x || 0),
-        y: Number(item.position?.y || 0)
-      },
-      width: Number(item.width || 200),
-      height: Number(item.height || 200),
-      text: String(item.text || ''),
-      title: String(item.title || ''),
-    };
+    // For all other items, use the comprehensive cleaning function
+    // This preserves all valid properties while ensuring they're serializable
+    return cleanItemForFirestore(item);
   };
 
   const cleanConnection = (conn) => {
