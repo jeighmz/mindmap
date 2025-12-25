@@ -36,7 +36,33 @@
     Access-Control-Allow-Headers = "Content-Type, Authorization"
     Access-Control-Allow-Methods = "GET, POST, OPTIONS"
 
-# Handle SPA routing by redirecting all requests to index.html (exclude /api/*)
+# Serve static assets directly (before SPA redirect)
+# These files should be served as-is, not redirected to index.html
+[[redirects]]
+  from = "/favicon.ico"
+  to = "/favicon.ico"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/manifest.json"
+  to = "/manifest.json"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/robots.txt"
+  to = "/robots.txt"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/static/*"
+  to = "/static/:splat"
+  status = 200
+  force = true
+
+# Handle SPA routing by redirecting all other requests to index.html (exclude /api/* and static files)
 [[redirects]]
   from = "/*"
   to = "/index.html"

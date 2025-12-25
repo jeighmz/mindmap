@@ -675,6 +675,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         return undefined;
       }
       
+      // Use the canvas element (whiteboard-canvas) for getting bounding rect
+      // This is the container, and canvas-content is positioned inside it
       const canvasRect = document.querySelector('.whiteboard-canvas')?.getBoundingClientRect();
       
       if (!canvasRect) {
@@ -713,18 +715,20 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         }
 
         // Calculate the position accounting for scale, pan offset, and device pixel ratio
-        // The canvas-content div has transform: translate(panOffset.x, panOffset.y) scale(scale * dpr)
-        // So we need to convert screen coordinates to canvas coordinates
         const dpr = window.devicePixelRatio || 1;
+        const effectiveScale = scale * dpr;
         
-        // Get mouse position relative to canvas element
-        const relativeX = offset.x - canvasRect.left;
-        const relativeY = offset.y - canvasRect.top;
+        // Get mouse position relative to canvas element (screen coordinates)
+        const screenX = offset.x - canvasRect.left;
+        const screenY = offset.y - canvasRect.top;
         
-        // Convert to canvas coordinates (accounting for pan and scale)
-        // panOffset is negative when panned, so we subtract it (which adds)
-        const canvasX = (relativeX - panOffset.x) / (scale * dpr);
-        const canvasY = (relativeY - panOffset.y) / (scale * dpr);
+        // Convert screen coordinates to canvas coordinates
+        // Transform: translate(panOffset) scale(effectiveScale)
+        // CSS applies right-to-left: scale first, then translate
+        // So: screenPos = canvasPos * effectiveScale + panOffset
+        // Reverse: canvasPos = (screenPos - panOffset) / effectiveScale
+        const canvasX = (screenX - panOffset.x) / effectiveScale;
+        const canvasY = (screenY - panOffset.y) / effectiveScale;
         
         // Center the item on the drop point
         let position = {
@@ -735,7 +739,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         // Ensure position values are valid numbers
         if (isNaN(position.x) || isNaN(position.y) || !isFinite(position.x) || !isFinite(position.y)) {
           console.error('Invalid position calculated', { 
-            relativeX, relativeY, canvasX, canvasY, position, 
+            screenX, screenY, canvasX, canvasY, position, 
             offset, canvasRect, panOffset, scale, dpr, width, height 
           });
           return undefined;
@@ -7979,7 +7983,11 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
         <div 
           className="canvas-content"
           style={{
-            transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${scale * (window.devicePixelRatio || 1)})`,
+            transform: (() => {
+              const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+              const effectiveScale = scale * dpr;
+              return `matrix(${effectiveScale}, 0, 0, ${effectiveScale}, ${panOffset.x}, ${panOffset.y})`;
+            })(),
             transformOrigin: '0 0',
             position: 'absolute',
             top: 0,
@@ -8087,24 +8095,75 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                 onShowColorMenu={handleShowColorMenu}
               />
             ))}
+          {/* Render non-chart items after (in front), sorted by order */}
+          {items
+            .filter(item => {
+              // Only render items with valid position and dimensions
+              if (!item || !item.position || typeof item.position.x !== 'number' || typeof item.position.y !== 'number') {
+                console.warn('Filtered out non-chart item - invalid position', item);
+                return false;
+              }
+              if (!item.width || !item.height || item.width <= 0 || item.height <= 0) {
+                console.warn('Filtered out non-chart item - invalid dimensions', item);
+                return false;
+              }
+              return item.type !== 'chart';
+            })
+            .sort((a, b) => {
+              const orderA = a.order !== undefined ? a.order : items.indexOf(a);
+              const orderB = b.order !== undefined ? b.order : items.indexOf(b);
+              return orderA - orderB;
+            })
+            .map(item => (
+              <WhiteboardItem
+                key={item.id}
+                item={item}
+                updatePosition={updateItemPosition}
+                updateSize={updateItemSize}
+                updateRotation={updateItemRotation}
+                updateText={updateItemText}
+                isSelected={selectedItems.has(item.id)}
+                isConnecting={connectingFrom === item.id}
+                isValidTarget={connectingFrom && connectingFrom !== item.id}
+                isGroupSelectMode={selectedItems.size > 1}
+                isExpanding={expandingItemId === item.id}
+                onSelect={(itemId, e) => handleItemClick(itemId, e)}
+                onConnectionStart={(itemId) => handleConnectionStart(itemId)}
+                onDelete={handleDeleteItem}
+                scale={scale}
+                onContextMenu={(e) => handleContextMenu(e, item.id)}
+                onOrganize={organizeNodes}
+                onChartEdit={handleChartEdit}
+                isChartEditing={editingChartId === item.id}
+                onDragEnd={saveState}
+                onResizeEnd={saveState}
+                onShowColorMenu={handleShowColorMenu}
+              />
+            ))}
         </div>
 
-        {selectionBox && (
-          <div
-            className="selection-box"
-            style={{
-              position: 'absolute',
-              left: selectionBox.x * (scale * (window.devicePixelRatio || 1)) + panOffset.x,
-              top: selectionBox.y * (scale * (window.devicePixelRatio || 1)) + panOffset.y,
-              width: selectionBox.width * (scale * (window.devicePixelRatio || 1)),
-              height: selectionBox.height * (scale * (window.devicePixelRatio || 1)),
-              border: '2px solid #007bff',
-              backgroundColor: 'rgba(0, 123, 255, 0.1)',
-              pointerEvents: 'none',
-              zIndex: 1000
-            }}
-          />
-        )}
+        {selectionBox && (() => {
+          const dpr = window.devicePixelRatio || 1;
+          const effectiveScale = scale * dpr;
+          // Convert canvas coordinates back to screen coordinates
+          // Transform: screenPos = canvasPos * effectiveScale + panOffset
+          return (
+            <div
+              className="selection-box"
+              style={{
+                position: 'absolute',
+                left: selectionBox.x * effectiveScale + panOffset.x,
+                top: selectionBox.y * effectiveScale + panOffset.y,
+                width: selectionBox.width * effectiveScale,
+                height: selectionBox.height * effectiveScale,
+                border: '2px solid #007bff',
+                backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                pointerEvents: 'none',
+                zIndex: 1000
+              }}
+            />
+          );
+        })()}
 
         {/* Collaborator cursors */}
         {collaborators.length > 0 && (

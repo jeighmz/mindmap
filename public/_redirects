@@ -1,1 +1,8 @@
+# Serve static assets - these should not be redirected
+/favicon.ico /favicon.ico 200
+/manifest.json /manifest.json 200
+/robots.txt /robots.txt 200
+/static/* /static/:splat 200
+
+# Catch-all for SPA routing (only if file doesn't exist)
 /* /index.html 200 
