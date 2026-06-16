@@ -48,6 +48,9 @@
 .app:has(.whiteboard) {
   background-color: transparent !important;
   background: transparent !important;
+  height: 100dvh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .floating-user-menu {

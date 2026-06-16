@@ -7,6 +7,7 @@
   color: #333;
   text-align: center;
   padding: 8px;
+  padding-top: calc(8px + env(safe-area-inset-top, 0px));
   font-size: 14px;
   font-weight: 500;
   z-index: 10000;
@@ -42,29 +43,23 @@
   background-color: rgba(0, 0, 0, 0.05);
 }
 
-/* Remove any header/canvas pushdown logic */
-/* .whiteboard-header, .whiteboard-header.no-banner, .whiteboard-canvas, .whiteboard-canvas.no-banner */
-
-/* Adjust for mobile */
 @media (max-width: 768px) {
   .development-banner {
     padding: 6px;
+    padding-top: calc(6px + env(safe-area-inset-top, 0px));
     font-size: 12px;
   }
-  
-  .whiteboard-header {
-    top: 31px;
+
+  .whiteboard:has(~ .development-banner),
+  .whiteboard.has-dev-banner {
+    --wb-banner-offset: 31px;
   }
-  
+
+  .whiteboard-header {
+    top: var(--wb-banner-offset, 0px);
+  }
+
   .whiteboard-header.no-banner {
     top: 0;
   }
-  
-  .whiteboard-canvas {
-    margin-top: 81px;
-  }
-  
-  .whiteboard-canvas.no-banner {
-    margin-top: 46px;
-  }
-} 
+}

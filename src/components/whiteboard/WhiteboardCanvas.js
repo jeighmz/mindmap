@@ -28,6 +28,10 @@ import { createNotionPage, writeToNotionDatabase } from './agent/tools/notion';
 import { ChromePicker } from 'react-color';
 import UsageTracker from './UsageTracker';
 import { useApp } from '../../contexts/AppContext';
+import WhiteboardWebGLView from './webgl/WhiteboardWebGLView';
+import { screenToWorld } from './webgl/coordinates';
+import { OVERLAY_CONTROL_GUTTER } from './webgl/constants';
+import { hitTestItem } from './webgl/hitTest';
 
 const WhiteboardCanvas = forwardRef((props, ref) => {
   const { isDarkMode } = useApp();
@@ -44,12 +48,61 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const panOffsetRef = useRef({ x: 0, y: 0 });
+  const canvasContentRef = useRef(null);
+  const domOverlayRef = useRef(null);
+  const webglRef = useRef(null);
+  const itemDragRef = useRef(null);
+  const updateItemPositionRef = useRef(null);
+  const saveStateRef = useRef(() => {});
+  const isPanningRef = useRef(false);
+  const scaleRef = useRef(1.0);
+  const panRafRef = useRef(null);
+  const suppressSelectionClickRef = useRef(false);
   const [scale, setScale] = useState(1.0); // Changed from 0.4 to 1.0 for 100% default zoom
   
-  // Sync ref with state
+  // Sync refs with state
   useEffect(() => {
     panOffsetRef.current = panOffset;
   }, [panOffset]);
+
+  useEffect(() => {
+    scaleRef.current = scale;
+  }, [scale]);
+
+  useEffect(() => {
+    isPanningRef.current = isPanning;
+  }, [isPanning]);
+
+  const applyCanvasTransform = useCallback((pan, currentScale) => {
+    webglRef.current?.setViewport(pan, currentScale);
+    const overlay = domOverlayRef.current;
+    if (overlay) {
+      overlay.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${currentScale})`;
+    }
+  }, []);
+
+  const scheduleCanvasTransform = useCallback((pan, currentScale = scaleRef.current) => {
+    panOffsetRef.current = pan;
+    if (panRafRef.current !== null) return;
+    panRafRef.current = requestAnimationFrame(() => {
+      panRafRef.current = null;
+      applyCanvasTransform(panOffsetRef.current, currentScale);
+    });
+  }, [applyCanvasTransform]);
+
+  useEffect(() => {
+    if (!isPanningRef.current) {
+      applyCanvasTransform(panOffset, scale);
+    }
+  }, [panOffset, scale, applyCanvasTransform]);
+
+  useEffect(() => {
+    return () => {
+      if (panRafRef.current !== null) {
+        cancelAnimationFrame(panRafRef.current);
+      }
+    };
+  }, []);
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [connections, setConnections] = useState([]);
   const [connectingFrom, setConnectingFrom] = useState(null);
@@ -57,6 +110,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const connectionSettingsMenuRef = useRef(null);
   const primaryDraggingItemIdRef = useRef(null);
   const groupDragStartPositionsRef = useRef(null);
+  const groupDragPendingPositionsRef = useRef(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
@@ -81,7 +135,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     y: 0
   });
   const [isAltPressed, setIsAltPressed] = useState(false);
-  const [touchStartPoint, setTouchStartPoint] = useState(null);
+  const touchPanStartRef = useRef(null);
   const [expandingItemId, setExpandingItemId] = useState(null);
   // eslint-disable-next-line no-unused-vars
   const [isExpandingConcept, setIsExpandingConcept] = useState(false);
@@ -102,10 +156,6 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [aiMapUsage, setAiMapUsage] = useState({ used: 0, limit: -1, remaining: -1 });
   // Add clipboard state
   const [clipboardData, setClipboardData] = useState(null);
-  const [windowDimensions, setWindowDimensions] = useState({
-    width: window.innerWidth,
-    height: window.innerHeight
-  });
   const [canvasViewSize, setCanvasViewSize] = useState({ width: 0, height: 0 });
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
@@ -339,7 +389,14 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   }), [selectedItems, items, isSearchPanelOpen, isMindMapPanelOpen, externalIsMindMapPanelOpen, onMindMapPanelClose, onMindMapPanelOpen]);
 
   const handleMouseUp = useCallback((e) => {
+    if (itemDragRef.current) {
+      saveStateRef.current();
+      itemDragRef.current = null;
+      document.querySelector('.whiteboard-canvas')?.classList.remove('is-dragging-items');
+    }
+
     if (isPanning) {
+      setPanOffset({ ...panOffsetRef.current });
       setIsPanning(false);
     }
 
@@ -387,21 +444,27 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   }, [isPanning, isSelecting, selectionBox, items, scale]);
 
   const handleMouseMove = useCallback((e) => {
+    if (itemDragRef.current) {
+      const dx = (e.clientX - itemDragRef.current.startX) / scale;
+      const dy = (e.clientY - itemDragRef.current.startY) / scale;
+      const newX = Math.round((itemDragRef.current.itemX + dx) / 10) * 10;
+      const newY = Math.round((itemDragRef.current.itemY + dy) / 10) * 10;
+      updateItemPositionRef.current(itemDragRef.current.id, { x: newX, y: newY });
+    }
+
     if (isPanning) {
-      const newPanOffset = {
-        x: Math.min(0, e.clientX - panStart.x), // Limit to left (negative) direction
-        y: Math.min(0, e.clientY - panStart.y)  // Limit to up (negative) direction
-      };
-      setPanOffset(newPanOffset);
+      scheduleCanvasTransform({
+        x: Math.min(0, e.clientX - panStart.x),
+        y: Math.min(0, e.clientY - panStart.y),
+      });
     }
     
-    const canvas = document.querySelector('.whiteboard-canvas');
+    const canvas = canvasRef.current || document.querySelector('.whiteboard-canvas');
     if (canvas) {
       const rect = canvas.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      const effectiveScale = scale * dpr;
-      const x = (e.clientX - rect.left - panOffset.x) / effectiveScale;
-      const y = (e.clientY - rect.top - panOffset.y) / effectiveScale;
+      const pan = panOffsetRef.current;
+      const x = (e.clientX - rect.left - pan.x) / scale;
+      const y = (e.clientY - rect.top - pan.y) / scale;
       setMousePosition({ x, y });
       
       // Update cursor position for collaborators via WebSocket (throttled for real-time updates)
@@ -430,7 +493,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         });
       }
     }
-  }, [isPanning, panStart, scale, panOffset, isSelecting, selectionStart]);
+  }, [isPanning, panStart, scale, isSelecting, selectionStart, scheduleCanvasTransform]);
 
   const handleMouseDown = useCallback((e) => {
     // Don't interfere with control buttons
@@ -440,8 +503,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     
     // Don't handle if clicking on a whiteboard item (let WhiteboardItem handle it)
     // For right-click on items, let the context menu handler deal with it
-    if (e.target.closest('.whiteboard-item')) {
-      // Only allow right-click selection if clicking on canvas background, not on items
+    if (e.target.closest('.whiteboard-item, .whiteboard-dom-overlay-item')) {
       return;
     }
     
@@ -454,6 +516,36 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     if (e.target.closest('.whiteboard-header, .whiteboard-controls-overlay, .help-toggle-button')) {
       return;
     }
+
+    if (e.button === 0 && !isSpacePressed) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const world = screenToWorld(
+          e.clientX - rect.left,
+          e.clientY - rect.top,
+          panOffsetRef.current,
+          scaleRef.current
+        );
+        const hit = hitTestItem(world.x, world.y, items, { skipTypes: ['chart'] });
+        if (hit) {
+          suppressSelectionClickRef.current = true;
+          setSelectedItems(new Set([hit.id]));
+          setSelectedConnection(null);
+          setContextMenu({ visible: false, x: 0, y: 0 });
+          itemDragRef.current = {
+            id: hit.id,
+            startX: e.clientX,
+            startY: e.clientY,
+            itemX: hit.position.x,
+            itemY: hit.position.y,
+          };
+          document.querySelector('.whiteboard-canvas')?.classList.add('is-dragging-items');
+          e.preventDefault();
+          return;
+        }
+      }
+    }
     
     if (e.button === 1 || (e.button === 0 && !isSpacePressed)) {
       // Regular drag (or middle mouse button) = pan
@@ -465,8 +557,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       
       setIsPanning(true);
       setPanStart({
-        x: e.clientX - panOffset.x,
-        y: e.clientY - panOffset.y
+        x: e.clientX - panOffsetRef.current.x,
+        y: e.clientY - panOffsetRef.current.y
       });
       e.preventDefault();
     } else if ((e.button === 0 && isSpacePressed) || e.button === 2) {
@@ -480,7 +572,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       if (canvas) {
         const rect = canvas.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
-        const effectiveScale = scale * dpr;
+        const effectiveScale = scale;
         const x = (e.clientX - rect.left - panOffset.x) / effectiveScale;
         const y = (e.clientY - rect.top - panOffset.y) / effectiveScale;
         
@@ -492,7 +584,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         e.preventDefault(); // Prevent context menu when right-click dragging
       }
     }
-  }, [panOffset, scale, isSpacePressed]);
+  }, [items, panOffset, scale, isSpacePressed]);
 
   const handleCloseSearchPanel = () => {
     setIsSearchPanelOpen(false);
@@ -546,6 +638,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     setUndoStack(prev => [...prev, currentState].slice(-20)); // Keep last 20 states
     setRedoStack([]); // Clear redo stack when new action is performed
   }, [items, connections, scale, panOffset]);
+
+  saveStateRef.current = saveState;
 
   const handleUndo = useCallback(() => {
     if (undoStack.length > 0) {
@@ -716,7 +810,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
         // Calculate the position accounting for scale, pan offset, and device pixel ratio
         const dpr = window.devicePixelRatio || 1;
-        const effectiveScale = scale * dpr;
+        const effectiveScale = scale;
         
         // Get mouse position relative to canvas element (screen coordinates)
         const screenX = offset.x - canvasRect.left;
@@ -867,7 +961,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       const zoomFactor = 1 - (deltaY * zoomSensitivity);
       
       // Zoom towards cursor position
-      // The canvas uses: translate(panOffset) scale(scale * dpr)
+      // The canvas uses: translate(panOffset) scale(scale)
       // So we need to account for dpr in our calculations
       const dpr = window.devicePixelRatio || 1;
       
@@ -877,8 +971,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         // Use functional update to get current pan offset
         setPanOffset(currentPan => {
           // Calculate the effective scale (what's actually applied to the canvas)
-          const currentEffectiveScale = s * dpr;
-          const newEffectiveScale = newScale * dpr;
+          const currentEffectiveScale = s;
+          const newEffectiveScale = newScale;
           
           // Calculate the world coordinates of the point under the cursor before zoom
           // World coordinates = (screen position - pan offset) / effective scale
@@ -954,8 +1048,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         
         setPanOffset(currentPan => {
           // Calculate the effective scale (what's actually applied to the canvas)
-          const currentEffectiveScale = s * dpr;
-          const newEffectiveScale = newScale * dpr;
+          const currentEffectiveScale = s;
+          const newEffectiveScale = newScale;
           
           // Calculate the world coordinates of the point under the cursor before zoom
           const worldX = (mouseX - currentPan.x) / currentEffectiveScale;
@@ -991,8 +1085,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         
         setPanOffset(currentPan => {
           // Calculate the effective scale (what's actually applied to the canvas)
-          const currentEffectiveScale = s * dpr;
-          const newEffectiveScale = newScale * dpr;
+          const currentEffectiveScale = s;
+          const newEffectiveScale = newScale;
           
           // Calculate the world coordinates of the point under the cursor before zoom
           const worldX = (mouseX - currentPan.x) / currentEffectiveScale;
@@ -1041,8 +1135,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         
         setPanOffset(currentPan => {
           // Calculate the effective scale (what's actually applied to the canvas)
-          const currentEffectiveScale = s * dpr;
-          const newEffectiveScale = newScale * dpr;
+          const currentEffectiveScale = s;
+          const newEffectiveScale = newScale;
           
           // Calculate the world coordinates of the point under the cursor before zoom
           const worldX = (mouseX - currentPan.x) / currentEffectiveScale;
@@ -1098,6 +1192,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }));
   }, [items, constrainPositionToCanvas]);
 
+  updateItemPositionRef.current = updateItemPosition;
+
   const updateItemSize = useCallback((id, size) => {
     setItems(items.map(item =>
       item.id === id
@@ -1129,6 +1225,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   };
 
   const handleItemClick = (itemId, e) => {
+    if (suppressSelectionClickRef.current) {
+      suppressSelectionClickRef.current = false;
+      return;
+    }
+
     // Close connection settings menu when clicking on an item
     if (selectedConnection) {
       // Don't close if clicking inside the menu or on color picker
@@ -1176,7 +1277,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       setSelectedItems(prev => {
         const newSet = new Set(prev);
         if (newSet.has(itemId)) {
-          newSet.delete(itemId);
+          // Shift-click removes from a multi-selection; plain click keeps item selected
+          // (WebGL hit-test selects on mousedown, then the follow-up click would otherwise toggle off)
+          if (e?.shiftKey) {
+            newSet.delete(itemId);
+          }
         } else {
           if (!e?.shiftKey) {
             newSet.clear();
@@ -2636,8 +2741,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       if (position.viewportX !== undefined && position.viewportY !== undefined) {
         // Convert viewport center to canvas coordinates
         position = {
-          x: Math.round(((position.viewportX - canvasRect.left - panOffset.x) / (scale * dpr) - (e.detail.width || 400) / 2) / 10) * 10,
-          y: Math.round(((position.viewportY - canvasRect.top - panOffset.y) / (scale * dpr) - (e.detail.height || 300) / 2) / 10) * 10
+          x: Math.round(((position.viewportX - canvasRect.left - panOffset.x) / (scale) - (e.detail.width || 400) / 2) / 10) * 10,
+          y: Math.round(((position.viewportY - canvasRect.top - panOffset.y) / (scale) - (e.detail.height || 300) / 2) / 10) * 10
         };
       }
 
@@ -2705,8 +2810,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         let position;
         if (dropPosition && canvasRect) {
           position = {
-            x: Math.round(((dropPosition.x - canvasRect.left - panOffset.x) / (scale * dpr) - width/2) / 10) * 10,
-            y: Math.round(((dropPosition.y - canvasRect.top - panOffset.y) / (scale * dpr) - height/2) / 10) * 10
+            x: Math.round(((dropPosition.x - canvasRect.left - panOffset.x) / (scale) - width/2) / 10) * 10,
+            y: Math.round(((dropPosition.y - canvasRect.top - panOffset.y) / (scale) - height/2) / 10) * 10
           };
         } else {
           position = { x: 100, y: 100 };
@@ -2747,6 +2852,11 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   }, [scale, panOffset, constrainPositionToCanvas]);
 
   const handleCanvasClick = (e) => {
+    if (suppressSelectionClickRef.current) {
+      suppressSelectionClickRef.current = false;
+      return;
+    }
+
     // Close connection settings menu if clicking on canvas (but not on menu or color picker)
     if (selectedConnection && connectionSettingsMenuRef.current) {
       if (!connectionSettingsMenuRef.current.contains(e.target)) {
@@ -2765,12 +2875,17 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     if (e.target.tagName === 'path' && e.target.closest('.connector')) {
       return;
     }
-    if (e.target === e.currentTarget && !e.target.closest('.zoom-controls')) {
-      setSelectedItems(new Set());
-      setSelectedConnection(null);
-      setConnectingFrom(null);
-      setContextMenu({ visible: false, x: 0, y: 0 });
+    if (
+      e.target.closest('.whiteboard-item, .whiteboard-dom-overlay-item') ||
+      e.target.closest('.zoom-controls')
+    ) {
+      return;
     }
+
+    setSelectedItems(new Set());
+    setSelectedConnection(null);
+    setConnectingFrom(null);
+    setContextMenu({ visible: false, x: 0, y: 0 });
   };
 
   const handleContextMenu = (e, itemId) => {
@@ -2797,7 +2912,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
     const canvasBounds = canvasEl.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
-    const effectiveScale = scale * dpr;
+    const effectiveScale = scale;
 
     // Calculate center of the item
     const itemCenterX = item.position.x + (item.width || 150) / 2;
@@ -2976,7 +3091,6 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const updateMultipleItemPositions = useCallback((dx, dy) => {
     if (selectedItems.size <= 1) return;
 
-    // Use stored original positions if available (from when drag started), otherwise use current
     const basePositions = groupDragStartPositionsRef.current || items.reduce((positions, item) => {
       if (selectedItems.has(item.id)) {
         positions[item.id] = { ...item.position };
@@ -2984,36 +3098,38 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       return positions;
     }, {});
 
-    // Calculate grid-aligned deltas
     const alignedDx = Math.round(dx / 10) * 10;
     const alignedDy = Math.round(dy / 10) * 10;
     
-    // Only update if there's actual movement
     if (alignedDx === 0 && alignedDy === 0) return;
 
-    requestAnimationFrame(() => {
-      setItems(prevItems => 
-        prevItems.map(item => {
-          if (selectedItems.has(item.id) && basePositions[item.id]) {
-            const basePosition = basePositions[item.id];
-            const newPosition = {
-              x: basePosition.x + alignedDx,
-              y: basePosition.y + alignedDy
-            };
-            const constrainedPosition = constrainPositionToCanvas(
-              newPosition,
-              item.width || 0,
-              item.height || 0
-            );
-            return {
-              ...item,
-              position: constrainedPosition
-            };
-          }
-          return item;
-        })
+    const pendingPositions = {};
+
+    selectedItems.forEach((id) => {
+      if (!basePositions[id]) return;
+
+      const item = items.find((entry) => entry.id === id);
+      if (!item) return;
+
+      const constrainedPosition = constrainPositionToCanvas(
+        {
+          x: basePositions[id].x + alignedDx,
+          y: basePositions[id].y + alignedDy,
+        },
+        item.width || 0,
+        item.height || 0
       );
+
+      pendingPositions[id] = constrainedPosition;
+
+      const el = document.querySelector(`.whiteboard-item[data-id="${CSS.escape(id)}"]`);
+      if (el) {
+        el.style.left = `${constrainedPosition.x}px`;
+        el.style.top = `${constrainedPosition.y}px`;
+      }
     });
+
+    groupDragPendingPositionsRef.current = pendingPositions;
   }, [selectedItems, items, constrainPositionToCanvas]);
 
   // Hide color menu when selection changes
@@ -3118,12 +3234,12 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
     // Function to register the primary dragger and store original positions
     window.startGroupDrag = (itemId) => {
-      // If another item is already the primary dragger, don't allow this one
       if (primaryDraggingItemIdRef.current !== null && primaryDraggingItemIdRef.current !== itemId) {
         return false;
       }
       primaryDraggingItemIdRef.current = itemId;
-      // Store original positions of all selected items
+      groupDragPendingPositionsRef.current = null;
+      document.querySelector('.whiteboard-canvas')?.classList.add('is-dragging-items');
       groupDragStartPositionsRef.current = items.reduce((positions, item) => {
         if (selectedItems.has(item.id)) {
           positions[item.id] = { ...item.position };
@@ -3133,10 +3249,28 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       return true;
     };
 
-    // Function to clear the primary dragger
     window.endGroupDrag = () => {
+      const pending = groupDragPendingPositionsRef.current;
+      if (pending && Object.keys(pending).length > 0) {
+        setItems((prevItems) =>
+          prevItems.map((item) =>
+            pending[item.id] ? { ...item, position: pending[item.id] } : item
+          )
+        );
+      }
+
+      selectedItems.forEach((id) => {
+        const el = document.querySelector(`.whiteboard-item[data-id="${CSS.escape(id)}"]`);
+        if (el) {
+          el.style.left = '';
+          el.style.top = '';
+        }
+      });
+
+      groupDragPendingPositionsRef.current = null;
       primaryDraggingItemIdRef.current = null;
       groupDragStartPositionsRef.current = null;
+      document.querySelector('.whiteboard-canvas')?.classList.remove('is-dragging-items');
     };
 
     // Clean up the global functions on unmount
@@ -5157,7 +5291,7 @@ Performance Metrics Analysis`
       }
       const canvasBounds = canvasEl.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      const effectiveScale = scale * dpr;
+      const effectiveScale = scale;
       
       // Convert viewport center (screen coordinates) to canvas coordinates
       // Formula: canvasX = (screenX - panOffset.x) / effectiveScale
@@ -5645,7 +5779,7 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
           if (canvasEl) {
             const canvasBounds = canvasEl.getBoundingClientRect();
             const dpr = window.devicePixelRatio || 1;
-            const effectiveScale = scale * dpr;
+            const effectiveScale = scale;
             
             // Calculate the bounds of the entire mind map to center it properly
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -5732,7 +5866,7 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
       }
       const canvasBounds = canvasEl.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      const effectiveScale = scale * dpr;
+      const effectiveScale = scale;
       
       const viewportCenterX = (canvasBounds.width / 2 - panOffset.x) / effectiveScale;
       const viewportCenterY = (canvasBounds.height / 2 - panOffset.y) / effectiveScale;
@@ -6224,43 +6358,113 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
   };
 
   useEffect(() => {
-    const handleResize = () => {
-      setWindowDimensions({
-        width: window.innerWidth,
-        height: window.innerHeight
-      });
-    };
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // Calculate current view size
-  useEffect(() => {
     const updateViewSize = () => {
-      const canvas = document.querySelector('.whiteboard-canvas');
-      if (canvas) {
-        const rect = canvas.getBoundingClientRect();
-        const viewWidth = rect.width / scale;
-        const footerHeight = showFooter ? 15 : 0;
-        const viewHeight = (rect.height - footerHeight) / scale;
-        setCanvasViewSize({ width: viewWidth, height: viewHeight });
-      }
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const viewWidth = rect.width / scale;
+      const footerHeight = showFooter ? 15 : 0;
+      const viewHeight = (rect.height - footerHeight) / scale;
+      setCanvasViewSize({ width: viewWidth, height: viewHeight });
     };
 
     updateViewSize();
-    const interval = setInterval(updateViewSize, 100); // Update every 100ms
 
-    const handleResize = () => {
-      updateViewSize();
-    };
+    const observer = new ResizeObserver(updateViewSize);
+    observer.observe(canvas);
 
-    window.addEventListener('resize', handleResize);
+    const handleViewportChange = () => updateViewSize();
+    window.addEventListener('resize', handleViewportChange);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleViewportChange);
+      window.visualViewport.addEventListener('scroll', handleViewportChange);
+    }
+
     return () => {
-      clearInterval(interval);
-      window.removeEventListener('resize', handleResize);
+      observer.disconnect();
+      window.removeEventListener('resize', handleViewportChange);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleViewportChange);
+        window.visualViewport.removeEventListener('scroll', handleViewportChange);
+      }
     };
-  }, [scale, windowDimensions]);
+  }, [scale, showFooter]);
+
+  const isInteractiveTarget = useCallback((target) => {
+    return Boolean(target?.closest?.(
+      '.whiteboard-item, .zoom-controls, .edit-control, .connector-control, .expand-control, .resize-handle, .whiteboard-header, .whiteboard-controls-overlay, .help-toggle-button, .search-panel, .agent-chat, .chat-modal'
+    ));
+  }, []);
+
+  const handleTouchStart = useCallback((e) => {
+    if (isInteractiveTarget(e.target)) return;
+
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      touchPanStartRef.current = {
+        x: touch.clientX - panOffsetRef.current.x,
+        y: touch.clientY - panOffsetRef.current.y,
+      };
+      setIsPanning(true);
+    }
+  }, [isInteractiveTarget]);
+
+  const handleTouchMove = useCallback((e) => {
+    if (!isPanning || e.touches.length !== 1 || !touchPanStartRef.current) return;
+
+    e.preventDefault();
+    const touch = e.touches[0];
+    scheduleCanvasTransform({
+      x: Math.min(0, touch.clientX - touchPanStartRef.current.x),
+      y: Math.min(0, touch.clientY - touchPanStartRef.current.y),
+    });
+  }, [isPanning, scheduleCanvasTransform]);
+
+  const handleTouchEnd = useCallback(() => {
+    touchPanStartRef.current = null;
+    if (isPanningRef.current) {
+      setPanOffset({ ...panOffsetRef.current });
+    }
+    setIsPanning(false);
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const preventTouchScroll = (e) => {
+      if (isPanning) {
+        e.preventDefault();
+      }
+    };
+
+    canvas.addEventListener('touchmove', preventTouchScroll, { passive: false });
+    return () => canvas.removeEventListener('touchmove', preventTouchScroll);
+  }, [isPanning]);
+
+  // Fit canvas to viewport width on small screens for first paint
+  const hasFitMobileViewRef = useRef(false);
+  useEffect(() => {
+    if (hasFitMobileViewRef.current) return;
+
+    const fitMobileView = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const { width } = canvas.getBoundingClientRect();
+      if (width > 0 && width < 768) {
+        const fitScale = Math.min(Math.max(width / 4000, 0.08), 1);
+        setScale(fitScale);
+        setPanOffset({ x: 0, y: 0 });
+        hasFitMobileViewRef.current = true;
+      }
+    };
+
+    const raf = requestAnimationFrame(fitMobileView);
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   // Calculate dimensions based on text content and node type
   const calculateTextDimensions = (text, nodeType = 'rectangle') => {
@@ -6468,7 +6672,7 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
   };
 
   return (
-    <div className={`whiteboard-container ${isSearchPanelOpen ? 'panel-open' : ''}`} style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div className={`whiteboard-container ${isSearchPanelOpen ? 'panel-open' : ''}`}>
       {/* Connection Edit Menu at top right */}
       {selectedConnection && !isSearchPanelOpen && (() => {
         const connection = connections.find(c => c.id === selectedConnection);
@@ -7699,6 +7903,10 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
         onClick={handleCanvasClick}
         onContextMenu={(e) => {
           // Prevent context menu when right-click dragging for selection
@@ -7751,10 +7959,6 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
         }}
         style={{
           cursor: isPanning ? 'grabbing' : (isSpacePressed || isSelecting || isRightClickSelecting ? 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\'%3E%3Ccircle cx=\'10\' cy=\'10\' r=\'7\' stroke=\'%23000000\' stroke-width=\'2\' fill=\'none\'/%3E%3Cpath d=\'M15 15l5 5\' stroke=\'%23000000\' stroke-width=\'2\' stroke-linecap=\'round\'/%3E%3C/svg%3E") 10 10, crosshair' : 'default'),
-          position: 'relative',
-          overflow: 'hidden',
-          width: '100%',
-          height: showFooter ? 'calc(100% - 15px)' : '100%',
           ...(isDraggingOver && {
             backgroundColor: 'rgba(33, 150, 243, 0.1)',
             border: '2px dashed #2196F3'
@@ -7789,10 +7993,8 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                 setScale(s => {
                   const newScale = Math.min(s + 0.05, 4);
                   
-                  // Account for device pixel ratio
-                  const dpr = window.devicePixelRatio || 1;
-                  const currentEffectiveScale = s * dpr;
-                  const newEffectiveScale = newScale * dpr;
+                  const currentEffectiveScale = s;
+                  const newEffectiveScale = newScale;
                   
                   setPanOffset(currentPan => {
                     // Calculate world coordinates at viewport center before zoom
@@ -7828,10 +8030,8 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                 setScale(s => {
                   const newScale = Math.max(s - 0.05, 0.1);
                   
-                  // Account for device pixel ratio
-                  const dpr = window.devicePixelRatio || 1;
-                  const currentEffectiveScale = s * dpr;
-                  const newEffectiveScale = newScale * dpr;
+                  const currentEffectiveScale = s;
+                  const newEffectiveScale = newScale;
                   
                   setPanOffset(currentPan => {
                     // Calculate world coordinates at viewport center before zoom
@@ -7968,7 +8168,7 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
             <div className="control-tip-container">
             <div className="control-tip">
               <span className="mouse-action">Drag</span> to pan
-              <span className="touch-tip">• Use two fingers to pan on touch devices</span>
+              <span className="touch-tip">• Drag with one finger to pan</span>
             </div>
             <div className="control-tip">
               <span className="mouse-action">Drag</span> an object to move it
@@ -7980,190 +8180,137 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
           </div>
         </div>
 
-        <div 
-          className="canvas-content"
-          style={{
-            transform: (() => {
-              const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
-              const effectiveScale = scale * dpr;
-              return `matrix(${effectiveScale}, 0, 0, ${effectiveScale}, ${panOffset.x}, ${panOffset.y})`;
-            })(),
-            transformOrigin: '0 0',
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '4000px',  // Fixed width instead of percentage
-            height: '4000px', // Fixed height instead of percentage
-            margin: 0
-          }}
-        >
-          <div className="grid-background" />
-          {renderConnections()}
-          {connectingFrom && (
-            <Connector
-              startItem={items.find(item => item.id === connectingFrom)}
-              endItem={null}
-              isCreating={true}
-              mousePosition={mousePosition}
-            />
-          )}
-          {/* Render chart items first (in the back), sorted by order */}
+        <WhiteboardWebGLView
+          ref={webglRef}
+          items={items}
+          connections={connections}
+          panOffset={panOffset}
+          scale={scale}
+          selectedItemIds={selectedItems}
+          selectedConnectionId={selectedConnection}
+          connectingFromId={connectingFrom}
+          connectingMousePosition={mousePosition}
+        />
+
+        <div ref={domOverlayRef} className="whiteboard-dom-overlay">
           {items
-            .filter(item => {
-              // Only render items with valid position and dimensions
-              if (!item || !item.position || typeof item.position.x !== 'number' || typeof item.position.y !== 'number') {
-                console.warn('Filtered out chart item - invalid position', item);
-                return false;
-              }
-              if (!item.width || !item.height || item.width <= 0 || item.height <= 0) {
-                console.warn('Filtered out chart item - invalid dimensions', item);
-                return false;
-              }
-              return item.type === 'chart';
-            })
+            .filter((item) => item?.position && item.width > 0 && item.height > 0 && item.type === 'chart')
             .sort((a, b) => {
               const orderA = a.order !== undefined ? a.order : items.indexOf(a);
               const orderB = b.order !== undefined ? b.order : items.indexOf(b);
               return orderA - orderB;
             })
-            .map(item => (
-              <WhiteboardItem
-                key={item.id}
-                item={item}
-                updatePosition={updateItemPosition}
-                updateSize={updateItemSize}
-                updateRotation={updateItemRotation}
-                updateText={updateItemText}
-                isSelected={selectedItems.has(item.id)}
-                isConnecting={connectingFrom === item.id}
-                isValidTarget={connectingFrom && connectingFrom !== item.id}
-                isGroupSelectMode={selectedItems.size > 1}
-                isExpanding={expandingItemId === item.id}
-                onSelect={(itemId, e) => handleItemClick(itemId, e)}
-                onConnectionStart={(itemId) => handleConnectionStart(itemId)}
-                onDelete={handleDeleteItem}
-                scale={scale}
-                onContextMenu={(e) => handleContextMenu(e, item.id)}
-                onOrganize={organizeNodes}
-                onChartEdit={handleChartEdit}
-                isChartEditing={editingChartId === item.id}
-                onDragEnd={saveState}
-                onResizeEnd={saveState}
-                onShowColorMenu={handleShowColorMenu}
-              />
-            ))}
-          {/* Render non-chart items after (in front), sorted by order */}
+            .map((item) => {
+              return (
+                <div
+                  key={`chart-${item.id}`}
+                  className="whiteboard-dom-overlay-item"
+                  style={{
+                    position: 'absolute',
+                    left: item.position.x,
+                    top: item.position.y,
+                    width: item.width,
+                    height: item.height,
+                    transformOrigin: `${item.width / 2}px ${item.height / 2}px`,
+                    transform: item.rotation ? `rotate(${item.rotation}deg)` : undefined,
+                    pointerEvents: 'auto',
+                  }}
+                >
+                  <WhiteboardItem
+                    item={item}
+                    updatePosition={updateItemPosition}
+                    updateSize={updateItemSize}
+                    updateRotation={updateItemRotation}
+                    updateText={updateItemText}
+                    isSelected={selectedItems.has(item.id)}
+                    isConnecting={connectingFrom === item.id}
+                    isValidTarget={connectingFrom && connectingFrom !== item.id}
+                    isGroupSelectMode={selectedItems.size > 1}
+                    isExpanding={expandingItemId === item.id}
+                    onSelect={(itemId, e) => handleItemClick(itemId, e)}
+                    onConnectionStart={(itemId) => handleConnectionStart(itemId)}
+                    onDelete={handleDeleteItem}
+                    scale={scale}
+                    onContextMenu={(e) => handleContextMenu(e, item.id)}
+                    onOrganize={organizeNodes}
+                    onChartEdit={handleChartEdit}
+                    isChartEditing={editingChartId === item.id}
+                    onDragEnd={saveState}
+                    onResizeEnd={saveState}
+                    onShowColorMenu={handleShowColorMenu}
+                  />
+                </div>
+              );
+            })}
           {items
-            .filter(item => {
-              // Only render items with valid position and dimensions
-              if (!item || !item.position || typeof item.position.x !== 'number' || typeof item.position.y !== 'number') {
-                console.warn('Filtered out non-chart item - invalid position', item);
-                return false;
-              }
-              if (!item.width || !item.height || item.width <= 0 || item.height <= 0) {
-                console.warn('Filtered out non-chart item - invalid dimensions', item);
-                return false;
-              }
-              return item.type !== 'chart';
-            })
-            .sort((a, b) => {
-              const orderA = a.order !== undefined ? a.order : items.indexOf(a);
-              const orderB = b.order !== undefined ? b.order : items.indexOf(b);
-              return orderA - orderB;
-            })
-            .map(item => (
-              <WhiteboardItem
-                key={item.id}
-                item={item}
-                updatePosition={updateItemPosition}
-                updateSize={updateItemSize}
-                updateRotation={updateItemRotation}
-                updateText={updateItemText}
-                isSelected={selectedItems.has(item.id)}
-                isConnecting={connectingFrom === item.id}
-                isValidTarget={connectingFrom && connectingFrom !== item.id}
-                isGroupSelectMode={selectedItems.size > 1}
-                isExpanding={expandingItemId === item.id}
-                onSelect={(itemId, e) => handleItemClick(itemId, e)}
-                onConnectionStart={(itemId) => handleConnectionStart(itemId)}
-                onDelete={handleDeleteItem}
-                scale={scale}
-                onContextMenu={(e) => handleContextMenu(e, item.id)}
-                onOrganize={organizeNodes}
-                onDragEnd={saveState}
-                onResizeEnd={saveState}
-                onShowColorMenu={handleShowColorMenu}
-              />
-            ))}
-          {/* Render non-chart items after (in front), sorted by order */}
-          {items
-            .filter(item => {
-              // Only render items with valid position and dimensions
-              if (!item || !item.position || typeof item.position.x !== 'number' || typeof item.position.y !== 'number') {
-                console.warn('Filtered out non-chart item - invalid position', item);
-                return false;
-              }
-              if (!item.width || !item.height || item.width <= 0 || item.height <= 0) {
-                console.warn('Filtered out non-chart item - invalid dimensions', item);
-                return false;
-              }
-              return item.type !== 'chart';
-            })
-            .sort((a, b) => {
-              const orderA = a.order !== undefined ? a.order : items.indexOf(a);
-              const orderB = b.order !== undefined ? b.order : items.indexOf(b);
-              return orderA - orderB;
-            })
-            .map(item => (
-              <WhiteboardItem
-                key={item.id}
-                item={item}
-                updatePosition={updateItemPosition}
-                updateSize={updateItemSize}
-                updateRotation={updateItemRotation}
-                updateText={updateItemText}
-                isSelected={selectedItems.has(item.id)}
-                isConnecting={connectingFrom === item.id}
-                isValidTarget={connectingFrom && connectingFrom !== item.id}
-                isGroupSelectMode={selectedItems.size > 1}
-                isExpanding={expandingItemId === item.id}
-                onSelect={(itemId, e) => handleItemClick(itemId, e)}
-                onConnectionStart={(itemId) => handleConnectionStart(itemId)}
-                onDelete={handleDeleteItem}
-                scale={scale}
-                onContextMenu={(e) => handleContextMenu(e, item.id)}
-                onOrganize={organizeNodes}
-                onChartEdit={handleChartEdit}
-                isChartEditing={editingChartId === item.id}
-                onDragEnd={saveState}
-                onResizeEnd={saveState}
-                onShowColorMenu={handleShowColorMenu}
-              />
-            ))}
+            .filter((item) => item?.position && item.width > 0 && item.height > 0 && item.type !== 'chart' && selectedItems.has(item.id))
+            .map((item) => {
+              return (
+                <div
+                  key={`selected-${item.id}`}
+                  className="whiteboard-dom-overlay-item whiteboard-dom-overlay-item--selected"
+                  style={{
+                    position: 'absolute',
+                    left: item.position.x,
+                    top: item.position.y,
+                    width: item.width + OVERLAY_CONTROL_GUTTER,
+                    height: item.height,
+                    transformOrigin: `${item.width / 2}px ${item.height / 2}px`,
+                    transform: item.rotation ? `rotate(${item.rotation}deg)` : undefined,
+                    pointerEvents: 'none',
+                  }}
+                >
+                  <div
+                    className="whiteboard-dom-overlay-item-content"
+                    style={{
+                      width: item.width,
+                      height: item.height,
+                      pointerEvents: 'auto',
+                    }}
+                  >
+                  <WhiteboardItem
+                    item={item}
+                    updatePosition={updateItemPosition}
+                    updateSize={updateItemSize}
+                    updateRotation={updateItemRotation}
+                    updateText={updateItemText}
+                    isSelected
+                    isConnecting={connectingFrom === item.id}
+                    isValidTarget={connectingFrom && connectingFrom !== item.id}
+                    isGroupSelectMode={selectedItems.size > 1}
+                    isExpanding={expandingItemId === item.id}
+                    onSelect={(itemId, e) => handleItemClick(itemId, e)}
+                    onConnectionStart={(itemId) => handleConnectionStart(itemId)}
+                    onDelete={handleDeleteItem}
+                    scale={scale}
+                    onContextMenu={(e) => handleContextMenu(e, item.id)}
+                    onOrganize={organizeNodes}
+                    onDragEnd={saveState}
+                    onResizeEnd={saveState}
+                    onShowColorMenu={handleShowColorMenu}
+                  />
+                  </div>
+                </div>
+              );
+            })}
         </div>
 
-        {selectionBox && (() => {
-          const dpr = window.devicePixelRatio || 1;
-          const effectiveScale = scale * dpr;
-          // Convert canvas coordinates back to screen coordinates
-          // Transform: screenPos = canvasPos * effectiveScale + panOffset
-          return (
+        {selectionBox && (
             <div
               className="selection-box"
               style={{
                 position: 'absolute',
-                left: selectionBox.x * effectiveScale + panOffset.x,
-                top: selectionBox.y * effectiveScale + panOffset.y,
-                width: selectionBox.width * effectiveScale,
-                height: selectionBox.height * effectiveScale,
+                left: selectionBox.x * scale + panOffset.x,
+                top: selectionBox.y * scale + panOffset.y,
+                width: selectionBox.width * scale,
+                height: selectionBox.height * scale,
                 border: '2px solid #007bff',
                 backgroundColor: 'rgba(0, 123, 255, 0.1)',
                 pointerEvents: 'none',
                 zIndex: 1000
               }}
             />
-          );
-        })()}
+        )}
 
         {/* Collaborator cursors */}
         {collaborators.length > 0 && (

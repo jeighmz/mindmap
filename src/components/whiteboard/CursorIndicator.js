@@ -27,12 +27,8 @@ const CursorIndicator = ({ collaborator, scale = 1, panOffset = { x: 0, y: 0 } }
   const cursorColor = collaborator.cursorColor || getCursorColor(collaborator.userId, collaborator.userEmail);
 
   // Transform coordinates to match canvas rendering
-  // Items are rendered with: translate(panOffset) scale(scale * dpr)
-  // So cursor needs: (x * scale * dpr) + panOffset.x
-  const dpr = window.devicePixelRatio || 1;
-  const effectiveScale = scale * dpr;
-  const transformedX = (x * effectiveScale) + panOffset.x;
-  const transformedY = (y * effectiveScale) + panOffset.y;
+  const transformedX = (x * scale) + panOffset.x;
+  const transformedY = (y * scale) + panOffset.y;
 
   return (
     <div

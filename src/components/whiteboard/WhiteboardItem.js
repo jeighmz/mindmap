@@ -136,6 +136,8 @@ const WhiteboardItem = ({
   const [isRotating, setIsRotating] = useState(false);
   const [rotateStart, setRotateStart] = useState({ x: 0, y: 0, angle: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const dragRafRef = useRef(null);
+  const pendingDragPosRef = useRef(null);
   const [dragStart, setDragStart] = useState(null);
   const [hoverTooltip, setHoverTooltip] = useState(null); // { x, y, content }
   const textareaRef = useRef(null);
@@ -282,10 +284,9 @@ const WhiteboardItem = ({
     const dx = e.clientX - resizeStart.x;
     const dy = e.clientY - resizeStart.y;
     
-    // Convert screen delta to canvas coordinates considering scale and device pixel ratio
-    const dpr = window.devicePixelRatio || 1;
-    const deltaX = dx / (scale * dpr);
-    const deltaY = dy / (scale * dpr);
+    // Convert screen delta to canvas coordinates
+    const deltaX = dx / scale;
+    const deltaY = dy / scale;
     
     let newWidth = resizeStart.width;
     let newHeight = resizeStart.height;
@@ -435,6 +436,22 @@ const WhiteboardItem = ({
     });
   }, [item.rotation, updateRotation]);
 
+  const setCanvasDraggingClass = (active) => {
+    document.querySelector('.whiteboard-canvas')?.classList.toggle('is-dragging-items', active);
+  };
+
+  const applyDragPosition = useCallback((x, y) => {
+    if (!itemRef.current) return;
+    itemRef.current.style.left = `${x}px`;
+    itemRef.current.style.top = `${y}px`;
+  }, []);
+
+  const clearDragPreviewStyles = useCallback(() => {
+    if (!itemRef.current) return;
+    itemRef.current.style.left = '';
+    itemRef.current.style.top = '';
+  }, []);
+
   const handleRotateEnd = useCallback(() => {
     setIsRotating(false);
     if (onResizeEnd) {
@@ -489,6 +506,7 @@ const WhiteboardItem = ({
         itemY: item.position.y
       });
       setIsDragging(true);
+      setCanvasDraggingClass(true);
       if (itemRef.current) {
         itemRef.current.style.cursor = 'grabbing';
       }
@@ -505,10 +523,9 @@ const WhiteboardItem = ({
         const dx = e.clientX - dragStart.x;
         const dy = e.clientY - dragStart.y;
         
-        // Convert screen delta to canvas coordinates considering scale and device pixel ratio
-        const dpr = window.devicePixelRatio || 1;
-        const canvasDx = dx / (scale * dpr);
-        const canvasDy = dy / (scale * dpr);
+        // Convert screen delta to canvas coordinates
+        const canvasDx = dx / scale;
+        const canvasDy = dy / scale;
         
         // If in group select mode, only move items through the group drag function
         // This prevents multiple items from updating positions simultaneously
@@ -518,18 +535,36 @@ const WhiteboardItem = ({
             window.moveSelectedItems(canvasDx, canvasDy, item.id);
           }
         } else {
-          // Single item movement - update position directly
+          // Single item movement — update DOM immediately, commit state on mouseup
           const newX = Math.round((dragStart.itemX + canvasDx) / 10) * 10;
           const newY = Math.round((dragStart.itemY + canvasDy) / 10) * 10;
-          updatePosition(item.id, { x: newX, y: newY });
+          pendingDragPosRef.current = { x: newX, y: newY };
+
+          if (dragRafRef.current === null) {
+            dragRafRef.current = requestAnimationFrame(() => {
+              dragRafRef.current = null;
+              const pos = pendingDragPosRef.current;
+              if (pos) applyDragPosition(pos.x, pos.y);
+            });
+          }
         }
       }
     };
 
     const handleGlobalMouseUp = () => {
       if (isDragging) {
+        if (!(isGroupSelectMode && isSelected) && pendingDragPosRef.current) {
+          updatePosition(item.id, pendingDragPosRef.current);
+        }
+        pendingDragPosRef.current = null;
+        if (dragRafRef.current !== null) {
+          cancelAnimationFrame(dragRafRef.current);
+          dragRafRef.current = null;
+        }
+        clearDragPreviewStyles();
         setIsDragging(false);
         setDragStart(null);
+        setCanvasDraggingClass(false);
         if (itemRef.current) {
           itemRef.current.style.cursor = 'default';
         }
@@ -553,8 +588,11 @@ const WhiteboardItem = ({
     return () => {
       window.removeEventListener('mousemove', handleGlobalMouseMove);
       window.removeEventListener('mouseup', handleGlobalMouseUp);
+      if (dragRafRef.current !== null) {
+        cancelAnimationFrame(dragRafRef.current);
+      }
     };
-  }, [isDragging, dragStart, scale, item.id, updatePosition, isGroupSelectMode, isSelected]);
+  }, [isDragging, dragStart, scale, item.id, updatePosition, isGroupSelectMode, isSelected, applyDragPosition, clearDragPreviewStyles]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -3261,7 +3299,6 @@ const WhiteboardItem = ({
         transform: item.rotation ? `rotate(${item.rotation}deg)` : undefined,
         transformOrigin: 'center center',
         cursor: isDragging ? 'grabbing' : (isConnecting ? 'not-allowed' : (isValidTarget ? 'pointer' : 'default')),
-        transition: isDragging || isRotating ? 'none' : 'all 0.15s ease',
         zIndex: item.type === 'chart' ? 1 : (isSelected ? 1000 : (item.order !== undefined ? 100 + item.order : 100)),
         pointerEvents: 'auto',
         userSelect: 'none',
