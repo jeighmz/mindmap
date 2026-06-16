@@ -525,8 +525,11 @@ const WhiteboardItem = ({
     if (textareaRef.current) {
       textareaRef.current.blur();
     }
+    if (item.isNewText) {
+      updateText(item.id, item.text || '', { ...item, isNewText: false });
+    }
     setIsEditing(false);
-  }, []);
+  }, [item, updateText]);
 
   // Handle clicks outside the textarea to close editing
   useEffect(() => {
@@ -580,7 +583,25 @@ const WhiteboardItem = ({
       fontStyle: item.fontStyle || 'normal',
       textDecoration: item.textDecoration || 'none',
       textAlign: textAlign,
-      borderRadius: '2px'
+      borderRadius: '2px',
+      border: `2px solid ${item.borderColor || '#fff740'}`,
+    } : item.type === 'text' ? {
+      backgroundColor: 'transparent',
+      width: '100%',
+      height: '100%',
+      padding: '4px 8px',
+      display: 'flex',
+      ...alignment,
+      overflow: 'hidden',
+      fontFamily: item.fontFamily || '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      fontSize: `${item.fontSize || 16}px`,
+      color: item.textColor || '#000',
+      fontWeight: item.fontWeight || 'normal',
+      fontStyle: item.fontStyle || 'normal',
+      textDecoration: item.textDecoration || 'none',
+      textAlign: textAlign,
+      border: 'none',
+      boxShadow: 'none',
     } : {
       backgroundColor: item.backgroundColor,
       width: '100%',
@@ -3169,6 +3190,8 @@ const WhiteboardItem = ({
       ref={itemRef}
       data-id={item.id}
       className={`whiteboard-item ${isSelected ? 'selected' : ''} ${
+        isEditing ? 'editing' : ''
+      } ${
         isResizing ? 'resizing' : ''
       } ${
         item.type === 'sticky' ? 'sticky-note' : ''

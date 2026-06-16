@@ -14,8 +14,17 @@ import {
 } from './connectorGeometry';
 import { isItemInSelection } from '../selectionUtils';
 
+function isTransparentColor(value) {
+  return (
+    value === 'transparent' ||
+    value === 'none' ||
+    value === 'rgba(0, 0, 0, 0)' ||
+    value === 'rgba(0,0,0,0)'
+  );
+}
+
 function parseColor(value, fallback) {
-  if (typeof value !== 'string') return fallback;
+  if (typeof value !== 'string' || isTransparentColor(value)) return fallback;
   const hex = value.replace('#', '');
   if (hex.length !== 6) return fallback;
   return Number.parseInt(hex, 16);
@@ -198,7 +207,10 @@ export class WhiteboardWebGLRenderer {
 
   async syncItems(items, selectedItemIds, skipTypes) {
     const visibleItems = items.filter(
-      (item) => isValidItem(item) && !skipTypes.includes(item.type)
+      (item) =>
+        isValidItem(item) &&
+        !skipTypes.includes(item.type) &&
+        !isItemInSelection(selectedItemIds, item.id)
     );
 
     for (const [id, node] of this.itemNodes.entries()) {
@@ -320,26 +332,63 @@ export class WhiteboardWebGLRenderer {
     label.visible = item.type !== 'image';
 
     const defaults = DEFAULT_ITEM_COLORS[item.type] || DEFAULT_ITEM_COLORS.rectangle;
-    const fill = parseColor(item.backgroundColor, defaults.fill);
-    const border = parseColor(item.borderColor, defaults.border);
+    const hasTransparentFill = isTransparentColor(item.backgroundColor);
+    const hasTransparentBorder = isTransparentColor(item.borderColor);
+    const isTextItem = item.type === 'text';
+    const fill = hasTransparentFill
+      ? null
+      : parseColor(item.backgroundColor, defaults.fill);
+    const border = hasTransparentBorder
+      ? null
+      : parseColor(item.borderColor, defaults.border);
     const radius = item.cornerRadius || 0;
+    const textValue = item.text || '';
 
     shape.clear();
 
-    if (isSelected) {
-      shape.setStrokeStyle({ width: 3, color: 0x2196f3, alpha: 1 });
-    } else {
-      shape.setStrokeStyle({ width: 2, color: border, alpha: 1 });
-    }
+    if (isTextItem) {
+      if (!textValue) {
+        shape.roundRect(0, 0, item.width, item.height, 4);
+        shape.stroke({
+          width: 1,
+          color: isSelected ? 0x2196f3 : 0xcccccc,
+          alpha: isSelected ? 0.8 : 0.45,
+        });
+      } else if (isSelected) {
+        shape.roundRect(0, 0, item.width, item.height, 4);
+        shape.stroke({ width: 2, color: 0x2196f3, alpha: 0.35 });
+      }
+    } else if (item.type === 'circle') {
+      if (isSelected) {
+        shape.setStrokeStyle({ width: 3, color: 0x2196f3, alpha: 1 });
+      } else if (border !== null) {
+        shape.setStrokeStyle({ width: 2, color: border, alpha: 1 });
+      }
 
-    if (item.type === 'circle') {
       shape.circle(item.width / 2, item.height / 2, Math.min(item.width, item.height) / 2);
-    } else {
-      shape.roundRect(0, 0, item.width, item.height, Math.min(radius, 50));
-    }
 
-    shape.fill({ color: fill, alpha: item.type === 'sticky' ? 1 : 0.98 });
-    shape.stroke();
+      if (fill !== null) {
+        shape.fill({ color: fill, alpha: 0.98 });
+      }
+      if (border !== null || isSelected) {
+        shape.stroke();
+      }
+    } else {
+      if (isSelected) {
+        shape.setStrokeStyle({ width: 3, color: 0x2196f3, alpha: 1 });
+      } else if (border !== null) {
+        shape.setStrokeStyle({ width: 2, color: border, alpha: 1 });
+      }
+
+      shape.roundRect(0, 0, item.width, item.height, Math.min(radius, 50));
+
+      if (fill !== null) {
+        shape.fill({ color: fill, alpha: item.type === 'sticky' ? 1 : 0.98 });
+      }
+      if (border !== null || isSelected) {
+        shape.stroke();
+      }
+    }
 
     if (item.rotation) {
       node.container.pivot.set(item.width / 2, item.height / 2);
@@ -350,13 +399,13 @@ export class WhiteboardWebGLRenderer {
       node.container.rotation = 0;
     }
 
-    const textValue = item.text || '';
     label.text = textValue;
     label.style.fontSize = item.fontSize || 14;
     label.style.fill = parseColor(item.textColor, 0x111111);
     label.style.fontWeight = item.fontWeight === 'bold' ? 'bold' : 'normal';
     label.style.fontStyle = item.fontStyle === 'italic' ? 'italic' : 'normal';
     label.style.wordWrapWidth = Math.max(item.width - 24, 40);
+    label.style.align = item.textAlign || 'center';
     label.position.set(item.width / 2, item.height / 2);
     label.visible = Boolean(textValue) && item.type !== 'image';
   }

@@ -7,12 +7,14 @@ import { createFolder, getUserFolders, updateFolder, deleteFolder, moveBoardToFo
 import { serverTimestamp, doc, getDoc, updateDoc, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../../firebase-config';
 import ShareBoardModal from './ShareBoardModal';
+import BoardThumbnail from './BoardThumbnail';
 import { TIER_FEATURES, USER_TIERS } from '../../config/userTiers';
 import '../../styles/SavedWhiteboardsMenu.css';
 
 const SavedWhiteboardsMenu = ({ 
   savedWhiteboards, // This will now be used only for demo boards
   onLoad,
+  onExport,
   currentWhiteboard, 
   isOpen, // Receive open state from parent
   onToggle, // Receive toggle function from parent
@@ -40,6 +42,14 @@ const SavedWhiteboardsMenu = ({
   const [editingFolderName, setEditingFolderName] = useState('');
   const [showMoveMenu, setShowMoveMenu] = useState(null); // boardId when showing move menu
   const [moveMenuPosition, setMoveMenuPosition] = useState({ x: 0, y: 0 }); // Position for move menu portal
+  const [libraryViewMode, setLibraryViewMode] = useState(() => (
+    localStorage.getItem('libraryViewMode') === 'list' ? 'list' : 'grid'
+  ));
+
+  const handleLibraryViewModeChange = (mode) => {
+    setLibraryViewMode(mode);
+    localStorage.setItem('libraryViewMode', mode);
+  };
 
   // Helper function to safely convert timestamp to Date for display
   const getDisplayDate = (timestamp) => {
@@ -950,6 +960,216 @@ const SavedWhiteboardsMenu = ({
   const displayedBoards = getFilteredAndGroupedBoards();
   const categorizedDemoBoards = activeTab === 'demo' ? categorizeDemoBoards(displayedBoards) : null;
 
+  const formatBoardDate = (board) => {
+    const date = getDisplayDate(board.savedAt || board.lastEditedAt);
+    if (date.getTime() === 0) return 'No date';
+    return date.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+
+  const renderBoardActions = (board, { showPersonalActions = false } = {}) => (
+    <div className="board-actions" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={() => onExport?.(board)}
+        disabled={isLoading}
+        title="Export board"
+        className="export-btn"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+      </button>
+      {showPersonalActions && user && (() => {
+        const isOwner = board.userId === user.uid;
+        const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
+        const canCollaborate = tierFeatures.features.realTimeCollaboration;
+
+        return (
+          <>
+            {isOwner && canCollaborate && (
+              <button
+                type="button"
+                className="share-btn"
+                onClick={() => {
+                  setSelectedBoardForShare({ id: board.id, name: board.name });
+                  setShareModalOpen(true);
+                }}
+                disabled={isLoading}
+                title="Share board"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="18" cy="5" r="3" />
+                  <circle cx="6" cy="12" r="3" />
+                  <circle cx="18" cy="19" r="3" />
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                </svg>
+              </button>
+            )}
+            <button
+              type="button"
+              className="move-btn"
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  if (showMoveMenu === board.id) {
+                    setShowMoveMenu(null);
+                  } else {
+                    await fetchFolders();
+                    const target = e.currentTarget || e.target;
+                    if (!target) return;
+                    const rect = target.getBoundingClientRect();
+                    if (!rect) return;
+                    setMoveMenuPosition({
+                      x: rect.right - 180,
+                      y: rect.top,
+                    });
+                    setShowMoveMenu(board.id);
+                  }
+                } catch (error) {
+                  console.error('Error opening move menu:', error);
+                  setShowMoveMenu(board.id);
+                }
+              }}
+              disabled={isLoading}
+              title="Move to folder"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="delete-btn"
+              onClick={() => handleDeleteClick(board.id, board.name, isOwner)}
+              disabled={isLoading}
+              title={isOwner ? 'Delete board' : 'Remove from my boards'}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                <line x1="10" y1="11" x2="10" y2="17" />
+                <line x1="14" y1="11" x2="14" y2="17" />
+              </svg>
+            </button>
+          </>
+        );
+      })()}
+    </div>
+  );
+
+  const handleBoardOpen = (board) => {
+    if (isLoading || board.id === currentBoardId) return;
+    onLoad(board.id);
+    onToggle();
+  };
+
+  const renderBoardItem = (board, { showPersonalActions = false } = {}) => {
+    const isCurrentlyOpen = board.id === currentBoardId;
+    const itemProps = {
+      key: board.id,
+      className: `saved-board-item board-item ${libraryViewMode === 'list' ? 'board-list-item' : 'board-card'} ${isCurrentlyOpen ? 'board-is-open' : ''}`,
+      onClick: () => handleBoardOpen(board),
+      role: 'button',
+      tabIndex: 0,
+      onKeyDown: (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleBoardOpen(board);
+        }
+      },
+    };
+
+    if (libraryViewMode === 'list') {
+      return (
+        <div {...itemProps}>
+          <BoardThumbnail board={board} className="board-list-thumbnail" variant="list" />
+          <div className="board-list-details">
+            <span className="board-list-name" title={board.name}>{board.name}</span>
+            {isCurrentlyOpen && (
+              <span className="current-badge" title="Currently open" aria-label="Currently open" />
+            )}
+          </div>
+          <span className="board-list-date">{formatBoardDate(board)}</span>
+          {renderBoardActions(board, { showPersonalActions })}
+        </div>
+      );
+    }
+
+    return (
+      <div {...itemProps}>
+        <div className="board-card-preview">
+          <BoardThumbnail board={board} variant="card" />
+          {isCurrentlyOpen && (
+            <span className="board-card-open-badge" title="Currently open" aria-label="Currently open" />
+          )}
+        </div>
+        <div className="board-item-content">
+          <h3 className="board-name" title={board.name}>{board.name}</h3>
+          <div className="board-item-meta">
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="meta-icon"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            <span className="saved-date">{formatBoardDate(board)}</span>
+          </div>
+        </div>
+        {renderBoardActions(board, { showPersonalActions })}
+      </div>
+    );
+  };
+
+  const renderLibraryViewToggle = () => (
+    <div className="library-view-toggle" role="group" aria-label="Library view">
+      <button
+        type="button"
+        className={`library-view-btn ${libraryViewMode === 'grid' ? 'active' : ''}`}
+        onClick={() => handleLibraryViewModeChange('grid')}
+        title="Grid view"
+        aria-pressed={libraryViewMode === 'grid'}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="3" width="7" height="7" rx="1" />
+          <rect x="14" y="3" width="7" height="7" rx="1" />
+          <rect x="3" y="14" width="7" height="7" rx="1" />
+          <rect x="14" y="14" width="7" height="7" rx="1" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        className={`library-view-btn ${libraryViewMode === 'list' ? 'active' : ''}`}
+        onClick={() => handleLibraryViewModeChange('list')}
+        title="List view"
+        aria-pressed={libraryViewMode === 'list'}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <line x1="8" y1="6" x2="21" y2="6" />
+          <line x1="8" y1="12" x2="21" y2="12" />
+          <line x1="8" y1="18" x2="21" y2="18" />
+          <line x1="3" y1="6" x2="3.01" y2="6" />
+          <line x1="3" y1="12" x2="3.01" y2="12" />
+          <line x1="3" y1="18" x2="3.01" y2="18" />
+        </svg>
+      </button>
+    </div>
+  );
+
   const styles = {
     menuContainer: {
       // ... existing styles ...
@@ -963,10 +1183,6 @@ const SavedWhiteboardsMenu = ({
       '&:hover': {
         backgroundColor: 'var(--hover-bg, rgba(0, 0, 0, 0.05))',
       },
-      '&.selected': {
-        backgroundColor: 'var(--highlight-bg, rgba(62, 184, 255, 0.1))',
-        borderLeft: '3px solid var(--highlight-color, #3eb8ff)',
-      }
     },
     // ... existing code ...
   };
@@ -1008,10 +1224,10 @@ const SavedWhiteboardsMenu = ({
             onClick={(e) => e.stopPropagation()}
             style={{ 
               display: 'flex',
-              width: '90%',
-              maxWidth: '1000px',
-              height: '80vh',
-              maxHeight: '80vh',
+              width: '92%',
+              maxWidth: '1120px',
+              height: '82vh',
+              maxHeight: '82vh',
               borderRadius: '16px'
             }}
           >
@@ -1066,203 +1282,155 @@ const SavedWhiteboardsMenu = ({
             </div>
           )}
 
-          {activeTab === 'personal' && user && (
-            <>
-              {/* Folder Navigation */}
-              <div className="folder-navigation">
-                <button
-                  type="button"
-                  className={`folder-nav-item ${selectedFolderId === null ? 'active' : ''}`}
-                  onClick={() => setSelectedFolderId(null)}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                    <polyline points="9 22 9 12 15 12 15 22" />
-                  </svg>
-                  All Boards
-                </button>
-                {(folderStructure.rootFolders && folderStructure.rootFolders.length > 0) || folders.length > 0 ? (
-                  <div className="folder-tree">
-                    {folderStructure.rootFolders && folderStructure.rootFolders.length > 0 
-                      ? renderFolderTree(folderStructure.rootFolders)
-                      : renderFolderTree(folders.map(f => ({ ...f, children: [] })))
-                    }
-                  </div>
-                ) : null}
-                <button
-                  type="button"
-                  className="create-folder-btn"
-                  onClick={() => {
-                    setShowCreateFolder(true);
-                    setNewFolderName('');
-                  }}
-                  disabled={isLoading}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                  New Folder
-                </button>
-                {showCreateFolder && (
-                  <form onSubmit={handleCreateFolder} className="create-folder-form">
-                    <input
-                      type="text"
-                      value={newFolderName}
-                      onChange={(e) => setNewFolderName(e.target.value)}
-                      placeholder="Folder name..."
-                      autoFocus
-                      className="folder-name-input"
-                      onBlur={() => {
-                        if (!newFolderName.trim()) {
-                          setShowCreateFolder(false);
-                        }
-                      }}
-                    />
-                    <div className="folder-form-actions">
-                      <button type="submit" disabled={!newFolderName.trim() || isLoading}>Create</button>
-                      <button type="button" onClick={() => {
-                        setShowCreateFolder(false);
-                        setNewFolderName('');
-                      }}>Cancel</button>
-                    </div>
-                  </form>
-                )}
-              </div>
-
-              {/* Search */}
-              <div className="search-boards">
-                <svg 
-                  width="16" 
-                  height="16" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="search-icon"
-                >
-                  <circle cx="11" cy="11" r="8" />
-                  <path d="m21 21-4.35-4.35" />
-                </svg>
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search boards..."
-                  disabled={isLoading}
-                  className="search-input"
-                />
-                {searchQuery && (
+          <div className="library-content">
+            {activeTab === 'personal' && user && (
+              <aside className="library-sidebar">
+                <div className="library-sidebar-header">
+                  <span>Folders</span>
+                </div>
+                <div className="folder-navigation">
                   <button
                     type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="clear-search"
-                    title="Clear search"
+                    className={`folder-nav-item ${selectedFolderId === null ? 'active' : ''}`}
+                    onClick={() => setSelectedFolderId(null)}
                   >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                      <polyline points="9 22 9 12 15 12 15 22" />
+                    </svg>
+                    All Boards
+                  </button>
+                  {(folderStructure.rootFolders && folderStructure.rootFolders.length > 0) || folders.length > 0 ? (
+                    <div className="folder-tree">
+                      {folderStructure.rootFolders && folderStructure.rootFolders.length > 0 
+                        ? renderFolderTree(folderStructure.rootFolders)
+                        : renderFolderTree(folders.map(f => ({ ...f, children: [] })))
+                      }
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="create-folder-btn"
+                    onClick={() => {
+                      setShowCreateFolder(true);
+                      setNewFolderName('');
+                    }}
+                    disabled={isLoading}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    New Folder
+                  </button>
+                  {showCreateFolder && (
+                    <form onSubmit={handleCreateFolder} className="create-folder-form">
+                      <input
+                        type="text"
+                        value={newFolderName}
+                        onChange={(e) => setNewFolderName(e.target.value)}
+                        placeholder="Folder name..."
+                        autoFocus
+                        className="folder-name-input"
+                        onBlur={() => {
+                          if (!newFolderName.trim()) {
+                            setShowCreateFolder(false);
+                          }
+                        }}
+                      />
+                      <div className="folder-form-actions">
+                        <button type="submit" disabled={!newFolderName.trim() || isLoading}>Create</button>
+                        <button type="button" onClick={() => {
+                          setShowCreateFolder(false);
+                          setNewFolderName('');
+                        }}>Cancel</button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              </aside>
+            )}
+
+            <div className="library-main">
+              <div className={`library-toolbar ${activeTab === 'personal' && user ? 'library-toolbar--personal' : 'library-toolbar--demo'}`}>
+                {activeTab === 'personal' && user && (
+                  <div className="search-boards">
                     <svg 
-                      width="14" 
-                      height="14" 
+                      width="16" 
+                      height="16" 
                       viewBox="0 0 24 24" 
                       fill="none" 
                       stroke="currentColor" 
                       strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
+                      className="search-icon"
                     >
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
+                      <circle cx="11" cy="11" r="8" />
+                      <path d="m21 21-4.35-4.35" />
                     </svg>
-                  </button>
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search boards..."
+                      disabled={isLoading}
+                      className="search-input"
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        className="clear-search"
+                        title="Clear search"
+                      >
+                        <svg 
+                          width="14" 
+                          height="14" 
+                          viewBox="0 0 24 24" 
+                          fill="none" 
+                          stroke="currentColor" 
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 )}
+                <div className="library-toolbar-actions">
+                  <span className="library-board-count">
+                    {displayedBoards.length} board{displayedBoards.length === 1 ? '' : 's'}
+                  </span>
+                  {renderLibraryViewToggle()}
+                </div>
               </div>
-            </>
-          )}
 
-          <div className="saved-boards-list">
+              {libraryViewMode === 'list' && !isLoading && (displayedBoards.length > 0 || (activeTab === 'demo' && categorizedDemoBoards?.length > 0)) && (
+                <div className="board-list-header">
+                  <span className="board-list-header-cell board-list-header-name">Name</span>
+                  <span className="board-list-header-cell board-list-header-date">Modified</span>
+                  <span className="board-list-header-cell board-list-header-actions" aria-hidden="true" />
+                </div>
+              )}
+
+          <div className={`saved-boards-list ${libraryViewMode === 'grid' ? 'board-grid' : 'board-list'}`}>
             {isLoading ? (
               <div className="loading-message">Loading...</div>
             ) : (
               <>
                 {activeTab === 'demo' && categorizedDemoBoards ? (
-                  // Render demo boards with section headers
                   categorizedDemoBoards.length > 0 ? (
                     <>
                       {categorizedDemoBoards.map(([categoryName, categoryBoards]) => (
                         <div key={categoryName} className="demo-board-section">
                           <h3 className="demo-section-header">{categoryName}</h3>
-                          {categoryBoards.map((board) => {
-                            const isCurrentlyOpen = board.id === currentBoardId;
-                            
-                            return (
-                              <div 
-                                key={board.id} 
-                                className={`saved-board-item board-item ${isCurrentlyOpen ? 'selected' : ''}`}
-                              >
-                                <div className="board-item-content">
-                                  <div className="board-item-header">
-                                    <h3 className="board-name">{board.name}</h3>
-                                    {isCurrentlyOpen && (
-                                      <span className="current-badge">Current</span>
-                                    )}
-                                  </div>
-                                  <div className="board-item-meta">
-                                    <svg 
-                                      width="12" 
-                                      height="12" 
-                                      viewBox="0 0 24 24" 
-                                      fill="none" 
-                                      stroke="currentColor" 
-                                      strokeWidth="2"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      className="meta-icon"
-                                    >
-                                      <circle cx="12" cy="12" r="10" />
-                                      <polyline points="12 6 12 12 16 14" />
-                                    </svg>
-                                    <span className="saved-date">
-                                      {getDisplayDate(board.savedAt || board.lastEditedAt).toLocaleString(undefined, {
-                                        month: 'short',
-                                        day: 'numeric',
-                                        year: 'numeric',
-                                        hour: 'numeric',
-                                        minute: '2-digit'
-                                      })}
-                                    </span>
-                                  </div>
-                                </div>
-                                <div className="board-actions">
-                                  <button 
-                                    type="button"
-                                    onClick={() => {
-                                      onLoad(board.id);
-                                      onToggle();
-                                    }}
-                                    disabled={isLoading || isCurrentlyOpen}
-                                    title={isCurrentlyOpen ? "Already loaded" : "Load board"}
-                                    className="load-btn"
-                                  >
-                                    <svg 
-                                      width="16" 
-                                      height="16" 
-                                      viewBox="0 0 24 24" 
-                                      fill="none" 
-                                      stroke="currentColor" 
-                                      strokeWidth="2"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    >
-                                      <path d="M3 15v4c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2v-4" />
-                                      <polyline points="17 8 12 3 7 8" />
-                                      <line x1="12" y1="3" x2="12" y2="15" />
-                                    </svg>
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
+                          <div className={libraryViewMode === 'grid' ? 'demo-board-grid' : 'demo-board-list'}>
+                            {categoryBoards.map((board) => renderBoardItem(board))}
+                          </div>
                         </div>
                       ))}
                     </>
@@ -1287,184 +1455,7 @@ const SavedWhiteboardsMenu = ({
                   )
                 ) : displayedBoards.length > 0 ? (
                   <>
-                    {displayedBoards.map((board) => {
-                      const isCurrentlyOpen = board.id === currentBoardId;
-                      
-                      return (
-                      <div 
-                        key={board.id} 
-                        className={`saved-board-item board-item ${isCurrentlyOpen ? 'selected' : ''}`}
-                      >
-                        <div className="board-item-content">
-                          <div className="board-item-header">
-                            <h3 className="board-name">{board.name}</h3>
-                            {isCurrentlyOpen && (
-                              <span className="current-badge">Current</span>
-                            )}
-                          </div>
-                          <div className="board-item-meta">
-                            <svg 
-                              width="12" 
-                              height="12" 
-                              viewBox="0 0 24 24" 
-                              fill="none" 
-                              stroke="currentColor" 
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              className="meta-icon"
-                            >
-                              <circle cx="12" cy="12" r="10" />
-                              <polyline points="12 6 12 12 16 14" />
-                            </svg>
-                            <span className="saved-date">
-                              {getDisplayDate(board.savedAt || board.lastEditedAt).toLocaleString(undefined, {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric',
-                                hour: 'numeric',
-                                minute: '2-digit'
-                              })}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="board-actions">
-                          <button 
-                            type="button"
-                            onClick={() => {
-                              onLoad(board.id);
-                              onToggle();
-                            }}
-                            disabled={isLoading || isCurrentlyOpen}
-                            title={isCurrentlyOpen ? "Already loaded" : "Load board"}
-                            className="load-btn"
-                          >
-                            <svg 
-                              width="16" 
-                              height="16" 
-                              viewBox="0 0 24 24" 
-                              fill="none" 
-                              stroke="currentColor" 
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M3 15v4c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2v-4" />
-                              <polyline points="17 8 12 3 7 8" />
-                              <line x1="12" y1="3" x2="12" y2="15" />
-                            </svg>
-                          </button>
-                          {activeTab === 'personal' && user && (() => {
-                            const isOwner = board.userId === user.uid;
-                            const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
-                            const canCollaborate = tierFeatures.features.realTimeCollaboration;
-                            
-                            return (
-                              <>
-                                {isOwner && canCollaborate && (
-                                  <button 
-                                    type="button"
-                                    className="share-btn"
-                                    onClick={() => {
-                                      setSelectedBoardForShare({ id: board.id, name: board.name });
-                                      setShareModalOpen(true);
-                                    }}
-                                    disabled={isLoading}
-                                    title="Share board"
-                                  >
-                                <svg 
-                                  width="16" 
-                                  height="16" 
-                                  viewBox="0 0 24 24" 
-                                  fill="none" 
-                                  stroke="currentColor" 
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <circle cx="18" cy="5" r="3"></circle>
-                                  <circle cx="6" cy="12" r="3"></circle>
-                                  <circle cx="18" cy="19" r="3"></circle>
-                                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-                                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
-                                </svg>
-                                  </button>
-                                )}
-                            <button 
-                              type="button"
-                              className="move-btn"
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                try {
-                                  if (showMoveMenu === board.id) {
-                                    setShowMoveMenu(null);
-                                  } else {
-                                    // Refresh folders before opening menu to ensure latest folders are shown
-                                    await fetchFolders();
-                                    const target = e.currentTarget || e.target;
-                                    if (!target) return;
-                                    
-                                    const rect = target.getBoundingClientRect();
-                                    if (!rect) return;
-                                    
-                                    setMoveMenuPosition({
-                                      x: rect.right - 180, // Position to the left of button
-                                      y: rect.top
-                                    });
-                                    setShowMoveMenu(board.id);
-                                  }
-                                } catch (error) {
-                                  console.error('Error opening move menu:', error);
-                                  // Still try to open the menu even if positioning fails
-                                  setShowMoveMenu(board.id);
-                                }
-                              }}
-                              disabled={isLoading}
-                              title="Move to folder"
-                            >
-                              <svg 
-                                width="16" 
-                                height="16" 
-                                viewBox="0 0 24 24" 
-                                fill="none" 
-                                stroke="currentColor" 
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                              </svg>
-                            </button>
-                            <button 
-                              type="button"
-                              className="delete-btn"
-                              onClick={() => handleDeleteClick(board.id, board.name, isOwner)}
-                              disabled={isLoading}
-                              title={isOwner ? "Delete board" : "Remove from my boards"}
-                            >
-                              <svg 
-                                width="16" 
-                                height="16" 
-                                viewBox="0 0 24 24" 
-                                fill="none" 
-                                stroke="currentColor" 
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <polyline points="3 6 5 6 21 6" />
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                <line x1="10" y1="11" x2="10" y2="17" />
-                                <line x1="14" y1="11" x2="14" y2="17" />
-                              </svg>
-                            </button>
-                          </>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                      );
-                    })}
+                    {displayedBoards.map((board) => renderBoardItem(board, { showPersonalActions: activeTab === 'personal' }))}
                     {activeTab === 'personal' && user && (() => {
                       const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
                       const maxBoards = tierFeatures.maxMindMaps;
@@ -1501,6 +1492,8 @@ const SavedWhiteboardsMenu = ({
                 )}
               </>
             )}
+          </div>
+            </div>
           </div>
           </div>
         </>,

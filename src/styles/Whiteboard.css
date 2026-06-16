@@ -269,15 +269,7 @@
   outline: none !important;
 }
 
-.whiteboard-dom-overlay-item--selected .rectangle-shape,
-.whiteboard-dom-overlay-item--selected .circle-shape,
-.whiteboard-dom-overlay-item--selected .sticky-shape,
-.whiteboard-dom-overlay-item--selected .text-shape {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.whiteboard-dom-overlay-item--selected .sticky-shape textarea,
+.whiteboard-dom-overlay-item--selected .whiteboard-item > textarea,
 .whiteboard-dom-overlay-item--selected .edit-control,
 .whiteboard-dom-overlay-item--selected .connector-control,
 .whiteboard-dom-overlay-item--selected .expand-control,
@@ -568,12 +560,9 @@
   border-radius: 50%;
 }
 
-.whiteboard-item .circle-shape {
+.whiteboard-item .rectangle-shape {
   width: 100%;
   height: 100%;
-  background: white;
-  border: 2px solid #4CAF50;
-  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -584,12 +573,24 @@
   overflow: hidden;
 }
 
-.whiteboard-item .rectangle-shape {
+.whiteboard-item .text-shape {
   width: 100%;
   height: 100%;
-  background: white;
-  border: 2px solid #2196F3;
-  border-radius: 4px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  text-align: center;
+  word-wrap: break-word;
+  overflow: hidden;
+}
+
+.whiteboard-item .circle-shape {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -598,6 +599,7 @@
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   word-wrap: break-word;
   overflow: hidden;
+  border-radius: 50%;
 }
 
 .whiteboard-page {
@@ -1024,10 +1026,6 @@
 
 .saved-board-item:hover {
   background: #f8f9fa;
-}
-
-.saved-board-item span {
-  flex: 1;
 }
 
 .saved-date {

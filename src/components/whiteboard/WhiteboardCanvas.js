@@ -34,6 +34,7 @@ import { OVERLAY_CONTROL_GUTTER } from './webgl/constants';
 import { hitTestItem } from './webgl/hitTest';
 import { useCanvasDrag } from './drag/useCanvasDrag';
 import { isItemInSelection } from './selectionUtils';
+import { generateBoardThumbnail } from '../../utils/boardThumbnail';
 
 const WhiteboardCanvas = forwardRef((props, ref) => {
   const { isDarkMode } = useApp();
@@ -902,19 +903,19 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         // Constrain position to canvas bounds
         position = constrainPositionToCanvas(position, width, height);
 
+        const newItemId = Date.now();
         setItems(prevItems => {
           const maxOrder = prevItems.length > 0 ? Math.max(...prevItems.map((i, idx) => i.order !== undefined ? i.order : idx)) : -1;
           const newItem = {
-            id: Date.now(),
+            id: newItemId,
             type: item.type,
             chartType: item.chartType,
-            position: { x: position.x, y: position.y }, // Ensure position is an object
+            position: { x: position.x, y: position.y },
             width: Number(width),
             height: Number(height),
-            rotation: 0, // Default rotation
-            text: item.type === 'sticky' ? 'New note' : (item.type === 'text' ? '' : (item.type === 'rectangle' || item.type === 'circle' ? '' : '')),
+            rotation: 0,
+            text: item.type === 'sticky' ? 'New note' : (item.type === 'text' ? '' : ''),
             order: maxOrder + 1,
-            // Add default chart configuration for better initial appearance
             ...(item.type === 'chart' && {
               title: 'New Chart',
               xAxisTitle: 'X',
@@ -943,7 +944,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
               borderColor: 'transparent',
               textColor: '#000000',
               fontSize: 16,
-              fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif',
+              fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
               textAlign: 'center',
               isNewText: true
             }),
@@ -952,7 +953,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
               borderColor: '#333333',
               textColor: '#000000',
               fontSize: 14,
-              fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif',
+              fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
               textAlign: 'center'
             }),
             ...(item.type === 'circle' && {
@@ -960,17 +961,19 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
               borderColor: '#333333',
               textColor: '#000000',
               fontSize: 14,
-              fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif',
+              fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
               textAlign: 'center'
             }),
             ...(item.type === 'sticky' && {
-              textAlign: 'center'
+              textAlign: 'center',
+              backgroundColor: '#fff740',
+              borderColor: '#fff740'
             })
           };
-          // Save state after updating items
           setTimeout(() => saveState(), 0);
           return [...prevItems, newItem];
         });
+        setSelectedItems(new Set([newItemId]));
       }
       return undefined;
     }
@@ -1275,8 +1278,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const updateItemText = useCallback((id, text, updatedItem) => {
     saveState(); // Save state before text change
     setItems(items.map(item =>
-      item.id === id
-        ? updatedItem || { ...item, text }  // Use updatedItem if provided, otherwise just update text
+      String(item.id) === String(id)
+        ? updatedItem || { ...item, text }
         : item
     ));
   }, [items, saveState]);
@@ -3997,6 +4000,31 @@ Performance Metrics Analysis`
     });
   }, [calculateContentBounds, waitForAllImages]);
 
+  const handleExportBoardFromLibrary = useCallback(async (board) => {
+    const safeName = (board?.name || 'mindmap').replace(/[^\w\s-]/g, '').trim() || 'mindmap';
+
+    if (board?.id && board.id === currentBoardId) {
+      exportToPNG();
+      return;
+    }
+
+    try {
+      const dataUrl = await generateBoardThumbnail(board, {
+        width: 1920,
+        height: 1080,
+        padding: 40,
+        cacheKey: null,
+      });
+      const link = document.createElement('a');
+      link.download = `${safeName}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (error) {
+      console.error('Failed to export board from library:', error);
+      alert('Could not export board.');
+    }
+  }, [currentBoardId, exportToPNG]);
+
   const exportToJSON = useCallback(() => {
     // Check if JSON export is allowed for this tier
     if (!canExport('json')) {
@@ -6542,7 +6570,7 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
     if (selectedItem && selectedItem.type !== 'chart') {
       setColorPicker({
         background: selectedItem.backgroundColor || '#fff740',
-        border: selectedItem.borderColor || '#000',
+        border: selectedItem.borderColor || (selectedItem.type === 'sticky' ? '#fff740' : '#333333'),
       });
       setTextStyling({
         fontSize: selectedItem.fontSize || 14,
@@ -7729,6 +7757,7 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
             savedWhiteboards={savedWhiteboards}
             onSave={handleSaveWhiteboard}
             onLoad={handleLoadWhiteboard}
+            onExport={handleExportBoardFromLibrary}
             onDelete={handleDeleteSavedWhiteboard}
             currentWhiteboard={{
               items,
