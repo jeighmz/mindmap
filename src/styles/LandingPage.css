@@ -2239,11 +2239,40 @@ a:hover {
   align-items: center;
 }
 
-/* Landing page header - no background */
-.landing-page .header {
+/* Landing subpages inherit solid header from .header (readable on light backgrounds) */
+
+/* Homepage hero only: transparent header with light text */
+.landing-page-over-hero .header {
   background-color: transparent;
   backdrop-filter: none;
   box-shadow: none;
+}
+
+.landing-page-over-hero .nav-links a {
+  color: #ffffff;
+}
+
+.landing-page-over-hero .nav-links a:hover {
+  color: #a5b4fc;
+}
+
+.landing-page-over-hero .header-x-link {
+  color: #ffffff;
+}
+
+.landing-page-over-hero .header-x-link:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.landing-page-over-hero .login-button {
+  border-color: rgba(255, 255, 255, 0.85);
+  color: #ffffff;
+}
+
+.landing-page-over-hero .login-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
 }
 
 .header-content {
@@ -2297,15 +2326,6 @@ a:hover {
   color: #007AFF;
 }
 
-/* Landing page nav links - light text for dark background */
-.landing-page .nav-links a {
-  color: #ffffff;
-}
-
-.landing-page .nav-links a:hover {
-  color: #a5b4fc;
-}
-
 .header-actions {
   display: flex;
   gap: 0.5rem;
@@ -2318,15 +2338,15 @@ a:hover {
   align-items: center;
   justify-content: center;
   padding: 8px;
-  color: #ffffff;
+  color: #1e293b;
   transition: all 0.2s ease;
   border-radius: 6px;
   text-decoration: none;
 }
 
 .header-x-link:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #ffffff;
+  background: rgba(0, 0, 0, 0.06);
+  color: #007AFF;
   transform: scale(1.1);
 }
 
@@ -2435,7 +2455,8 @@ html {
 .features-section,
 .use-cases-section,
 .tech-section,
-.integrations-section {
+.integrations-section,
+.pricing-page-section {
   scroll-margin-top: 60px; /* Height of the fixed header */
 }
 
@@ -2443,7 +2464,8 @@ html {
   .features-section,
   .use-cases-section,
   .tech-section,
-  .integrations-section {
+  .integrations-section,
+  .pricing-page-section {
     scroll-margin-top: 56px; /* Mobile header height */
   }
 }
@@ -2452,7 +2474,8 @@ html {
   .features-section,
   .use-cases-section,
   .tech-section,
-  .integrations-section {
+  .integrations-section,
+  .pricing-page-section {
     scroll-margin-top: 52px; /* Smaller mobile header height */
   }
 }
@@ -2477,13 +2500,6 @@ html {
   box-shadow: 0 2px 10px var(--shadow);
 }
 
-/* Dark Mode - Landing page header - no background */
-.dark-mode .landing-page .header {
-  background-color: transparent;
-  backdrop-filter: none;
-  box-shadow: none;
-}
-
 .dark-mode .nav-links a {
   color: var(--text-primary);
 }
@@ -2492,20 +2508,34 @@ html {
   color: #60a5fa;
 }
 
-/* Landing page nav links in dark mode - still light for dark background */
-.dark-mode .landing-page .nav-links a {
-  color: #ffffff;
-}
-
-.dark-mode .landing-page .nav-links a:hover {
-  color: #a5b4fc;
-}
-
 .dark-mode .header-x-link {
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .dark-mode .header-x-link:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #60a5fa;
+}
+
+.dark-mode .landing-page-over-hero .header {
+  background-color: transparent;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+.dark-mode .landing-page-over-hero .nav-links a {
+  color: #ffffff;
+}
+
+.dark-mode .landing-page-over-hero .nav-links a:hover {
+  color: #a5b4fc;
+}
+
+.dark-mode .landing-page-over-hero .header-x-link {
+  color: #ffffff;
+}
+
+.dark-mode .landing-page-over-hero .header-x-link:hover {
   background: rgba(255, 255, 255, 0.15);
   color: #ffffff;
 }
@@ -2568,7 +2598,8 @@ html {
 }
 
 /* Dark Mode - Features Section */
-.dark-mode .features-section {
+.dark-mode .features-section,
+.dark-mode .pricing-page-section {
   background-color: var(--bg-secondary);
   color: var(--text-primary);
 }

@@ -11,6 +11,7 @@ import UseCasesPage from './pages/UseCasesPage';
 import TechnologyPage from './pages/TechnologyPage';
 import IntegrationsPage from './pages/IntegrationsPage';
 import Community from './components/Community';
+import MarketingLayout from './layouts/MarketingLayout';
 
 function App() {
   return (
@@ -19,14 +20,16 @@ function App() {
         <AppProvider>
           <div className="app">
             <Routes>
-              <Route path="/" element={<LandingPage />} />
+              <Route element={<MarketingLayout />}>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/features" element={<FeaturesPage />} />
+                <Route path="/use-cases" element={<UseCasesPage />} />
+                <Route path="/technology" element={<TechnologyPage />} />
+                <Route path="/integrations" element={<IntegrationsPage />} />
+                <Route path="/pricing" element={<PricingPage />} />
+              </Route>
               <Route path="/whiteboard" element={<WhiteboardPage />} />
               <Route path="/whiteboard/:boardId" element={<WhiteboardPage />} />
-              <Route path="/pricing" element={<PricingPage />} />
-              <Route path="/features" element={<FeaturesPage />} />
-              <Route path="/use-cases" element={<UseCasesPage />} />
-              <Route path="/technology" element={<TechnologyPage />} />
-              <Route path="/integrations" element={<IntegrationsPage />} />
               <Route path="/community" element={<Community />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

@@ -12,6 +12,7 @@ import {
   drawConnectionGraphics,
   findBestConnectionPoints,
 } from './connectorGeometry';
+import { isItemInSelection } from '../selectionUtils';
 
 function parseColor(value, fallback) {
   if (typeof value !== 'string') return fallback;
@@ -151,6 +152,26 @@ export class WhiteboardWebGLRenderer {
     this.world.scale.set(scale);
   }
 
+  resolveItemNode(itemId) {
+    const key = String(itemId);
+    for (const [id, node] of this.itemNodes.entries()) {
+      if (String(id) === key) {
+        return node;
+      }
+    }
+    return null;
+  }
+
+  getPositionOverride(positionOverrides, itemId) {
+    if (!positionOverrides) return null;
+    return (
+      positionOverrides[itemId]
+      ?? positionOverrides[String(itemId)]
+      ?? positionOverrides[Number(itemId)]
+      ?? null
+    );
+  }
+
   resize() {
     if (!this.app || !this.container) return;
     const { clientWidth, clientHeight } = this.container;
@@ -179,10 +200,9 @@ export class WhiteboardWebGLRenderer {
     const visibleItems = items.filter(
       (item) => isValidItem(item) && !skipTypes.includes(item.type)
     );
-    const nextIds = new Set(visibleItems.map((item) => item.id));
 
     for (const [id, node] of this.itemNodes.entries()) {
-      if (!nextIds.has(id)) {
+      if (!visibleItems.some((item) => String(item.id) === String(id))) {
         this.itemsLayer.removeChild(node.container);
         node.container.destroy({ children: true });
         this.itemNodes.delete(id);
@@ -190,24 +210,83 @@ export class WhiteboardWebGLRenderer {
     }
 
     for (const item of visibleItems) {
-      let node = this.itemNodes.get(item.id);
+      let node = this.resolveItemNode(item.id);
       if (!node) {
         node = this.createItemNode(item);
         this.itemNodes.set(item.id, node);
         this.itemsLayer.addChild(node.container);
       }
 
-      node.container.position.set(item.position.x, item.position.y);
+      node.meta = {
+        width: item.width,
+        height: item.height,
+        rotation: item.rotation || 0,
+      };
+      this.setItemPosition(item.id, item.position.x, item.position.y, node.meta);
+
       node.container.zIndex = item.order !== undefined ? item.order : 0;
+
+      const isSelected = isItemInSelection(selectedItemIds, item.id);
 
       if (item.type === 'image') {
         await this.updateImageNode(node, item);
       } else {
-        this.updateShapeNode(node, item, selectedItemIds.has(item.id));
+        this.updateShapeNode(node, item, isSelected);
       }
     }
 
     this.itemsLayer.sortChildren();
+  }
+
+  setItemPosition(itemId, x, y, meta = null) {
+    const node = this.resolveItemNode(itemId);
+    if (!node?.container) return;
+
+    const itemMeta = meta || node.meta;
+    if (!itemMeta) {
+      node.container.position.set(x, y);
+      return;
+    }
+
+    if (itemMeta.rotation) {
+      node.container.pivot.set(itemMeta.width / 2, itemMeta.height / 2);
+      node.container.position.set(x + itemMeta.width / 2, y + itemMeta.height / 2);
+    } else {
+      node.container.pivot.set(0, 0);
+      node.container.rotation = 0;
+      node.container.position.set(x, y);
+    }
+  }
+
+  syncLivePositions(positionOverrides, items, connections, selectedConnectionId) {
+    if (!this.initialized) return;
+
+    if (positionOverrides && Object.keys(positionOverrides).length > 0) {
+      Object.entries(positionOverrides).forEach(([id, position]) => {
+        this.setItemPosition(id, position.x, position.y);
+      });
+    } else {
+      const visibleItems = items.filter(
+        (item) => isValidItem(item) && item.type !== 'chart'
+      );
+      visibleItems.forEach((item) => {
+        const node = this.resolveItemNode(item.id);
+        if (!node) return;
+        node.meta = {
+          width: item.width,
+          height: item.height,
+          rotation: item.rotation || 0,
+        };
+        this.setItemPosition(item.id, item.position.x, item.position.y, node.meta);
+      });
+    }
+
+    const liveItems = items.map((item) => {
+      const override = this.getPositionOverride(positionOverrides, item.id);
+      return override ? { ...item, position: override } : item;
+    });
+
+    this.syncConnections(liveItems, connections, selectedConnectionId);
   }
 
   createItemNode(item) {
@@ -338,8 +417,7 @@ export class WhiteboardWebGLRenderer {
         node,
         points,
         lineDesign,
-        connection.color || '#2196F3',
-        Number(connection.strokeWidth) || 2,
+        connection,
         selectedConnectionId === connection.id
       );
     });
@@ -354,6 +432,8 @@ export class WhiteboardWebGLRenderer {
   }
 
   syncConnectingPreview(items, connectingFromId, mousePosition) {
+    if (!this.initialized || !this.previewLayer) return;
+
     this.previewLayer.clear();
     if (!connectingFromId || !mousePosition) return;
 
@@ -369,7 +449,13 @@ export class WhiteboardWebGLRenderer {
     end.x = mousePosition.x;
     end.y = mousePosition.y;
     const points = buildConnectionPath(start, end, 'curved');
-    drawConnectionGraphics(this.previewLayer, points, 'curved', '#2196F3', 2, false);
+    drawConnectionGraphics(
+      this.previewLayer,
+      points,
+      'curved',
+      { color: '#2196F3', strokeWidth: 2, arrowDirection: '->', arrowHeadStyle: 'medium' },
+      false
+    );
   }
 
   destroy() {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import '../styles/LandingPage.css';
 import '../styles/Pricing.css';
 import { useAuth } from '../contexts/AuthContext';
 import StripeService from '../services/stripeService';
@@ -219,8 +220,7 @@ export default function PricingPage() {
       }
 
       if (!user) {
-        // Redirect to landing page with login query param to open login modal
-        navigate('/?login=true');
+        navigate('/pricing?login=true');
         return;
       }
 
@@ -259,8 +259,7 @@ export default function PricingPage() {
   const handleErrorAction = async (error) => {
     switch (error.action) {
       case 'login':
-        // Redirect to landing page with login query param to open login modal
-        navigate('/?login=true');
+        navigate('/pricing?login=true');
         break;
       case 'manage':
         try {
@@ -287,16 +286,13 @@ export default function PricingPage() {
   };
 
   return (
-    <div className="pricing-page">
+    <section id="pricing" className="features-section pricing-page-section">
+      <h2 className="features-heading">Choose Your Plan</h2>
+      <p className="features-description">
+        Select the plan that best fits your needs. Upgrade anytime as your ideas grow.
+      </p>
+
       <div className="pricing-container">
-        <div className="pricing-header">
-          <button className="back-button" onClick={() => navigate(-1)}>
-            ← Back
-          </button>
-          <h1>Choose Your Plan</h1>
-          <p className="pricing-subtitle">Select the plan that best fits your needs</p>
-        </div>
-        
         {error && (
           <div className={`error-message ${error.type === 'success' ? 'success-message' : ''}`}>
             <p>{error.message}</p>
@@ -429,7 +425,7 @@ export default function PricingPage() {
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 

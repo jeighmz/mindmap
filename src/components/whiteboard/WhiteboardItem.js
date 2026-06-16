@@ -98,6 +98,7 @@ const WhiteboardItem = ({
   isExpanding,
   onSelect,
   onConnectionStart,
+  onConnectToTarget,
   onDelete,
   scale,
   onContextMenu,
@@ -105,9 +106,9 @@ const WhiteboardItem = ({
   onChartEdit,
   isChartEditing,
   panOffset = { x: 0, y: 0 },
-  onDragEnd,
   onResizeEnd,
-  onShowColorMenu
+  onShowColorMenu,
+  onStartDrag,
 }) => {
   const { isDarkMode } = useApp();
   const { userTier } = useAuth();
@@ -135,10 +136,6 @@ const WhiteboardItem = ({
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0 });
   const [isRotating, setIsRotating] = useState(false);
   const [rotateStart, setRotateStart] = useState({ x: 0, y: 0, angle: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const dragRafRef = useRef(null);
-  const pendingDragPosRef = useRef(null);
-  const [dragStart, setDragStart] = useState(null);
   const [hoverTooltip, setHoverTooltip] = useState(null); // { x, y, content }
   const textareaRef = useRef(null);
 
@@ -257,6 +254,13 @@ const WhiteboardItem = ({
   const handleClick = (e) => {
     // Don't trigger selection if clicking on control buttons
     if (e.target.closest('.edit-control, .connector-control, .expand-control')) {
+      return;
+    }
+
+    if (isValidTarget && onConnectToTarget) {
+      e.stopPropagation();
+      e.preventDefault();
+      onConnectToTarget(item.id);
       return;
     }
     
@@ -436,22 +440,6 @@ const WhiteboardItem = ({
     });
   }, [item.rotation, updateRotation]);
 
-  const setCanvasDraggingClass = (active) => {
-    document.querySelector('.whiteboard-canvas')?.classList.toggle('is-dragging-items', active);
-  };
-
-  const applyDragPosition = useCallback((x, y) => {
-    if (!itemRef.current) return;
-    itemRef.current.style.left = `${x}px`;
-    itemRef.current.style.top = `${y}px`;
-  }, []);
-
-  const clearDragPreviewStyles = useCallback(() => {
-    if (!itemRef.current) return;
-    itemRef.current.style.left = '';
-    itemRef.current.style.top = '';
-  }, []);
-
   const handleRotateEnd = useCallback(() => {
     setIsRotating(false);
     if (onResizeEnd) {
@@ -475,6 +463,16 @@ const WhiteboardItem = ({
     if (e.target.closest('.edit-control, .connector-control, .expand-control, .resize-handle')) {
       return;
     }
+
+    if (isValidTarget && onConnectToTarget) {
+      e.stopPropagation();
+      e.preventDefault();
+      if (e.nativeEvent) {
+        e.nativeEvent.stopImmediatePropagation();
+      }
+      onConnectToTarget(item.id);
+      return;
+    }
     
     // Don't start drag if space is pressed (let canvas handle selection box)
     if (window.isSpacePressed) {
@@ -482,117 +480,12 @@ const WhiteboardItem = ({
     }
     
     // Regular drag to move items (no shift required)
-    if (e.button === 0) {
-      // In group select mode, only allow one item to be the primary dragger
-      // If another item is already dragging, don't start a new drag
-      if (isGroupSelectMode && isSelected) {
-        if (typeof window.startGroupDrag === 'function') {
-          // Try to register as primary dragger - if another item is already primary, this will fail
-          const wasPrimary = window.startGroupDrag(item.id);
-          if (wasPrimary === false) {
-            // Another item is already the primary dragger, don't start dragging
-            return;
-          }
-        }
-      }
-      
+    if (e.button === 0 && onStartDrag) {
       e.preventDefault();
       e.stopPropagation();
-      
-      setDragStart({
-        x: e.clientX,
-        y: e.clientY,
-        itemX: item.position.x,
-        itemY: item.position.y
-      });
-      setIsDragging(true);
-      setCanvasDraggingClass(true);
-      if (itemRef.current) {
-        itemRef.current.style.cursor = 'grabbing';
-      }
+      onStartDrag(item.id, e.clientX, e.clientY);
     }
   };
-
-  useEffect(() => {
-    const handleGlobalMouseMove = (e) => {
-      if (isDragging && dragStart) {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        // Calculate the raw delta in screen coordinates
-        const dx = e.clientX - dragStart.x;
-        const dy = e.clientY - dragStart.y;
-        
-        // Convert screen delta to canvas coordinates
-        const canvasDx = dx / scale;
-        const canvasDy = dy / scale;
-        
-        // If in group select mode, only move items through the group drag function
-        // This prevents multiple items from updating positions simultaneously
-        if (isGroupSelectMode && isSelected) {
-          if (typeof window.moveSelectedItems === 'function') {
-            // Only the primary dragger should call this, and it moves all items
-            window.moveSelectedItems(canvasDx, canvasDy, item.id);
-          }
-        } else {
-          // Single item movement — update DOM immediately, commit state on mouseup
-          const newX = Math.round((dragStart.itemX + canvasDx) / 10) * 10;
-          const newY = Math.round((dragStart.itemY + canvasDy) / 10) * 10;
-          pendingDragPosRef.current = { x: newX, y: newY };
-
-          if (dragRafRef.current === null) {
-            dragRafRef.current = requestAnimationFrame(() => {
-              dragRafRef.current = null;
-              const pos = pendingDragPosRef.current;
-              if (pos) applyDragPosition(pos.x, pos.y);
-            });
-          }
-        }
-      }
-    };
-
-    const handleGlobalMouseUp = () => {
-      if (isDragging) {
-        if (!(isGroupSelectMode && isSelected) && pendingDragPosRef.current) {
-          updatePosition(item.id, pendingDragPosRef.current);
-        }
-        pendingDragPosRef.current = null;
-        if (dragRafRef.current !== null) {
-          cancelAnimationFrame(dragRafRef.current);
-          dragRafRef.current = null;
-        }
-        clearDragPreviewStyles();
-        setIsDragging(false);
-        setDragStart(null);
-        setCanvasDraggingClass(false);
-        if (itemRef.current) {
-          itemRef.current.style.cursor = 'default';
-        }
-        
-        // Clear the primary dragger if this was a group drag
-        if (isGroupSelectMode && isSelected && typeof window.endGroupDrag === 'function') {
-          window.endGroupDrag();
-        }
-        
-        if (onDragEnd) {
-          onDragEnd();
-        }
-      }
-    };
-
-    if (isDragging) {
-      window.addEventListener('mousemove', handleGlobalMouseMove);
-      window.addEventListener('mouseup', handleGlobalMouseUp);
-    }
-
-    return () => {
-      window.removeEventListener('mousemove', handleGlobalMouseMove);
-      window.removeEventListener('mouseup', handleGlobalMouseUp);
-      if (dragRafRef.current !== null) {
-        cancelAnimationFrame(dragRafRef.current);
-      }
-    };
-  }, [isDragging, dragStart, scale, item.id, updatePosition, isGroupSelectMode, isSelected, applyDragPosition, clearDragPreviewStyles]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -3155,12 +3048,6 @@ const WhiteboardItem = ({
         className="connector-control"
         onMouseDown={handleMouseDown}
         onMouseDownCapture={handleMouseDown}
-        onClick={(e) => {
-          // Also handle click as fallback
-          e.stopPropagation();
-          e.preventDefault();
-          onStartConnection(item.id);
-        }}
         style={{
           position: 'absolute',
           right: `-${scaledSize / 2 + 15}px`,
@@ -3283,7 +3170,7 @@ const WhiteboardItem = ({
       data-id={item.id}
       className={`whiteboard-item ${isSelected ? 'selected' : ''} ${
         isResizing ? 'resizing' : ''
-      } ${isDragging ? 'dragging' : ''} ${
+      } ${
         item.type === 'sticky' ? 'sticky-note' : ''
       } ${isConnecting ? 'connecting' : ''} ${
         isValidTarget ? 'valid-target' : ''
@@ -3291,14 +3178,14 @@ const WhiteboardItem = ({
         isExpanding ? 'expanding' : ''
       }`}
       style={{
-        position: 'absolute',
-        left: item.position.x,
-        top: item.position.y,
-        width: item.width,
-        height: item.height,
+        position: 'relative',
+        left: 0,
+        top: 0,
+        width: '100%',
+        height: '100%',
         transform: item.rotation ? `rotate(${item.rotation}deg)` : undefined,
         transformOrigin: 'center center',
-        cursor: isDragging ? 'grabbing' : (isConnecting ? 'not-allowed' : (isValidTarget ? 'pointer' : 'default')),
+        cursor: isConnecting ? 'not-allowed' : (isValidTarget ? 'pointer' : 'default'),
         zIndex: item.type === 'chart' ? 1 : (isSelected ? 1000 : (item.order !== undefined ? 100 + item.order : 100)),
         pointerEvents: 'auto',
         userSelect: 'none',
@@ -3309,14 +3196,14 @@ const WhiteboardItem = ({
       onDoubleClick={(e) => {
         // Enable double-click to edit for circle, rectangle, text, and sticky note types
         if (item.type === 'circle' || item.type === 'rectangle' || item.type === 'text' || item.type === 'sticky') {
-          if (!isEditing && !isResizing && !isDragging) {
+          if (!isEditing && !isResizing) {
             e.stopPropagation();
             setIsEditing(true);
           }
         }
         // Enable double-click to open edit menu for all charts
         else if (item.type === 'chart') {
-          if (!isEditing && !isResizing && !isDragging && onChartEdit) {
+          if (!isEditing && !isResizing && onChartEdit) {
             e.stopPropagation();
             onChartEdit(item.id);
           }

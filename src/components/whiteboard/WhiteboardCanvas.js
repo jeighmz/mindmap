@@ -32,6 +32,8 @@ import WhiteboardWebGLView from './webgl/WhiteboardWebGLView';
 import { screenToWorld } from './webgl/coordinates';
 import { OVERLAY_CONTROL_GUTTER } from './webgl/constants';
 import { hitTestItem } from './webgl/hitTest';
+import { useCanvasDrag } from './drag/useCanvasDrag';
+import { isItemInSelection } from './selectionUtils';
 
 const WhiteboardCanvas = forwardRef((props, ref) => {
   const { isDarkMode } = useApp();
@@ -51,13 +53,24 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const canvasContentRef = useRef(null);
   const domOverlayRef = useRef(null);
   const webglRef = useRef(null);
-  const itemDragRef = useRef(null);
   const updateItemPositionRef = useRef(null);
   const saveStateRef = useRef(() => {});
   const isPanningRef = useRef(false);
   const scaleRef = useRef(1.0);
   const panRafRef = useRef(null);
   const suppressSelectionClickRef = useRef(false);
+  const itemsRef = useRef([]);
+  const connectionsRef = useRef([]);
+  const selectedConnectionRef = useRef(null);
+  const selectedItemsRef = useRef(new Set());
+  const canvasDragRef = useRef({
+    startDrag: () => {},
+    endDrag: () => {},
+    isDragging: () => false,
+  });
+  const constrainPositionToCanvasRef = useRef((position) => position);
+  const connectingFromRef = useRef(null);
+  const completeConnectionRef = useRef(() => {});
   const [scale, setScale] = useState(1.0); // Changed from 0.4 to 1.0 for 100% default zoom
   
   // Sync refs with state
@@ -107,10 +120,28 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   const [connections, setConnections] = useState([]);
   const [connectingFrom, setConnectingFrom] = useState(null);
   const [selectedConnection, setSelectedConnection] = useState(null);
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  useEffect(() => {
+    connectionsRef.current = connections;
+  }, [connections]);
+
+  useEffect(() => {
+    selectedConnectionRef.current = selectedConnection;
+  }, [selectedConnection]);
+
+  useEffect(() => {
+    connectingFromRef.current = connectingFrom;
+  }, [connectingFrom]);
+
+  useEffect(() => {
+    selectedItemsRef.current = selectedItems;
+  }, [selectedItems]);
+
   const connectionSettingsMenuRef = useRef(null);
-  const primaryDraggingItemIdRef = useRef(null);
-  const groupDragStartPositionsRef = useRef(null);
-  const groupDragPendingPositionsRef = useRef(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
@@ -389,10 +420,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   }), [selectedItems, items, isSearchPanelOpen, isMindMapPanelOpen, externalIsMindMapPanelOpen, onMindMapPanelClose, onMindMapPanelOpen]);
 
   const handleMouseUp = useCallback((e) => {
-    if (itemDragRef.current) {
-      saveStateRef.current();
-      itemDragRef.current = null;
-      document.querySelector('.whiteboard-canvas')?.classList.remove('is-dragging-items');
+    if (canvasDragRef.current.isDragging()) {
+      canvasDragRef.current.endDrag();
     }
 
     if (isPanning) {
@@ -434,6 +463,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         setHighlightedItems(selectedItems);
         setSelectedItems(new Set(selectedItems.map(item => item.id)));
         setIsSearchPanelOpen(true);
+        suppressSelectionClickRef.current = true;
       }
 
       setIsSelecting(false);
@@ -444,14 +474,6 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   }, [isPanning, isSelecting, selectionBox, items, scale]);
 
   const handleMouseMove = useCallback((e) => {
-    if (itemDragRef.current) {
-      const dx = (e.clientX - itemDragRef.current.startX) / scale;
-      const dy = (e.clientY - itemDragRef.current.startY) / scale;
-      const newX = Math.round((itemDragRef.current.itemX + dx) / 10) * 10;
-      const newY = Math.round((itemDragRef.current.itemY + dy) / 10) * 10;
-      updateItemPositionRef.current(itemDragRef.current.id, { x: newX, y: newY });
-    }
-
     if (isPanning) {
       scheduleCanvasTransform({
         x: Math.min(0, e.clientX - panStart.x),
@@ -529,18 +551,27 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         );
         const hit = hitTestItem(world.x, world.y, items, { skipTypes: ['chart'] });
         if (hit) {
+          const fromId = connectingFromRef.current;
+          if (fromId) {
+            if (String(hit.id) !== String(fromId)) {
+              suppressSelectionClickRef.current = true;
+              completeConnectionRef.current(fromId, hit.id);
+            } else {
+              setConnectingFrom(null);
+            }
+            e.preventDefault();
+            return;
+          }
+
           suppressSelectionClickRef.current = true;
-          setSelectedItems(new Set([hit.id]));
+          const selected = selectedItemsRef.current;
+          const isInSelection = [...selected].some((id) => String(id) === String(hit.id));
+          if (selected.size <= 1 || !isInSelection) {
+            setSelectedItems(new Set([hit.id]));
+          }
           setSelectedConnection(null);
           setContextMenu({ visible: false, x: 0, y: 0 });
-          itemDragRef.current = {
-            id: hit.id,
-            startX: e.clientX,
-            startY: e.clientY,
-            itemX: hit.position.x,
-            itemY: hit.position.y,
-          };
-          document.querySelector('.whiteboard-canvas')?.classList.add('is-dragging-items');
+          canvasDragRef.current.startDrag(hit.id, e.clientX, e.clientY);
           e.preventDefault();
           return;
         }
@@ -751,6 +782,35 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     );
     return { x: constrainedX, y: constrainedY };
   }, []);
+
+  constrainPositionToCanvasRef.current = constrainPositionToCanvas;
+
+  const { startDrag, endDrag, isDragging } = useCanvasDrag({
+    webglRef,
+    domOverlayRef,
+    itemsRef,
+    connectionsRef,
+    selectedConnectionRef,
+    selectedItemsRef,
+    scaleRef,
+    constrainPositionToCanvas,
+    setItems,
+    saveStateRef,
+  });
+
+  canvasDragRef.current = { startDrag, endDrag, isDragging };
+
+  const handleStartItemDrag = useCallback((itemId, clientX, clientY) => {
+    suppressSelectionClickRef.current = true;
+    const selected = selectedItemsRef.current;
+    const isInSelection = [...selected].some((id) => String(id) === String(itemId));
+    if (selected.size <= 1 || !isInSelection) {
+      setSelectedItems(new Set([itemId]));
+    }
+    setSelectedConnection(null);
+    setContextMenu({ visible: false, x: 0, y: 0 });
+    startDrag(itemId, clientX, clientY);
+  }, [startDrag]);
 
   const [{ isOver }, drop] = useDrop(() => ({
     accept: 'WHITEBOARD_ITEM',
@@ -1179,18 +1239,20 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   }, [handleWheel, handleGestureStart, handleGestureChange, handleGestureEnd]);
 
   const updateItemPosition = useCallback((id, position) => {
-    setItems(items.map(item => {
-      if (item.id === id) {
+    setItems((prev) => {
+      const next = prev.map((item) => {
+        if (String(item.id) !== String(id)) return item;
         const constrainedPosition = constrainPositionToCanvas(
           position,
           item.width || 0,
           item.height || 0
         );
         return { ...item, position: constrainedPosition };
-      }
-      return item;
-    }));
-  }, [items, constrainPositionToCanvas]);
+      });
+      itemsRef.current = next;
+      return next;
+    });
+  }, [constrainPositionToCanvas]);
 
   updateItemPositionRef.current = updateItemPosition;
 
@@ -1220,9 +1282,17 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
   }, [items, saveState]);
 
   const handleConnectionStart = (itemId) => {
-    setConnectingFrom(itemId);
+    setConnectingFrom((prev) => (prev === itemId ? null : itemId));
     setSelectedItems(new Set([itemId]));
+    setSelectedConnection(null);
   };
+
+  const handleConnectToTarget = useCallback((toId) => {
+    const fromId = connectingFromRef.current;
+    if (fromId && String(fromId) !== String(toId)) {
+      completeConnectionRef.current(fromId, toId);
+    }
+  }, []);
 
   const handleItemClick = (itemId, e) => {
     if (suppressSelectionClickRef.current) {
@@ -1243,23 +1313,12 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     }
     
     if (connectingFrom) {
-      if (connectingFrom !== itemId) {
-        saveState(); // Save state before creating connection
-        const defaults = getDefaultConnectionSettings();
-        const newConnection = {
-          id: `connection-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          from: connectingFrom,
-          to: itemId,
-          color: defaults.color,
-          strokeWidth: defaults.strokeWidth,
-          lineType: defaults.lineType,
-          lineDesign: defaults.lineDesign || 'curved',
-          arrowDirection: defaults.arrowDirection,
-          arrowHeadStyle: defaults.arrowHeadStyle
-        };
-        setConnections(prev => [...prev, newConnection]);
+      if (String(connectingFrom) !== String(itemId)) {
+        completeConnectionRef.current(connectingFrom, itemId);
+      } else {
         setConnectingFrom(null);
       }
+      return;
     } else {
       // Bring clicked item to front by updating its order
       const clickedItem = items.find(item => String(item.id) === String(itemId));
@@ -1276,11 +1335,10 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       
       setSelectedItems(prev => {
         const newSet = new Set(prev);
-        if (newSet.has(itemId)) {
-          // Shift-click removes from a multi-selection; plain click keeps item selected
-          // (WebGL hit-test selects on mousedown, then the follow-up click would otherwise toggle off)
+        const alreadySelected = [...newSet].some((id) => String(id) === String(itemId));
+        if (alreadySelected) {
           if (e?.shiftKey) {
-            newSet.delete(itemId);
+            newSet.delete([...newSet].find((id) => String(id) === String(itemId)));
           }
         } else {
           if (!e?.shiftKey) {
@@ -1427,6 +1485,30 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       arrowHeadStyle: 'medium'
     };
   }, []);
+
+  const completeConnection = useCallback((fromId, toId) => {
+    if (!fromId || !toId || String(fromId) === String(toId)) return;
+
+    saveState();
+    const defaults = getDefaultConnectionSettings();
+    const newConnection = {
+      id: `connection-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      from: fromId,
+      to: toId,
+      color: defaults.color,
+      strokeWidth: defaults.strokeWidth,
+      lineType: defaults.lineType,
+      lineDesign: defaults.lineDesign || 'curved',
+      arrowDirection: defaults.arrowDirection,
+      arrowHeadStyle: defaults.arrowHeadStyle,
+    };
+    setConnections((prev) => [...prev, newConnection]);
+    setConnectingFrom(null);
+    setSelectedItems(new Set([toId]));
+    setSelectedConnection(null);
+  }, [saveState, getDefaultConnectionSettings]);
+
+  completeConnectionRef.current = completeConnection;
 
   // Save default connection settings to localStorage
   const saveDefaultConnectionSettings = useCallback((settings) => {
@@ -2882,6 +2964,9 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       return;
     }
 
+    if (selectedItems.size > 1) {
+      setHighlightedItems([]);
+    }
     setSelectedItems(new Set());
     setSelectedConnection(null);
     setConnectingFrom(null);
@@ -3088,50 +3173,6 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     setContextMenu({ visible: false, x: 0, y: 0 });
   };
 
-  const updateMultipleItemPositions = useCallback((dx, dy) => {
-    if (selectedItems.size <= 1) return;
-
-    const basePositions = groupDragStartPositionsRef.current || items.reduce((positions, item) => {
-      if (selectedItems.has(item.id)) {
-        positions[item.id] = { ...item.position };
-      }
-      return positions;
-    }, {});
-
-    const alignedDx = Math.round(dx / 10) * 10;
-    const alignedDy = Math.round(dy / 10) * 10;
-    
-    if (alignedDx === 0 && alignedDy === 0) return;
-
-    const pendingPositions = {};
-
-    selectedItems.forEach((id) => {
-      if (!basePositions[id]) return;
-
-      const item = items.find((entry) => entry.id === id);
-      if (!item) return;
-
-      const constrainedPosition = constrainPositionToCanvas(
-        {
-          x: basePositions[id].x + alignedDx,
-          y: basePositions[id].y + alignedDy,
-        },
-        item.width || 0,
-        item.height || 0
-      );
-
-      pendingPositions[id] = constrainedPosition;
-
-      const el = document.querySelector(`.whiteboard-item[data-id="${CSS.escape(id)}"]`);
-      if (el) {
-        el.style.left = `${constrainedPosition.x}px`;
-        el.style.top = `${constrainedPosition.y}px`;
-      }
-    });
-
-    groupDragPendingPositionsRef.current = pendingPositions;
-  }, [selectedItems, items, constrainPositionToCanvas]);
-
   // Hide color menu when selection changes
   useEffect(() => {
     setShowColorMenu(false);
@@ -3221,65 +3262,6 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     window.addEventListener('keydown', handleKeyDown, true); // Use capture phase for priority
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [connectingFrom, contextMenu.visible, showColorMenu, selectedItems, items, connections, saveState, editingChartId]);
-
-  // Set up global function for moving selected items
-  useEffect(() => {
-    // Function to move all selected items
-    window.moveSelectedItems = (dx, dy, itemId) => {
-      // Only allow the primary dragger to move items
-      if (primaryDraggingItemIdRef.current === null || primaryDraggingItemIdRef.current === itemId) {
-        updateMultipleItemPositions(dx, dy);
-      }
-    };
-
-    // Function to register the primary dragger and store original positions
-    window.startGroupDrag = (itemId) => {
-      if (primaryDraggingItemIdRef.current !== null && primaryDraggingItemIdRef.current !== itemId) {
-        return false;
-      }
-      primaryDraggingItemIdRef.current = itemId;
-      groupDragPendingPositionsRef.current = null;
-      document.querySelector('.whiteboard-canvas')?.classList.add('is-dragging-items');
-      groupDragStartPositionsRef.current = items.reduce((positions, item) => {
-        if (selectedItems.has(item.id)) {
-          positions[item.id] = { ...item.position };
-        }
-        return positions;
-      }, {});
-      return true;
-    };
-
-    window.endGroupDrag = () => {
-      const pending = groupDragPendingPositionsRef.current;
-      if (pending && Object.keys(pending).length > 0) {
-        setItems((prevItems) =>
-          prevItems.map((item) =>
-            pending[item.id] ? { ...item, position: pending[item.id] } : item
-          )
-        );
-      }
-
-      selectedItems.forEach((id) => {
-        const el = document.querySelector(`.whiteboard-item[data-id="${CSS.escape(id)}"]`);
-        if (el) {
-          el.style.left = '';
-          el.style.top = '';
-        }
-      });
-
-      groupDragPendingPositionsRef.current = null;
-      primaryDraggingItemIdRef.current = null;
-      groupDragStartPositionsRef.current = null;
-      document.querySelector('.whiteboard-canvas')?.classList.remove('is-dragging-items');
-    };
-
-    // Clean up the global functions on unmount
-    return () => {
-      window.moveSelectedItems = undefined;
-      window.startGroupDrag = undefined;
-      window.endGroupDrag = undefined;
-    };
-  }, [updateMultipleItemPositions, selectedItems, items]);
 
   // Function to find the path from a node back to the central node
   const findPathToCentralNode = useCallback((startItemId) => {
@@ -8200,11 +8182,15 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
               const orderB = b.order !== undefined ? b.order : items.indexOf(b);
               return orderA - orderB;
             })
-            .map((item) => {
-              return (
+            .map((item) => (
                 <div
                   key={`chart-${item.id}`}
-                  className="whiteboard-dom-overlay-item"
+                  data-overlay-id={item.id}
+                  className={`whiteboard-dom-overlay-item${
+                    isItemInSelection(selectedItems, item.id)
+                      ? ' whiteboard-dom-overlay-item--selected'
+                      : ''
+                  }`}
                   style={{
                     position: 'absolute',
                     left: item.position.x,
@@ -8222,32 +8208,32 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                     updateSize={updateItemSize}
                     updateRotation={updateItemRotation}
                     updateText={updateItemText}
-                    isSelected={selectedItems.has(item.id)}
+                    isSelected={isItemInSelection(selectedItems, item.id)}
                     isConnecting={connectingFrom === item.id}
                     isValidTarget={connectingFrom && connectingFrom !== item.id}
                     isGroupSelectMode={selectedItems.size > 1}
                     isExpanding={expandingItemId === item.id}
                     onSelect={(itemId, e) => handleItemClick(itemId, e)}
                     onConnectionStart={(itemId) => handleConnectionStart(itemId)}
+                    onConnectToTarget={handleConnectToTarget}
                     onDelete={handleDeleteItem}
                     scale={scale}
                     onContextMenu={(e) => handleContextMenu(e, item.id)}
                     onOrganize={organizeNodes}
                     onChartEdit={handleChartEdit}
                     isChartEditing={editingChartId === item.id}
-                    onDragEnd={saveState}
                     onResizeEnd={saveState}
                     onShowColorMenu={handleShowColorMenu}
+                    onStartDrag={handleStartItemDrag}
                   />
                 </div>
-              );
-            })}
+              ))}
           {items
-            .filter((item) => item?.position && item.width > 0 && item.height > 0 && item.type !== 'chart' && selectedItems.has(item.id))
-            .map((item) => {
-              return (
+            .filter((item) => item?.position && item.width > 0 && item.height > 0 && item.type !== 'chart' && isItemInSelection(selectedItems, item.id))
+            .map((item) => (
                 <div
                   key={`selected-${item.id}`}
+                  data-overlay-id={item.id}
                   className="whiteboard-dom-overlay-item whiteboard-dom-overlay-item--selected"
                   style={{
                     position: 'absolute',
@@ -8281,18 +8267,18 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
                     isExpanding={expandingItemId === item.id}
                     onSelect={(itemId, e) => handleItemClick(itemId, e)}
                     onConnectionStart={(itemId) => handleConnectionStart(itemId)}
+                    onConnectToTarget={handleConnectToTarget}
                     onDelete={handleDeleteItem}
                     scale={scale}
                     onContextMenu={(e) => handleContextMenu(e, item.id)}
                     onOrganize={organizeNodes}
-                    onDragEnd={saveState}
                     onResizeEnd={saveState}
                     onShowColorMenu={handleShowColorMenu}
+                    onStartDrag={handleStartItemDrag}
                   />
                   </div>
                 </div>
-              );
-            })}
+              ))}
         </div>
 
         {selectionBox && (

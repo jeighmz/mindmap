@@ -26,9 +26,24 @@ const WhiteboardWebGLView = forwardRef(function WhiteboardWebGLView(
     resize() {
       rendererRef.current?.resize();
     },
+    syncLivePositions(items, connections, selectedConnectionId, positionOverrides) {
+      rendererRef.current?.syncLivePositions(
+        positionOverrides,
+        items,
+        connections,
+        selectedConnectionId
+      );
+    },
     syncScene(scene) {
       latestSceneRef.current = scene;
       rendererRef.current?.syncScene(scene);
+    },
+    syncConnectingPreview(items, connectingFromId, connectingMousePosition) {
+      rendererRef.current?.syncConnectingPreview(
+        items,
+        connectingFromId,
+        connectingMousePosition
+      );
     },
   }));
 
@@ -53,6 +68,12 @@ const WhiteboardWebGLView = forwardRef(function WhiteboardWebGLView(
       const { panOffset: pan, scale: currentScale } = latestViewportRef.current;
       renderer.setViewport(pan, currentScale);
       renderer.syncScene(latestSceneRef.current);
+      const scene = latestSceneRef.current;
+      renderer.syncConnectingPreview(
+        scene.items || [],
+        scene.connectingFromId ?? null,
+        scene.connectingMousePosition ?? null
+      );
     });
 
     const handleResize = () => renderer.resize();
@@ -90,8 +111,15 @@ const WhiteboardWebGLView = forwardRef(function WhiteboardWebGLView(
     selectedItemIds,
     selectedConnectionId,
     connectingFromId,
-    connectingMousePosition,
   ]);
+
+  useEffect(() => {
+    rendererRef.current?.syncConnectingPreview(
+      items,
+      connectingFromId,
+      connectingMousePosition
+    );
+  }, [items, connectingFromId, connectingMousePosition]);
 
   return (
     <div

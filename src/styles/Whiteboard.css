@@ -260,6 +260,10 @@
   transform: none !important;
 }
 
+.whiteboard-dom-overlay-item--selected {
+  box-shadow: inset 0 0 0 2px #2196f3;
+}
+
 .whiteboard-dom-overlay-item--selected .whiteboard-item {
   background: transparent !important;
   outline: none !important;
@@ -267,12 +271,13 @@
 
 .whiteboard-dom-overlay-item--selected .rectangle-shape,
 .whiteboard-dom-overlay-item--selected .circle-shape,
-.whiteboard-dom-overlay-item--selected .sticky-note {
+.whiteboard-dom-overlay-item--selected .sticky-shape,
+.whiteboard-dom-overlay-item--selected .text-shape {
   opacity: 0;
   pointer-events: none;
 }
 
-.whiteboard-dom-overlay-item--selected .sticky-note textarea,
+.whiteboard-dom-overlay-item--selected .sticky-shape textarea,
 .whiteboard-dom-overlay-item--selected .edit-control,
 .whiteboard-dom-overlay-item--selected .connector-control,
 .whiteboard-dom-overlay-item--selected .expand-control,
@@ -1570,34 +1575,20 @@
   overflow: visible;
 }
 
-/* Add these styles */
+/* Group select uses the same per-item controls as single select */
 .whiteboard-item.group-select-mode {
-  cursor: context-menu !important;
+  cursor: default !important;
 }
 
-.whiteboard-item.group-select-mode .expand-control,
-.whiteboard-item.group-select-mode .connector-control,
-.whiteboard-item.group-select-mode .resize-handle,
-.whiteboard-item.group-select-mode .edit-control {
-  display: none !important;
+.whiteboard-item.group-select-mode.selected {
+  outline: 2px solid #2196f3;
 }
 
-/* Ensure edit buttons are clickable */
 .edit-control,
 .connector-control,
 .expand-control {
   pointer-events: auto !important;
   z-index: 1003;
-}
-
-.whiteboard-item.group-select-mode.selected {
-  outline: 2px solid #6610f2;
-  background-color: rgba(102, 16, 242, 0.05);
-}
-
-.whiteboard-item.group-select-mode:hover {
-  outline: 2px solid #6610f2;
-  background-color: rgba(102, 16, 242, 0.1);
 }
 
 /* Make whiteboard responsive when panel is open */
