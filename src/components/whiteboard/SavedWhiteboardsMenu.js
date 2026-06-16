@@ -42,13 +42,27 @@ const SavedWhiteboardsMenu = ({
   const [editingFolderName, setEditingFolderName] = useState('');
   const [showMoveMenu, setShowMoveMenu] = useState(null); // boardId when showing move menu
   const [moveMenuPosition, setMoveMenuPosition] = useState({ x: 0, y: 0 }); // Position for move menu portal
+  const [openActionsMenuId, setOpenActionsMenuId] = useState(null);
+  const [actionsMenuPosition, setActionsMenuPosition] = useState({ x: 0, y: 0 });
   const [libraryViewMode, setLibraryViewMode] = useState(() => (
     localStorage.getItem('libraryViewMode') === 'list' ? 'list' : 'grid'
+  ));
+  const [selectedDemoCategory, setSelectedDemoCategory] = useState(null);
+  const [isFolderSidebarCollapsed, setIsFolderSidebarCollapsed] = useState(() => (
+    localStorage.getItem('folderSidebarCollapsed') === 'true'
   ));
 
   const handleLibraryViewModeChange = (mode) => {
     setLibraryViewMode(mode);
     localStorage.setItem('libraryViewMode', mode);
+  };
+
+  const toggleFolderSidebar = () => {
+    setIsFolderSidebarCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem('folderSidebarCollapsed', String(next));
+      return next;
+    });
   };
 
   // Helper function to safely convert timestamp to Date for display
@@ -93,21 +107,32 @@ const SavedWhiteboardsMenu = ({
     }
   }, [isOpen, activeTab, user]); // Removed hasLoadedBoards to allow refresh on open
 
-  // Close move menu when clicking outside
+  // Close action and move menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (showMoveMenu && !event.target.closest('.move-menu') && !event.target.closest('.move-btn')) {
+      if (
+        openActionsMenuId
+        && !event.target.closest('.board-actions-menu')
+        && !event.target.closest('.board-more-btn')
+      ) {
+        setOpenActionsMenuId(null);
+      }
+      if (
+        showMoveMenu
+        && !event.target.closest('.move-menu')
+        && !event.target.closest('.board-actions-menu')
+      ) {
         setShowMoveMenu(null);
       }
     };
 
-    if (showMoveMenu) {
+    if (openActionsMenuId || showMoveMenu) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => {
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
-  }, [showMoveMenu]);
+  }, [openActionsMenuId, showMoveMenu]);
 
   const fetchFolders = async () => {
     if (!user) return;
@@ -175,8 +200,8 @@ const SavedWhiteboardsMenu = ({
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     setError(null);
-    setSearchQuery(''); // Clear search when switching tabs
-    // Fetching is now handled by useEffect
+    setSearchQuery('');
+    setSelectedDemoCategory(null);
   };
 
   const cleanChartConfig = (item) => {
@@ -937,28 +962,20 @@ const SavedWhiteboardsMenu = ({
     return Object.entries(categories).filter(([_, boards]) => boards.length > 0);
   };
 
-  // Get boards filtered by selected folder and search
-  const getFilteredAndGroupedBoards = () => {
-    let boards = activeTab === 'demo' 
-      ? sortBoardsByDate(savedWhiteboards)
-      : sortBoardsByDate(getFilteredBoards(userBoards));
+  const sortedDemoBoards = sortBoardsByDate(savedWhiteboards);
+  const categorizedDemoBoards = categorizeDemoBoards(sortedDemoBoards);
 
-    // Filter by selected folder (only for personal tab)
-    if (activeTab === 'personal') {
-      if (selectedFolderId === null) {
-        // Show all boards (no folder filter)
-        return boards;
-      } else {
-        // Show boards in selected folder
-        return boards.filter(board => board.folderId === selectedFolderId);
-      }
-    }
-
-    return boards;
-  };
-
-  const displayedBoards = getFilteredAndGroupedBoards();
-  const categorizedDemoBoards = activeTab === 'demo' ? categorizeDemoBoards(displayedBoards) : null;
+  const displayedBoards = activeTab === 'demo'
+    ? (selectedDemoCategory
+        ? categorizedDemoBoards.find(([name]) => name === selectedDemoCategory)?.[1] ?? []
+        : sortedDemoBoards)
+    : (() => {
+        let boards = sortBoardsByDate(getFilteredBoards(userBoards));
+        if (selectedFolderId === null) {
+          return boards;
+        }
+        return boards.filter((board) => board.folderId === selectedFolderId);
+      })();
 
   const formatBoardDate = (board) => {
     const date = getDisplayDate(board.savedAt || board.lastEditedAt);
@@ -970,99 +987,147 @@ const SavedWhiteboardsMenu = ({
     });
   };
 
-  const renderBoardActions = (board, { showPersonalActions = false } = {}) => (
-    <div className="board-actions" onClick={(e) => e.stopPropagation()}>
-      <button
-        type="button"
-        onClick={() => onExport?.(board)}
-        disabled={isLoading}
-        title="Export board"
-        className="export-btn"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-          <polyline points="7 10 12 15 17 10" />
-          <line x1="12" y1="15" x2="12" y2="3" />
-        </svg>
-      </button>
-      {showPersonalActions && user && (() => {
-        const isOwner = board.userId === user.uid;
-        const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
-        const canCollaborate = tierFeatures.features.realTimeCollaboration;
+  const renderBoardActions = (board, { showPersonalActions = false } = {}) => {
+    const isOwner = board.userId === user?.uid;
+    const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
+    const canCollaborate = tierFeatures.features.realTimeCollaboration;
+    const showShare = showPersonalActions && user && isOwner && canCollaborate;
+    const showMove = showPersonalActions && user;
+    const showDelete = showPersonalActions && user;
 
-        return (
+    const openActionsMenu = (e) => {
+      e.stopPropagation();
+      if (openActionsMenuId === board.id) {
+        setOpenActionsMenuId(null);
+        return;
+      }
+      const rect = e.currentTarget.getBoundingClientRect();
+      setActionsMenuPosition({ x: rect.right, y: rect.bottom });
+      setOpenActionsMenuId(board.id);
+    };
+
+    const closeActionsMenu = () => setOpenActionsMenuId(null);
+
+    const openMoveMenu = async () => {
+      closeActionsMenu();
+      try {
+        await fetchFolders();
+        setMoveMenuPosition({
+          x: actionsMenuPosition.x,
+          y: actionsMenuPosition.y,
+        });
+        setShowMoveMenu(board.id);
+      } catch (error) {
+        console.error('Error opening move menu:', error);
+        setShowMoveMenu(board.id);
+      }
+    };
+
+    return (
+      <div className="board-actions" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          className="board-more-btn"
+          onClick={openActionsMenu}
+          disabled={isLoading}
+          title="Board actions"
+          aria-label="Board actions"
+          aria-expanded={openActionsMenuId === board.id}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="5" r="1.75" />
+            <circle cx="12" cy="12" r="1.75" />
+            <circle cx="12" cy="19" r="1.75" />
+          </svg>
+        </button>
+
+        {openActionsMenuId === board.id && createPortal(
           <>
-            {isOwner && canCollaborate && (
+            <div className="board-actions-menu-overlay" onClick={closeActionsMenu} />
+            <div
+              className="board-actions-menu"
+              style={{
+                left: `${actionsMenuPosition.x}px`,
+                top: `${actionsMenuPosition.y}px`,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {showShare && (
+                <button
+                  type="button"
+                  className="board-actions-menu-item"
+                  onClick={() => {
+                    setSelectedBoardForShare({ id: board.id, name: board.name });
+                    setShareModalOpen(true);
+                    closeActionsMenu();
+                  }}
+                  disabled={isLoading}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="18" cy="5" r="3" />
+                    <circle cx="6" cy="12" r="3" />
+                    <circle cx="18" cy="19" r="3" />
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                  </svg>
+                  Share
+                </button>
+              )}
               <button
                 type="button"
-                className="share-btn"
+                className="board-actions-menu-item"
                 onClick={() => {
-                  setSelectedBoardForShare({ id: board.id, name: board.name });
-                  setShareModalOpen(true);
+                  onExport?.(board);
+                  closeActionsMenu();
                 }}
                 disabled={isLoading}
-                title="Share board"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="18" cy="5" r="3" />
-                  <circle cx="6" cy="12" r="3" />
-                  <circle cx="18" cy="19" r="3" />
-                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
+                Export
               </button>
-            )}
-            <button
-              type="button"
-              className="move-btn"
-              onClick={async (e) => {
-                e.stopPropagation();
-                try {
-                  if (showMoveMenu === board.id) {
-                    setShowMoveMenu(null);
-                  } else {
-                    await fetchFolders();
-                    const target = e.currentTarget || e.target;
-                    if (!target) return;
-                    const rect = target.getBoundingClientRect();
-                    if (!rect) return;
-                    setMoveMenuPosition({
-                      x: rect.right - 180,
-                      y: rect.top,
-                    });
-                    setShowMoveMenu(board.id);
-                  }
-                } catch (error) {
-                  console.error('Error opening move menu:', error);
-                  setShowMoveMenu(board.id);
-                }
-              }}
-              disabled={isLoading}
-              title="Move to folder"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className="delete-btn"
-              onClick={() => handleDeleteClick(board.id, board.name, isOwner)}
-              disabled={isLoading}
-              title={isOwner ? 'Delete board' : 'Remove from my boards'}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="3 6 5 6 21 6" />
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                <line x1="10" y1="11" x2="10" y2="17" />
-                <line x1="14" y1="11" x2="14" y2="17" />
-              </svg>
-            </button>
-          </>
-        );
-      })()}
-    </div>
-  );
+              {showMove && (
+                <button
+                  type="button"
+                  className="board-actions-menu-item"
+                  onClick={openMoveMenu}
+                  disabled={isLoading}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                  </svg>
+                  Move to folder
+                </button>
+              )}
+              {showDelete && (
+                <button
+                  type="button"
+                  className="board-actions-menu-item board-actions-menu-item--danger"
+                  onClick={() => {
+                    handleDeleteClick(board.id, board.name, isOwner);
+                    closeActionsMenu();
+                  }}
+                  disabled={isLoading}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    <line x1="10" y1="11" x2="10" y2="17" />
+                    <line x1="14" y1="11" x2="14" y2="17" />
+                  </svg>
+                  {isOwner ? 'Delete' : 'Remove'}
+                </button>
+              )}
+            </div>
+          </>,
+          document.body
+        )}
+      </div>
+    );
+  };
 
   const handleBoardOpen = (board) => {
     if (isLoading || board.id === currentBoardId) return;
@@ -1244,50 +1309,63 @@ const SavedWhiteboardsMenu = ({
                 </svg>
               </button>
             </div>
-            <div className="board-tabs">
-            <button 
-              type="button"
-              className={`tab-button ${activeTab === 'demo' ? 'active' : ''}`}
-              onClick={() => handleTabChange('demo')}
-            >
-              Templates
-            </button>
-            <button 
-              type="button"
-              className={`tab-button ${activeTab === 'personal' ? 'active' : ''}`}
-              onClick={() => handleTabChange('personal')}
-            >
-              My Boards
-            </button>
-          </div>
 
-          {error && (
-            <div className="error-message">
-              <svg 
-                width="14" 
-                height="14" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ color: '#f44336' }}
-              >
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
-              {error}
-            </div>
-          )}
-
-          <div className="library-content">
-            {activeTab === 'personal' && user && (
-              <aside className="library-sidebar">
+            <div className="library-content">
+            {activeTab === 'demo' && (
+              <aside className="library-sidebar library-sidebar--templates">
                 <div className="library-sidebar-header">
-                  <span>Folders</span>
+                  <span className="library-sidebar-title">Categories</span>
                 </div>
+                <div className="folder-navigation category-navigation">
+                  <button
+                    type="button"
+                    className={`folder-nav-item ${selectedDemoCategory === null ? 'active' : ''}`}
+                    onClick={() => setSelectedDemoCategory(null)}
+                  >
+                    <span className="folder-nav-label">All Templates</span>
+                    <span className="folder-count">{sortedDemoBoards.length}</span>
+                  </button>
+                  {categorizedDemoBoards.map(([categoryName, categoryBoards]) => (
+                    <button
+                      key={categoryName}
+                      type="button"
+                      className={`folder-nav-item ${selectedDemoCategory === categoryName ? 'active' : ''}`}
+                      onClick={() => setSelectedDemoCategory(categoryName)}
+                    >
+                      <span className="folder-nav-label">{categoryName}</span>
+                      <span className="folder-count">{categoryBoards.length}</span>
+                    </button>
+                  ))}
+                </div>
+              </aside>
+            )}
+            {activeTab === 'personal' && user && (
+              <aside className={`library-sidebar ${isFolderSidebarCollapsed ? 'library-sidebar--collapsed' : ''}`}>
+                <div className="library-sidebar-header">
+                  <span className="library-sidebar-title">Folders</span>
+                  <button
+                    type="button"
+                    className="library-sidebar-collapse-btn"
+                    onClick={toggleFolderSidebar}
+                    aria-label={isFolderSidebarCollapsed ? 'Expand folders' : 'Collapse folders'}
+                    title={isFolderSidebarCollapsed ? 'Show folders' : 'Hide folders'}
+                  >
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <polyline points="15 18 9 12 15 6" />
+                    </svg>
+                  </button>
+                </div>
+                {!isFolderSidebarCollapsed && (
                 <div className="folder-navigation">
                   <button
                     type="button"
@@ -1348,10 +1426,51 @@ const SavedWhiteboardsMenu = ({
                     </form>
                   )}
                 </div>
+                )}
               </aside>
             )}
 
             <div className="library-main">
+              <div className="library-main-header">
+                <div className="library-board-tabs">
+                  <button
+                    type="button"
+                    className={`library-tab-button ${activeTab === 'demo' ? 'active' : ''}`}
+                    onClick={() => handleTabChange('demo')}
+                  >
+                    Templates
+                  </button>
+                  <button
+                    type="button"
+                    className={`library-tab-button ${activeTab === 'personal' ? 'active' : ''}`}
+                    onClick={() => handleTabChange('personal')}
+                  >
+                    My Boards
+                  </button>
+                </div>
+              </div>
+
+              {error && (
+                <div className="error-message library-error-message">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ color: '#f44336' }}
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  {error}
+                </div>
+              )}
+
               <div className={`library-toolbar ${activeTab === 'personal' && user ? 'library-toolbar--personal' : 'library-toolbar--demo'}`}>
                 {activeTab === 'personal' && user && (
                   <div className="search-boards">
@@ -1409,7 +1528,7 @@ const SavedWhiteboardsMenu = ({
                 </div>
               </div>
 
-              {libraryViewMode === 'list' && !isLoading && (displayedBoards.length > 0 || (activeTab === 'demo' && categorizedDemoBoards?.length > 0)) && (
+              {libraryViewMode === 'list' && !isLoading && displayedBoards.length > 0 && (
                 <div className="board-list-header">
                   <span className="board-list-header-cell board-list-header-name">Name</span>
                   <span className="board-list-header-cell board-list-header-date">Modified</span>
@@ -1421,39 +1540,8 @@ const SavedWhiteboardsMenu = ({
             {isLoading ? (
               <div className="loading-message">Loading...</div>
             ) : (
-              <>
-                {activeTab === 'demo' && categorizedDemoBoards ? (
-                  categorizedDemoBoards.length > 0 ? (
-                    <>
-                      {categorizedDemoBoards.map(([categoryName, categoryBoards]) => (
-                        <div key={categoryName} className="demo-board-section">
-                          <h3 className="demo-section-header">{categoryName}</h3>
-                          <div className={libraryViewMode === 'grid' ? 'demo-board-grid' : 'demo-board-list'}>
-                            {categoryBoards.map((board) => renderBoardItem(board))}
-                          </div>
-                        </div>
-                      ))}
-                    </>
-                  ) : (
-                    <div className="no-boards-message">
-                      <svg 
-                        width="24" 
-                        height="24" 
-                        viewBox="0 0 24 24" 
-                        fill="none" 
-                        stroke="currentColor" 
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        style={{ opacity: 0.5 }}
-                      >
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                        <line x1="8" y1="12" x2="16" y2="12" />
-                      </svg>
-                      No templates available
-                    </div>
-                  )
-                ) : displayedBoards.length > 0 ? (
+                <>
+                {displayedBoards.length > 0 ? (
                   <>
                     {displayedBoards.map((board) => renderBoardItem(board, { showPersonalActions: activeTab === 'personal' }))}
                     {activeTab === 'personal' && user && (() => {
@@ -1485,8 +1573,8 @@ const SavedWhiteboardsMenu = ({
                       <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                       <line x1="8" y1="12" x2="16" y2="12" />
                     </svg>
-                    {activeTab === 'demo' 
-                      ? 'No demo boards available' 
+                    {activeTab === 'demo'
+                      ? 'No templates available'
                       : 'No personal boards saved yet'}
                   </div>
                 )}
@@ -1531,7 +1619,7 @@ const SavedWhiteboardsMenu = ({
                 position: 'fixed',
                 left: `${moveMenuPosition.x}px`,
                 top: `${moveMenuPosition.y}px`,
-                transform: 'translateY(8px)'
+                transform: 'translate(-100%, 8px)',
               }}
               onClick={(e) => e.stopPropagation()}
             >
