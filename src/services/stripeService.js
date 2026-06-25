@@ -2,7 +2,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import { db } from '../firebase-config';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { USER_TIERS, TIER_FEATURES } from '../config/userTiers';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getAuthHeaders } from '../utils/api';
 
 // Ensure Stripe is loaded only once
 let stripePromise;
@@ -142,11 +142,10 @@ class StripeService {
       });
       
       // Try the primary URL first
+      const authHeaders = await getAuthHeaders();
       let response = await fetch(apiUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: authHeaders,
         body: JSON.stringify({
           userId,
           productId,
@@ -162,9 +161,7 @@ class StripeService {
         console.log('[Stripe] Primary URL returned 404, trying fallback:', fallbackUrl);
         response = await fetch(fallbackUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: authHeaders,
           body: JSON.stringify({
             userId,
             productId,
@@ -288,11 +285,10 @@ Troubleshooting:
         throw new Error('No active subscription found for this user');
       }
 
+      const authHeaders = await getAuthHeaders();
       const response = await fetch(`${getBaseUrl()}/create-portal-session`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: authHeaders,
         body: JSON.stringify({ userId }),
       });
 

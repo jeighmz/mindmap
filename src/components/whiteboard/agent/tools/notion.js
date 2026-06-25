@@ -1,6 +1,6 @@
 import React from "react";
+import { callNotionApi } from "../../../../utils/api";
 
-// Notion tool configuration
 const notionTool = {
   id: "notion",
   name: "Notion",
@@ -14,53 +14,34 @@ const notionTool = {
   description: "Create tasks and pages in Notion",
 };
 
-// Notion API configuration
-const API_BASE_URL =
-  process.env.NODE_ENV === "production"
-    ? "/api" // In production, use relative URLs
-    : "http://localhost:3001/api"; // In development, use the proxy server
-
-// Notion database functions
 const createNotionDatabase = async (
-  notionApiKey,
+  notionConfigured,
   notionDatabaseId,
   addMessage
 ) => {
-  if (!notionApiKey) {
+  if (!notionConfigured) {
     addMessage(
       "assistant",
-      "❌ Notion API key is not configured. Please add it to your .env file."
+      "❌ Notion API key is not configured. Please add it in Settings."
     );
     return null;
   }
 
   try {
-    // Check if database ID is provided
     if (notionDatabaseId) {
       addMessage(
         "system",
         "🔄 Verifying connection to existing Notion database..."
       );
-      // Verify the database exists using our proxy endpoint
-      const response = await fetch(
-        `${API_BASE_URL}/databases/${notionDatabaseId}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${notionApiKey}`
-          },
-        }
-      );
 
-      if (response.ok) {
+      try {
+        await callNotionApi(`databases/${notionDatabaseId}`, { method: "GET" });
         addMessage(
           "assistant",
           "✅ Successfully connected to existing Notion database."
         );
         return notionDatabaseId;
-      } else {
-        // If the database doesn't exist or isn't shared, create a new one
+      } catch {
         addMessage(
           "assistant",
           "⚠️ The specified database ID does not exist or is not shared with your integration. Creating a new database..."
@@ -68,60 +49,35 @@ const createNotionDatabase = async (
       }
     }
 
-    // Create a new database if none exists
     addMessage(
       "system",
       "🔄 Creating a new Notion database for mind map actions..."
     );
 
-    // First, search for a workspace to use as parent
-    // Search for a page instead of a database
-    const searchResponse = await fetch(`${API_BASE_URL}/search`, {
+    const searchData = await callNotionApi("search", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${notionApiKey}`
-      },
-      body: JSON.stringify({
+      body: {
         filter: {
           property: "object",
           value: "page",
         },
         page_size: 1,
-      }),
+      },
     });
 
-    if (!searchResponse.ok) {
-      const errorData = await searchResponse.json();
-      throw new Error(
-        `Failed to search for pages: ${searchResponse.status} - ${
-          errorData.error || "Unknown error"
-        }`
-      );
-    }
-
-    const searchData = await searchResponse.json();
-
-    // Use the first page as parent if available, otherwise create a new page
     let parentId = null;
 
     if (searchData.results && searchData.results.length > 0) {
-      // Use the first page's ID as parent
       parentId = searchData.results[0].id;
     } else {
-      // No page found, create a new page as parent
       addMessage(
         "system",
         "🔄 No existing pages found. Creating a new page as parent..."
       );
 
-      const pageResponse = await fetch(`${API_BASE_URL}/pages`, {
+      const pageData = await callNotionApi("pages", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${notionApiKey}`
-        },
-        body: JSON.stringify({
+        body: {
           parent: {
             type: "workspace_id",
             workspace_id: "default",
@@ -137,30 +93,15 @@ const createNotionDatabase = async (
               ],
             },
           },
-        }),
+        },
       });
 
-      if (!pageResponse.ok) {
-        const errorData = await pageResponse.json();
-        throw new Error(
-          `Failed to create parent page: ${pageResponse.status} - ${
-            errorData.error || "Unknown error"
-          }`
-        );
-      }
-
-      const pageData = await pageResponse.json();
       parentId = pageData.id;
     }
 
-    // Now create the database with the parent ID
-    const response = await fetch(`${API_BASE_URL}/databases`, {
+    const data = await callNotionApi("databases", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${notionApiKey}`
-      },
-      body: JSON.stringify({
+      body: {
         parent: {
           type: "page_id",
           page_id: parentId,
@@ -174,9 +115,7 @@ const createNotionDatabase = async (
           },
         ],
         properties: {
-          Name: {
-            title: {},
-          },
+          Name: { title: {} },
           Status: {
             select: {
               options: [
@@ -195,39 +134,19 @@ const createNotionDatabase = async (
               ],
             },
           },
-          Category: {
-            select: {
-              options: [],
-            },
-          },
-          DueDate: {
-            date: {},
-          },
-          Notes: {
-            rich_text: {},
-          },
+          Category: { select: { options: [] } },
+          DueDate: { date: {} },
+          Notes: { rich_text: {} },
         },
-      }),
+      },
     });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        `Failed to create database: ${response.status} - ${
-          errorData.error || "Unknown error"
-        }`
-      );
-    }
-
-    const data = await response.json();
-    const newDatabaseId = data.id;
 
     addMessage(
       "assistant",
       "✅ Successfully created a new Notion database for mind map actions."
     );
 
-    return newDatabaseId;
+    return data.id;
   } catch (error) {
     console.error("Error with Notion database:", error);
     addMessage("assistant", `❌ Error with Notion: ${error.message}`);
@@ -236,16 +155,16 @@ const createNotionDatabase = async (
 };
 
 const createNotionPage = async (
-  notionApiKey,
+  notionConfigured,
   notionDatabaseId,
   title,
   properties,
   addMessage
 ) => {
-  if (!notionApiKey || !notionDatabaseId) {
+  if (!notionConfigured) {
     addMessage(
       "assistant",
-      "❌ Notion configuration is incomplete. Please check your .env file."
+      "❌ Notion is not configured. Please add your API key in Settings."
     );
     return null;
   }
@@ -253,47 +172,34 @@ const createNotionPage = async (
   try {
     addMessage("system", `🔄 Creating Notion page: "${title}"...`);
 
-    // Ensure we have a valid parent property with the correct type
-    const parent = {
-      type: "database_id",
-      database_id: notionDatabaseId,
+    const requestBody = {
+      properties: {
+        Name: {
+          title: [
+            {
+              text: {
+                content: title,
+              },
+            },
+          ],
+        },
+        ...properties,
+      },
     };
 
-    const response = await fetch(`${API_BASE_URL}/pages`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${notionApiKey}`
-      },
-      body: JSON.stringify({
-        parent: parent,
-        properties: {
-          Name: {
-            title: [
-              {
-                text: {
-                  content: title,
-                },
-              },
-            ],
-          },
-          ...properties,
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        `Failed to create page: ${response.status} - ${
-          errorData.error || "Unknown error"
-        }`
-      );
+    if (notionDatabaseId) {
+      requestBody.parent = {
+        type: "database_id",
+        database_id: notionDatabaseId,
+      };
     }
 
-    const data = await response.json();
-    addMessage("assistant", `✅ Successfully created Notion page: "${title}"`);
+    const data = await callNotionApi("pages", {
+      method: "POST",
+      body: requestBody,
+    });
 
+    addMessage("assistant", `✅ Successfully created Notion page: "${title}"`);
     return data.id;
   } catch (error) {
     console.error("Error creating Notion page:", error);
@@ -303,15 +209,15 @@ const createNotionPage = async (
 };
 
 const updateNotionPage = async (
-  notionApiKey,
+  notionConfigured,
   pageId,
   properties,
   addMessage
 ) => {
-  if (!notionApiKey) {
+  if (!notionConfigured) {
     addMessage(
       "assistant",
-      "❌ Notion API key is not configured. Please add it to your .env file."
+      "❌ Notion is not configured. Please add your API key in Settings."
     );
     return null;
   }
@@ -324,29 +230,12 @@ const updateNotionPage = async (
       }"...`
     );
 
-    const response = await fetch(`${API_BASE_URL}/pages/${pageId}`, {
+    const data = await callNotionApi(`pages/${pageId}`, {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${notionApiKey}`
-      },
-      body: JSON.stringify({
-        properties,
-      }),
+      body: { properties },
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        `Failed to update page: ${response.status} - ${
-          errorData.error || "Unknown error"
-        }`
-      );
-    }
-
-    const data = await response.json();
-    addMessage("assistant", `✅ Successfully updated Notion page.`);
-
+    addMessage("assistant", "✅ Successfully updated Notion page.");
     return data.id;
   } catch (error) {
     console.error("Error updating Notion page:", error);
@@ -355,39 +244,24 @@ const updateNotionPage = async (
   }
 };
 
-const deleteNotionPage = async (notionApiKey, pageId, addMessage) => {
-  if (!notionApiKey) {
+const deleteNotionPage = async (notionConfigured, pageId, addMessage) => {
+  if (!notionConfigured) {
     addMessage(
       "assistant",
-      "❌ Notion API key is not configured. Please add it to your .env file."
+      "❌ Notion is not configured. Please add your API key in Settings."
     );
     return false;
   }
 
   try {
-    addMessage("system", `🔄 Deleting Notion page...`);
+    addMessage("system", "🔄 Deleting Notion page...");
 
-    const response = await fetch(`${API_BASE_URL}/pages/${pageId}`, {
+    await callNotionApi(`pages/${pageId}`, {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${notionApiKey}`
-      },
-      body: JSON.stringify({
-        archived: true,
-      }),
+      body: { archived: true },
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        `Failed to delete page: ${response.status} - ${
-          errorData.error || "Unknown error"
-        }`
-      );
-    }
-
-    addMessage("assistant", `✅ Successfully deleted Notion page.`);
+    addMessage("assistant", "✅ Successfully deleted Notion page.");
     return true;
   } catch (error) {
     console.error("Error deleting Notion page:", error);
@@ -397,43 +271,22 @@ const deleteNotionPage = async (notionApiKey, pageId, addMessage) => {
 };
 
 const fetchNotionDatabaseContent = async (
-  notionApiKey,
+  notionConfigured,
   notionDatabaseId,
   addMessage
 ) => {
-  if (!notionApiKey || !notionDatabaseId) {
+  if (!notionConfigured || !notionDatabaseId) {
     return null;
   }
 
   try {
     addMessage("system", "🔄 Fetching latest Notion database content...");
 
-    const response = await fetch(
-      `${API_BASE_URL}/databases/${notionDatabaseId}/query`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${notionApiKey}`
-        },
-        body: JSON.stringify({
-          page_size: 100,
-        }),
-      }
-    );
+    const data = await callNotionApi(`databases/${notionDatabaseId}/query`, {
+      method: "POST",
+      body: { page_size: 100 },
+    });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        `Failed to fetch database content: ${response.status} - ${
-          errorData.error || "Unknown error"
-        }`
-      );
-    }
-
-    const data = await response.json();
-
-    // Process the database content
     const pages = data.results.map((page) => {
       const title =
         page.properties.Name?.title?.[0]?.text?.content || "Untitled";
@@ -467,33 +320,26 @@ const fetchNotionDatabaseContent = async (
   }
 };
 
-// Webhook functions
 const createNotionWebhook = async (
-  notionApiKey,
+  notionConfigured,
   notionDatabaseId,
   addMessage
 ) => {
-  if (!notionApiKey || !notionDatabaseId) {
+  if (!notionConfigured || !notionDatabaseId) {
     addMessage(
       "assistant",
-      "❌ Notion configuration is incomplete. Please check your .env file."
+      "❌ Notion configuration is incomplete. Please check Settings."
     );
     return null;
   }
 
   try {
     addMessage("system", "🔄 Setting up Notion webhook subscription...");
-
-    // Note: Webhooks are not directly supported in the Notion API client
-    // This would typically be handled by a server-side implementation
     addMessage(
       "assistant",
       "✅ Webhook setup would be handled by a server-side implementation."
     );
-
-    // Store webhook ID in localStorage for persistence
     localStorage.setItem("notionWebhookId", "webhook-placeholder");
-
     return "webhook-placeholder";
   } catch (error) {
     console.error("Error creating Notion webhook:", error);
@@ -505,9 +351,7 @@ const createNotionWebhook = async (
   }
 };
 
-// Helper functions
 const parseActionItems = (actionPlan) => {
-  // Simple parsing of markdown to extract action items
   const lines = actionPlan.split("\n");
   const items = [];
   let currentBranch = "";
@@ -532,29 +376,23 @@ const parseActionItems = (actionPlan) => {
 };
 
 const writeActionItemsToNotion = async (
-  notionApiKey,
+  notionConfigured,
   notionDatabaseId,
   actionItems,
   addMessage
 ) => {
-  if (!notionApiKey || !notionDatabaseId) {
-    console.error('Missing required configuration:', {
-      hasApiKey: !!notionApiKey,
-      hasDatabaseId: !!notionDatabaseId
-    });
+  if (!notionConfigured || !notionDatabaseId) {
     addMessage(
       "assistant",
-      "❌ Notion configuration is incomplete. Please check your API key and database ID."
+      "❌ Notion configuration is incomplete. Please check your API key and database ID in Settings."
     );
     return [];
   }
 
   if (!actionItems || actionItems.length === 0) {
-    console.error('No action items provided');
     addMessage("assistant", "❌ No action items to create in Notion.");
     return [];
   }
-
 
   const results = [];
   addMessage("system", `🔄 Writing ${actionItems.length} action items to Notion...`);
@@ -562,14 +400,14 @@ const writeActionItemsToNotion = async (
   for (const item of actionItems) {
     try {
       const pageId = await writeToNotionDatabase(
-        notionApiKey,
+        notionConfigured,
         notionDatabaseId,
         {
           title: item.action,
           status: item.status || "Not started",
           priority: item.priority || "Medium",
           category: item.branch || "General",
-          notes: `Generated from mind map branch: ${item.branch}`
+          notes: `Generated from mind map branch: ${item.branch}`,
         },
         addMessage
       );
@@ -579,13 +417,10 @@ const writeActionItemsToNotion = async (
           id: pageId,
           title: item.action,
           status: item.status,
-          branch: item.branch
+          branch: item.branch,
         });
-      } else {
-        console.error('Failed to create Notion page for item:', item);
       }
     } catch (error) {
-      console.error('Error creating Notion page for item:', item, error);
       addMessage(
         "assistant",
         `❌ Error creating item "${item.action}": ${error.message}`
@@ -599,14 +434,14 @@ const writeActionItemsToNotion = async (
   addMessage(
     "assistant",
     `✅ Successfully wrote ${successCount} of ${actionItems.length} items to Notion.${
-      failCount > 0 ? ` (${failCount} items failed)` : ''
+      failCount > 0 ? ` (${failCount} items failed)` : ""
     }`
   );
   return results;
 };
 
 const writeToNotionDatabase = async (
-  notionApiKey,
+  notionConfigured,
   notionDatabaseId,
   {
     title,
@@ -619,148 +454,96 @@ const writeToNotionDatabase = async (
   addMessage
 ) => {
   try {
-    // Input validation
     if (!title) {
-      throw new Error('Title is required');
+      throw new Error("Title is required");
     }
 
-    if (!notionApiKey) {
-      throw new Error('Notion API key is not configured');
+    if (!notionConfigured) {
+      throw new Error("Notion API key is not configured");
     }
 
     if (!notionDatabaseId) {
-      throw new Error('Notion database ID is not configured');
+      throw new Error("Notion database ID is not configured");
     }
 
-    // Ensure API key is properly formatted
-    const apiKey = notionApiKey.trim();
-    if (!apiKey.startsWith('secret_') && !apiKey.startsWith('ntn_')) {
-      console.warn('API key may be invalid - should start with "secret_" or "ntn_"');
-    }
-
-    // First, verify the database exists and is accessible
     addMessage("system", "🔄 Verifying database access...");
 
-    const verifyResponse = await fetch(`${API_BASE_URL}/databases/${notionDatabaseId}`, {
+    const dbData = await callNotionApi(`databases/${notionDatabaseId}`, {
       method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-        "Notion-Version": "2022-06-28"
-      },
     });
 
-    if (!verifyResponse.ok) {
-      const errorData = await verifyResponse.json();
-      console.error('Error accessing Notion database:', {
-        status: verifyResponse.status,
-        error: errorData,
-        databaseId: notionDatabaseId
-      });
-      throw new Error(`Cannot access database: ${errorData.message || errorData.error || "Unknown error"}`);
-    }
-
-    const dbData = await verifyResponse.json();
-
-    // Validate that required properties exist in the database
-    const requiredProperties = ['Name', 'Status', 'Priority', 'Category', 'Notes'];
-    const missingProperties = requiredProperties.filter(prop => !dbData.properties[prop]);
+    const requiredProperties = ["Name", "Status", "Priority", "Category", "Notes"];
+    const missingProperties = requiredProperties.filter(
+      (prop) => !dbData.properties[prop]
+    );
     if (missingProperties.length > 0) {
-      throw new Error(`Database is missing required properties: ${missingProperties.join(', ')}`);
+      throw new Error(
+        `Database is missing required properties: ${missingProperties.join(", ")}`
+      );
     }
 
-    // Create the page with properties matching the database schema
     const requestBody = {
       parent: {
         database_id: notionDatabaseId,
-        type: "database_id"
+        type: "database_id",
       },
       properties: {
-        "Name": {
+        Name: {
           type: "title",
           title: [
             {
               type: "text",
-              text: {
-                content: title
-              }
-            }
-          ]
+              text: { content: title },
+            },
+          ],
         },
-        "Status": {
+        Status: {
           type: "select",
-          select: {
-            name: status
-          }
+          select: { name: status },
         },
-        "Priority": {
+        Priority: {
           type: "select",
-          select: {
-            name: priority
-          }
+          select: { name: priority },
         },
-        "Category": {
+        Category: {
           type: "select",
-          select: {
-            name: category
-          }
+          select: { name: category },
         },
-        "Notes": {
+        Notes: {
           type: "rich_text",
           rich_text: [
             {
               type: "text",
-              text: {
-                content: notes
-              }
-            }
-          ]
-        }
-      }
+              text: { content: notes },
+            },
+          ],
+        },
+      },
     };
 
-    // Add due date if provided
     if (dueDate) {
-      if (!dbData.properties['DueDate']) {
-        console.warn('DueDate property not found in database schema, skipping...');
+      if (!dbData.properties.DueDate) {
+        console.warn("DueDate property not found in database schema, skipping...");
       } else {
-        requestBody.properties["DueDate"] = {
+        requestBody.properties.DueDate = {
           type: "date",
           date: {
             start: dueDate,
-            time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone
-          }
+            time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          },
         };
       }
     }
 
-    const response = await fetch(`${API_BASE_URL}/pages`, {
+    const data = await callNotionApi("pages", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-        "Notion-Version": "2022-06-28"
-      },
-      body: JSON.stringify(requestBody),
+      body: requestBody,
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Error response from Notion API:', {
-        status: response.status,
-        error: errorData,
-        endpoint: 'pages'
-      });
-      throw new Error(
-        `Failed to create page: ${response.status} - ${
-          errorData.message || errorData.error || "Unknown error"
-        }`
-      );
-    }
-
-    const data = await response.json();
-    
-    addMessage("assistant", `✅ Successfully created Notion page: "${title}"\nView it here: ${data.url}`);
+    addMessage(
+      "assistant",
+      `✅ Successfully created Notion page: "${title}"\nView it here: ${data.url}`
+    );
 
     return data.id;
   } catch (error) {
@@ -770,7 +553,6 @@ const writeToNotionDatabase = async (
   }
 };
 
-// Export everything at the end of the file
 export {
   notionTool,
   createNotionDatabase,
@@ -781,5 +563,5 @@ export {
   createNotionWebhook,
   parseActionItems,
   writeActionItemsToNotion,
-  writeToNotionDatabase
+  writeToNotionDatabase,
 };

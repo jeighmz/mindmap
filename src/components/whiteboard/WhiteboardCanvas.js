@@ -20,7 +20,7 @@ import { useTierPermissions } from '../../hooks/useTierPermissions';
 import { saveBoard, getDemoBoards, subscribeToBoardContent } from '../../services/boardService';
 import websocketService from '../../services/websocketService';
 import CursorIndicator from './CursorIndicator';
-import { getApiBaseUrl, getGroqApiKey } from '../../utils/api';
+import { getApiBaseUrl, callGroqChat, callNotionApi, DEFAULT_GROQ_MODEL } from '../../utils/api';
 import { canGenerateMindMap, canExpandConcept, incrementMindMapCount, incrementExpandCount, getUsageStats } from '../../utils/usageTracker';
 import { canUseFeatureByTier, incrementUsage, getRemainingUsage, getUserUsageData } from '../../utils/tierUsageTracker';
 import { TIER_FEATURES, USER_TIERS } from '../../config/userTiers';
@@ -3478,22 +3478,12 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         // Build comprehensive context from parent nodes and related items
         const contextString = buildExpandContext(itemId, text);
 
-        // Get Groq API key from environment
-        const groqApiKey = getGroqApiKey();
-
-        // Call Groq API to generate related concepts
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${groqApiKey}`
-          },
-          body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            messages: [
-              {
-                role: 'system',
-                content: `You are an expert at identifying key related concepts within hierarchical knowledge structures. Your task is to generate exactly 5 closely related sub-concepts that expand upon a given concept, taking into account its full hierarchical context.
+        const data = await callGroqChat({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: `You are an expert at identifying key related concepts within hierarchical knowledge structures. Your task is to generate exactly 5 closely related sub-concepts that expand upon a given concept, taking into account its full hierarchical context.
 
 CRITICAL INSTRUCTIONS:
 1. Analyze the hierarchical context provided - understand the full path from the central topic through parent nodes to the current concept
@@ -3525,23 +3515,16 @@ Training Data Preparation
 Model Optimization Techniques
 Hyperparameter Tuning
 Performance Metrics Analysis`
-              },
-              {
-                role: 'user',
-                content: `${contextString}Based on the comprehensive context provided above, generate exactly 5 key related sub-concepts that expand upon the target concept. Ensure these concepts are informed by the hierarchical structure, parent context, and existing sibling concepts.`
-              }
-            ],
-            temperature: 0.7,
-            max_tokens: 500
-          })
+            },
+            {
+              role: 'user',
+              content: `${contextString}Based on the comprehensive context provided above, generate exactly 5 key related sub-concepts that expand upon the target concept. Ensure these concepts are informed by the hierarchical structure, parent context, and existing sibling concepts.`
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 500
         });
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error?.message || 'Failed to generate concepts');
-        }
-
-        const data = await response.json();
         const concepts = data.choices[0].message.content
           .split('\n')
           .filter(line => line.trim())
@@ -4191,14 +4174,11 @@ Performance Metrics Analysis`
     }
 
     try {
-      // Get Notion API key from environment or user settings
-      const notionApiKey = process.env.REACT_APP_NOTION_API_KEY;
-      if (!notionApiKey) {
-        alert('Notion API key not configured. Please add it to your settings.');
+      if (!user?.uid) {
+        alert('Please sign in to export to Notion.');
         return;
       }
 
-      // Create a new page in Notion
       const pageTitle = 'Mind Map Export';
       const pageContent = [];
 
@@ -4272,40 +4252,30 @@ Performance Metrics Analysis`
       });
 
       // Create the page
-      const response = await createNotionPage(
-        notionApiKey,
-        null, // No database ID for direct page creation
+      const pageId = await createNotionPage(
+        true,
+        null,
         pageTitle,
         {
-            title: {
-              title: [{ text: { content: pageTitle } }]
-            }
+          title: {
+            title: [{ text: { content: pageTitle } }]
           }
-        );
+        },
+        () => {}
+      );
 
-      if (response) {
-        // Add the blocks to the page
-        const blocksResponse = await fetch(`${getApiBaseUrl()}/blocks/${response.id}/children`, {
+      if (pageId) {
+        await callNotionApi(`blocks/${pageId}/children`, {
           method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${notionApiKey}`
-          },
-          body: JSON.stringify({
-            children: pageContent
-          })
+          body: { children: pageContent },
         });
 
-        if (blocksResponse.ok) {
-          alert('Successfully exported mind map to Notion!');
-        } else {
-          throw new Error('Failed to add blocks to Notion page');
-        }
+        alert('Successfully exported mind map to Notion!');
       }
     } catch (err) {
-      alert("Could not export to Notion.");
+      alert(err.message || 'Could not export to Notion. Add your Notion API key in Settings.');
     }
-  }, [items, connections, canExport, getApiBaseUrl]);
+  }, [items, connections, canExport, user?.uid]);
 
   const renderExportMenu = () => {
     const currentTier = getCurrentTier();
@@ -5291,10 +5261,6 @@ Performance Metrics Analysis`
     setIsGeneratingMindMap(true);
     isGeneratingMindMapRef.current = true;
     try {
-      // Get Groq API key from environment
-      const groqApiKey = getGroqApiKey();
-
-      // Create a central node at the user's current viewport center (user-friendly positioning)
       const canvasEl = document.querySelector('.whiteboard-canvas');
       if (!canvasEl) {
         throw new Error('Canvas element not found');
@@ -5327,22 +5293,14 @@ Performance Metrics Analysis`
       // Add the central node
       setItems(prevItems => [...prevItems, centralNode]);
       
-      // Model configuration
-      const MODEL_ID = 'llama-3.3-70b-versatile';
-      
-      // Call Groq API to generate branches
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${groqApiKey}`
-        },
-        body: JSON.stringify({
-          model: MODEL_ID,
-          messages: [
-            {
-              role: 'system',
-              content: `You are a mind map generator specializing in creating hierarchical knowledge structures. Follow these guidelines:
+      const MODEL_ID = DEFAULT_GROQ_MODEL;
+
+      const data = await callGroqChat({
+        model: MODEL_ID,
+        messages: [
+          {
+            role: 'system',
+            content: `You are a mind map generator specializing in creating hierarchical knowledge structures. Follow these guidelines:
 
 1. Central Node (Level 0):
    - This is the main topic provided by the user
@@ -5379,25 +5337,16 @@ SUB: [Sub Branch 4.1 - specific detail]
 SUB: [Sub Branch 4.2 - specific detail]
 
 You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each MAIN branch. Each line must start with either MAIN: or SUB: to indicate the branch type.`
-            },
-            {
-              role: 'user',
-              content: `Generate a hierarchical mind map about: ${mindMapPrompt}`
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 1000
-        })
+          },
+          {
+            role: 'user',
+            content: `Generate a hierarchical mind map about: ${mindMapPrompt}`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 1000,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || 'Failed to generate mind map branches');
-      }
-
-      const data = await response.json();
-      
-      // Improved parsing with better error handling
       const rawContent = data.choices[0].message.content;
       const branches = rawContent
         .split('\n')
@@ -5866,10 +5815,6 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
     setIsGeneratingMindMap(true);
     isGeneratingMindMapRef.current = true;
     try {
-      // Get Groq API key from environment
-      const groqApiKey = getGroqApiKey();
-
-      // Get viewport center for positioning
       const canvasEl = document.querySelector('.whiteboard-canvas');
       if (!canvasEl) {
         throw new Error('Canvas element not found');
@@ -5885,7 +5830,7 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
       const baseOrder = items.length > 0 ? Math.max(...items.map((i, idx) => i.order !== undefined ? i.order : idx)) : -1;
       
       // Model configuration
-      const MODEL_ID = 'llama-3.3-70b-versatile';
+      const MODEL_ID = DEFAULT_GROQ_MODEL;
       
       // Create chart-specific prompts
       let systemPrompt = '';
@@ -5985,89 +5930,69 @@ Guidelines:
       } else if (chartGenerationType === 'flowchart') {
         systemPrompt = `You are an expert Flowchart Architect. Convert the user's request into a clear, actionable flowchart using ONLY circle and square nodes connected by arrows.
 Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
-+{
-+  "title": string, // concise (<= 50 chars)
-+  "nodes": [
-+    {
-+      "id": string,            // unique, kebab-case [a-z0-9-], no spaces
-+      "type": "circle"|"square", // circle = start/end/decision; square = process/action
-+      "label": string,         // <= 24 chars, Title Case
-+      "description": string,   // <= 80 chars, succinct
-+      "phase": string|null,    // optional human label (e.g., Research, Strategy, Activation, Launch, Growth)
-+      "phaseIndex": number|null, // optional 1-based ordering for phases (1..N); contiguous if present
-+      "parentId": string|null, // optional; use for substeps of a step; max depth = 2
-+      "order": number|null     // optional global reading order within same phase/level
-+    }
-+  ],
-+  "connections": [
-+    { "from": string, "to": string, "label": string|null } // label <= 18 chars
-+  ]
-+}
-+
-+Hard Requirements:
-+- Use ONLY these shapes: circle (start/end/decision) and square (process/action).
-+- Exactly 1 Start (circle) and at least 1 End (circle). Prefer 1 End unless parallel endings are necessary.
-+- 6–15 total nodes. Up to 2 nested substep levels via parentId.
-+- All ids must be referenced by at least one connection, no orphans.
-+- Graph should be a DAG (no cycles). Ensure clear progression left-to-right by phaseIndex/order.
-+- If parentId is used for substeps, connect the parent to the first substep, and connect substeps sequentially if needed.
-+- If the request implies phases, set phase names and contiguous phaseIndex values (1..N). Within a phase, set increasing order.
-+- Keep labels and descriptions crisp and non-redundant. No commas in ids. No extra keys.
-+
-+Conventions:
-+- Start/End nodes must be type circle with labels "Start" and "End" (or variants like "Go Live" for end if appropriate).
-+- Decision points (if any) must be type circle with short question labels (e.g., "Product-Market Fit?").
-+- Process steps should be type square.
-+
-+Go-To-Market (GTM) Hint (if applicable to the request): use phases and indices like:
-+  1 Research, 2 Strategy, 3 Enablement, 4 Activation, 5 Launch, 6 Growth.
-+
-+Self-reflection before drafting (answer silently; do not output this reasoning):
-+- What are the major milestones of this process?
-+- For each decision or event, what are the possible outcomes and the subsequent paths?
-+- Is the flowchart as in-depth and tailored to the user's specific request and domain as it should be? If not, revise phases, nodes, and connections accordingly before producing the final output.
-+
-+Validation before returning:
-+- Ensure ids are unique and referenced by connections. Ensure every connection's from/to exists.
-+- Ensure exactly one Start and at least one End. Ensure phaseIndex values (if present) are contiguous starting at 1.
-+- Ensure node count between 6 and 15. Ensure connection labels (if present) are <= 18 chars.
-+
-+Output a single JSON object conforming to the schema above.`;
+{
+  "title": string, // concise (<= 50 chars)
+  "nodes": [
+    {
+      "id": string,            // unique, kebab-case [a-z0-9-], no spaces
+      "type": "circle"|"square", // circle = start/end/decision; square = process/action
+      "label": string,         // <= 24 chars, Title Case
+      "description": string,   // <= 80 chars, succinct
+      "phase": string|null,    // optional human label (e.g., Research, Strategy, Activation, Launch, Growth)
+      "phaseIndex": number|null, // optional 1-based ordering for phases (1..N); contiguous if present
+      "parentId": string|null, // optional; use for substeps of a step; max depth = 2
+      "order": number|null     // optional global reading order within same phase/level
+    }
+  ],
+  "connections": [
+    { "from": string, "to": string, "label": string|null } // label <= 18 chars
+  ]
+}
+
+Hard Requirements:
+- Use ONLY these shapes: circle (start/end/decision) and square (process/action).
+- Exactly 1 Start (circle) and at least 1 End (circle). Prefer 1 End unless parallel endings are necessary.
+- 6–15 total nodes. Up to 2 nested substep levels via parentId.
+- All ids must be referenced by at least one connection, no orphans.
+- Graph should be a DAG (no cycles). Ensure clear progression left-to-right by phaseIndex/order.
+- If parentId is used for substeps, connect the parent to the first substep, and connect substeps sequentially if needed.
+- If the request implies phases, set phase names and contiguous phaseIndex values (1..N). Within a phase, set increasing order.
+- Keep labels and descriptions crisp and non-redundant. No commas in ids. No extra keys.
+
+Conventions:
+- Start/End nodes must be type circle with labels "Start" and "End" (or variants like "Go Live" for end if appropriate).
+- Decision points (if any) must be type circle with short question labels (e.g., "Product-Market Fit?").
+- Process steps should be type square.
+
+Go-To-Market (GTM) Hint (if applicable to the request): use phases and indices like:
+  1 Research, 2 Strategy, 3 Enablement, 4 Activation, 5 Launch, 6 Growth.
+
+Self-reflection before drafting (answer silently; do not output this reasoning):
+- What are the major milestones of this process?
+- For each decision or event, what are the possible outcomes and the subsequent paths?
+- Is the flowchart as in-depth and tailored to the user's specific request and domain as it should be? If not, revise phases, nodes, and connections accordingly before producing the final output.
+
+Validation before returning:
+- Ensure ids are unique and referenced by connections. Ensure every connection's from/to exists.
+- Ensure exactly one Start and at least one End. Ensure phaseIndex values (if present) are contiguous starting at 1.
+- Ensure node count between 6 and 15. Ensure connection labels (if present) are <= 18 chars.
+
+Output a single JSON object conforming to the schema above.`;
 
         userPrompt = `Generate a flowchart configuration for: ${mindMapPrompt}`;
       }
 
-      // Call Groq API
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${groqApiKey}`
-        },
-        body: JSON.stringify({
-          model: MODEL_ID,
-          messages: [
-            {
-              role: 'system',
-              content: systemPrompt
-            },
-            {
-              role: 'user',
-              content: userPrompt
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 2000,
-          response_format: { type: "json_object" }
-        })
+      const data = await callGroqChat({
+        model: MODEL_ID,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
+        response_format: { type: 'json_object' },
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || 'Failed to generate chart configuration');
-      }
-
-      const data = await response.json();
       const rawContent = data.choices[0].message.content;
       
       // Parse JSON response

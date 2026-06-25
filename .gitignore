@@ -3,11 +3,9 @@
 # --- Dependencies ---
 node_modules/
 backend/node_modules/
+netlify/functions/node_modules/
 /.pnp
 .pnp.js
-
-# Netlify Functions ships its own dependency tree
-!/netlify/functions/node_modules
 
 # --- Build & test output ---
 /build
@@ -59,6 +57,7 @@ ehthumbs.db
 Desktop.ini
 
 # --- Editors / IDEs ---
+.cursor/
 .idea/
 *.iml
 .vscode/*

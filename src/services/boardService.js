@@ -13,7 +13,7 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 import { auth, db } from '../firebase-config';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getAuthHeaders } from '../utils/api';
 import { TIER_FEATURES, USER_TIERS } from '../config/userTiers';
 
 const BOARDS_COLLECTION = 'boards';
@@ -545,9 +545,10 @@ const encryptChatHistory = async (chatHistory, userId) => {
       return btoa(JSON.stringify(chatHistory));
     }
 
+    const authHeaders = await getAuthHeaders();
     const response = await fetch(`${getApiBaseUrl()}/encrypt-chat-history`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         userId,
         chatHistory
@@ -607,9 +608,10 @@ const decryptChatHistory = async (encryptedData, userId) => {
     }
 
     // Attempt to decrypt
+    const authHeaders = await getAuthHeaders();
     const response = await fetch(`${getApiBaseUrl()}/decrypt-chat-history`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         userId,
         encryptedData

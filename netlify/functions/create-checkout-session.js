@@ -1,6 +1,14 @@
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
+const {
+  getCorsHeaders,
+  handlePreflight,
+  requireAuth,
+  authErrorResponse,
+  safeErrorBody,
+  isProduction,
+} = require('./utils/auth');
 
 // Initialize Firebase Admin lazily
 let db = null;
@@ -16,7 +24,8 @@ const initializeFirebase = () => {
       // Try to use service account JSON file first (easier and more reliable)
       const serviceAccountPath = path.join(__dirname, '../../firebase-service-account.json');
       
-      if (fs.existsSync(serviceAccountPath)) {
+      // Local development only — never load service account file in production
+      if (!isProduction() && fs.existsSync(serviceAccountPath)) {
         console.log('Using firebase-service-account.json file');
         const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
         initializeApp({
@@ -61,41 +70,14 @@ const initializeFirebase = () => {
   return db;
 };
 
-// CORS headers - allow all origins in development, specific in production
-const getHeaders = (origin) => {
-  const allowedOrigins = [
-    'http://localhost:3000',
-    'http://localhost:8888',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:8888'
-  ];
-  
-  // In development, allow any localhost origin
-  const isDevelopment = process.env.NODE_ENV !== 'production';
-  const allowOrigin = isDevelopment 
-    ? (origin && origin.includes('localhost') ? origin : '*')
-    : (allowedOrigins.includes(origin) ? origin : allowedOrigins[0]);
-  
-  return {
-    'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Credentials': 'true',
-  };
-};
+// CORS headers are handled via utils/auth.js
 
 exports.handler = async (event, context) => {
   const origin = event.headers.origin || event.headers.Origin || '*';
-  const headers = getHeaders(origin);
+  const headers = getCorsHeaders(origin);
   
-  // Handle preflight request
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 204,
-      headers,
-      body: ''
-    };
-  }
+  const preflight = handlePreflight(event);
+  if (preflight) return preflight;
 
   if (event.httpMethod !== 'POST') {
     return {
@@ -124,6 +106,11 @@ exports.handler = async (event, context) => {
     }
     
     const { userId, productId, interval, customerEmail, currentTier, newTier } = JSON.parse(event.body);
+
+    const authResult = await requireAuth(event, userId);
+    if (authResult.error) {
+      return authErrorResponse(authResult, headers);
+    }
     
     // Log the tier values for debugging
     console.log('Checkout session creation:', {
@@ -497,10 +484,7 @@ exports.handler = async (event, context) => {
     return {
       statusCode,
       headers,
-      body: JSON.stringify({ 
-        error: errorMessage,
-        type: error.type || 'api_error'
-      })
+      body: safeErrorBody(errorMessage, statusCode)
     };
   }
 }; 

@@ -5,7 +5,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase-config';
 import { useAuth } from '../../contexts/AuthContext';
 import '../../styles/SearchPanel.css';
-import { getApiBaseUrl, getGroqApiKey } from '../../utils/api';
+import { callGroqChat, DEFAULT_GROQ_MODEL } from '../../utils/api';
 import { canSendQuery, incrementQueryCount, getRemainingQueries, getUsageStats } from '../../utils/usageTracker';
 import { canUseFeatureByTier, incrementUsage } from '../../utils/tierUsageTracker';
 import { TIER_FEATURES, USER_TIERS } from '../../config/userTiers';
@@ -870,8 +870,6 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
       // Prepare the full context for the AI
       const fullPrompt = `Context from whiteboard:\n${itemsContext}\n\nUser question: ${userMessage}`;
 
-      const apiKey = getUserApiKey();
-
       // Prepare messages array based on whether we're using a vision model and have images
       let messages = [systemMessage];
       
@@ -910,33 +908,15 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
         messages.push({ role: 'user', content: fullPrompt });
       }
 
-      const response = await fetch(`https://api.groq.com/openai/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: selectedModel.id,
-          messages: messages,
-          temperature: 0.7,
-          max_tokens: 1024,
-          top_p: 0.9,
-          stream: false
-        })
+      const data = await callGroqChat({
+        model: selectedModel.id,
+        messages,
+        temperature: 0.7,
+        max_tokens: 1024,
+        top_p: 0.9,
+        stream: false,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        console.error('Groq API error:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorData
-        });
-        throw new Error(`Failed to get response from AI: ${response.statusText}`);
-      }
-
-      const data = await response.json();
       const aiResponse = data.choices[0].message.content;
 
       updateTabMessages(activeTabId, [...newMessages, { role: 'assistant', content: aiResponse }]);
@@ -951,11 +931,6 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
     } finally {
       setIsLoading(false);
     }
-  };
-
-  // Function to get Groq API key from environment
-  const getUserApiKey = () => {
-    return getGroqApiKey();
   };
 
   const activeTab = tabs.find(tab => tab.id === activeTabId);

@@ -5,7 +5,7 @@ import '../../../styles/AgentChat.css';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../firebase-config';
 import { useAuth } from '../../../contexts/AuthContext';
-import { getGroqApiKey } from '../../../utils/api';
+import { callGroqChat, DEFAULT_GROQ_MODEL } from '../../../utils/api';
 import {
   notionTool,
   createNotionDatabase,
@@ -26,7 +26,7 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedTools, setSelectedTools] = useState([]);
   const [notionDatabaseId, setNotionDatabaseId] = useState('');
-  const [notionApiKey, setNotionApiKey] = useState('');
+  const [notionConfigured, setNotionConfigured] = useState(false);
   const [actionItems, setActionItems] = useState([]);
   const [currentStep, setCurrentStep] = useState('idle'); // idle, analyzing, planning, confirming, executing
   const [currentAction, setCurrentAction] = useState(null);
@@ -84,25 +84,33 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
   }, []);
 
   useEffect(() => {
-    // Get Notion API key from environment variables
-    const apiKey = window?.env?.REACT_APP_NOTION_API_KEY || process.env.REACT_APP_NOTION_API_KEY || process.env.NOTION_API_KEY;
-    const dbId = window?.env?.REACT_APP_NOTION_DATABASE_ID || process.env.REACT_APP_NOTION_DATABASE_ID;
-    
-    if (apiKey) {
-      // Validate API key format
-      const trimmedKey = apiKey.trim();
-      if (!trimmedKey.startsWith('secret_') && !trimmedKey.startsWith('ntn_')) {
-        console.warn('Notion API key may be invalid - should start with "secret_" or "ntn_"');
+    const loadNotionSettings = async () => {
+      if (!user?.uid) {
+        setNotionConfigured(false);
+        return;
       }
-      setNotionApiKey(trimmedKey);
-    } else {
-      console.error('No Notion API key found in environment variables');
-    }
-    
-    if (dbId) {
-      setNotionDatabaseId(dbId);
-    }
-  }, []);
+
+      try {
+        const settingsRef = doc(db, 'userSettings', user.uid);
+        const settingsSnap = await getDoc(settingsRef);
+
+        if (settingsSnap.exists()) {
+          const data = settingsSnap.data();
+          setNotionConfigured(!!data.notionApiKey);
+          if (data.notionDatabaseId) {
+            setNotionDatabaseId(data.notionDatabaseId);
+          }
+        } else {
+          setNotionConfigured(false);
+        }
+      } catch (error) {
+        console.error('Error loading Notion settings:', error);
+        setNotionConfigured(false);
+      }
+    };
+
+    loadNotionSettings();
+  }, [user?.uid]);
 
   // Listen for updates to highlightedItems and update context
   useEffect(() => {
@@ -186,7 +194,7 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
   };
 
   const handleNotionDatabase = async () => {
-    const databaseId = await createNotionDatabase(notionApiKey, notionDatabaseId, addMessage);
+    const databaseId = await createNotionDatabase(notionConfigured, notionDatabaseId, addMessage);
     if (databaseId) {
       setNotionDatabaseId(databaseId);
       return databaseId;
@@ -196,11 +204,11 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
   };
 
   const handleNotionPage = async (title, properties) => {
-    return await createNotionPage(notionApiKey, notionDatabaseId, title, properties, addMessage);
+    return await createNotionPage(notionConfigured, notionDatabaseId, title, properties, addMessage);
   };
 
   const handleNotionDatabaseContent = async () => {
-    return await fetchNotionDatabaseContent(notionApiKey, notionDatabaseId, addMessage);
+    return await fetchNotionDatabaseContent(notionConfigured, notionDatabaseId, addMessage);
   };
 
   const handleNotionWebhookEvent = useCallback((event) => {
@@ -262,10 +270,6 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
     const mindMapAnalysis = analyzeMindMap();
     
     try {
-      const apiKey = getUserApiKey();
-      const model = process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
-
-      // Create system prompt for action planning
       const systemPrompt = `You are an AI agent that helps users create action plans from mind maps.
       Create a detailed action plan based on the following mind map:
       
@@ -283,28 +287,12 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
       
       Make the action items specific, measurable, and achievable.`;
 
-      // Call Groq API
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            { role: 'system', content: systemPrompt }
-          ],
-          temperature: 0.7,
-          max_tokens: 2000
-        })
+      const data = await callGroqChat({
+        model: DEFAULT_GROQ_MODEL,
+        messages: [{ role: 'system', content: systemPrompt }],
+        temperature: 0.7,
+        max_tokens: 2000,
       });
-
-      if (!response.ok) {
-        throw new Error(`API call failed: ${response.status}`);
-      }
-
-      const data = await response.json();
       const actionPlan = data.choices[0].message.content;
       
       addMessage('assistant', actionPlan);
@@ -440,7 +428,7 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
       
       // Write all action items to Notion using the new function
       const results = await writeActionItemsToNotion(
-        notionApiKey,
+        notionConfigured,
         notionDatabaseId,
         actionItems,
         addMessage
@@ -739,10 +727,6 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
         const mindMapAnalysis = analyzeMindMap();
         
         try {
-          const apiKey = getUserApiKey();
-          const model = process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
-
-          // Create system prompt for action planning
           const systemPrompt = `You are an AI agent that helps users create action plans from mind maps.
           Create a detailed action plan based on the following mind map:
           
@@ -760,28 +744,12 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
           
           Make the action items specific, measurable, and achievable.`;
 
-          // Call Groq API
-          const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-              model: model,
-              messages: [
-                { role: 'system', content: systemPrompt }
-              ],
-              temperature: 0.7,
-              max_tokens: 2000
-            })
+          const data = await callGroqChat({
+            model: DEFAULT_GROQ_MODEL,
+            messages: [{ role: 'system', content: systemPrompt }],
+            temperature: 0.7,
+            max_tokens: 2000,
           });
-
-          if (!response.ok) {
-            throw new Error(`API call failed: ${response.status}`);
-          }
-
-          const data = await response.json();
           const actionPlan = data.choices[0].message.content;
           
           addMessage('assistant', actionPlan);
@@ -1089,11 +1057,6 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
     }
   };
 
-  // Function to get Groq API key from environment
-  const getUserApiKey = () => {
-    return getGroqApiKey();
-  };
-
   // Function to identify tools based on user intent
   const identifyTools = async (userInput) => {
     try {
@@ -1166,8 +1129,7 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
   // Function to execute tools in an agentic, conversational manner
   const executeToolAgentChat = async (userInput) => {
     try {
-      const apiKey = getUserApiKey();
-      const model = process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
+      const model = DEFAULT_GROQ_MODEL;
       
       // Identify tools based on user intent
       const identifiedTools = await identifyTools(userInput);
@@ -1339,24 +1301,16 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
         
         // If no tools were executed, proceed with regular chat
         if (!toolExecuted) {
-          // Regular chat processing
-          const apiKey = getUserApiKey();
-          const model = process.env.REACT_APP_GROQ_MODEL || 'llama-3.3-70b-versatile';
-
-          // Analyze mind map
+          const model = DEFAULT_GROQ_MODEL;
           const mindMapAnalysis = analyzeMindMap();
-
-          // Get selected tool context
           const toolContext = getToolContext();
-          
-          // Build highlighted items context
+
           let highlightedContext = '';
           if (highlightedItems && highlightedItems.length > 0) {
             const highlightedTexts = highlightedItems.map(item => item.text || 'Untitled').join('\n');
             highlightedContext = `\n\nCurrently selected items:\n${highlightedTexts}\n\nPlease focus your analysis on these specific items when relevant.`;
           }
-          
-          // Create system prompt with tool context
+
           const systemPrompt = `You are an AI agent that helps users analyze mind maps and take actions.
           ${toolContext}
 
@@ -1370,30 +1324,16 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
           Central Topic: ${mindMapAnalysis.centralTopic}
           Number of main branches: ${mindMapAnalysis.branches.length}${highlightedContext}`;
 
-          // Call the Groq API
-          const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-              model: model,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                ...messages.slice(-5), // Include last 5 messages for context
-                userMessage
-              ],
-              temperature: 0.7,
-              max_tokens: 1000
-            })
+          const data = await callGroqChat({
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              ...messages.slice(-5),
+              userMessage
+            ],
+            temperature: 0.7,
+            max_tokens: 1000,
           });
-
-          if (!response.ok) {
-            throw new Error(`API call failed: ${response.status}`);
-          }
-
-          const data = await response.json();
           const aiResponse = data.choices[0].message.content;
 
           // Add AI response to chat
