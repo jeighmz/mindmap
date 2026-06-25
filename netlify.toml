@@ -4,6 +4,7 @@
   functions = "netlify/functions"
 
 [build.environment]
+  NODE_VERSION = "20"
   CI = "false"
   BROWSER = ""
   PORT = ""
