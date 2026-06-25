@@ -20,7 +20,7 @@ import { useTierPermissions } from '../../hooks/useTierPermissions';
 import { saveBoard, getDemoBoards, subscribeToBoardContent } from '../../services/boardService';
 import websocketService from '../../services/websocketService';
 import CursorIndicator from './CursorIndicator';
-import { getApiBaseUrl, getGroqApiKey } from '../../utils/api';
+import { getApiBaseUrl, callGroqChat, callNotionApi, DEFAULT_GROQ_MODEL } from '../../utils/api';
 import { canGenerateMindMap, canExpandConcept, incrementMindMapCount, incrementExpandCount, getUsageStats } from '../../utils/usageTracker';
 import { canUseFeatureByTier, incrementUsage, getRemainingUsage, getUserUsageData } from '../../utils/tierUsageTracker';
 import { TIER_FEATURES, USER_TIERS } from '../../config/userTiers';
@@ -3478,22 +3478,12 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         // Build comprehensive context from parent nodes and related items
         const contextString = buildExpandContext(itemId, text);
 
-        // Get Groq API key from environment
-        const groqApiKey = getGroqApiKey();
-
-        // Call Groq API to generate related concepts
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${groqApiKey}`
-          },
-          body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            messages: [
-              {
-                role: 'system',
-                content: `You are an expert at identifying key related concepts within hierarchical knowledge structures. Your task is to generate exactly 5 closely related sub-concepts that expand upon a given concept, taking into account its full hierarchical context.
+        const data = await callGroqChat({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: `You are an expert at identifying key related concepts within hierarchical knowledge structures. Your task is to generate exactly 5 closely related sub-concepts that expand upon a given concept, taking into account its full hierarchical context.
 
 CRITICAL INSTRUCTIONS:
 1. Analyze the hierarchical context provided - understand the full path from the central topic through parent nodes to the current concept
@@ -3525,23 +3515,16 @@ Training Data Preparation
 Model Optimization Techniques
 Hyperparameter Tuning
 Performance Metrics Analysis`
-              },
-              {
-                role: 'user',
-                content: `${contextString}Based on the comprehensive context provided above, generate exactly 5 key related sub-concepts that expand upon the target concept. Ensure these concepts are informed by the hierarchical structure, parent context, and existing sibling concepts.`
-              }
-            ],
-            temperature: 0.7,
-            max_tokens: 500
-          })
+            },
+            {
+              role: 'user',
+              content: `${contextString}Based on the comprehensive context provided above, generate exactly 5 key related sub-concepts that expand upon the target concept. Ensure these concepts are informed by the hierarchical structure, parent context, and existing sibling concepts.`
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 500
         });
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error?.message || 'Failed to generate concepts');
-        }
-
-        const data = await response.json();
         const concepts = data.choices[0].message.content
           .split('\n')
           .filter(line => line.trim())
@@ -4191,14 +4174,11 @@ Performance Metrics Analysis`
     }
 
     try {
-      // Get Notion API key from environment or user settings
-      const notionApiKey = process.env.REACT_APP_NOTION_API_KEY;
-      if (!notionApiKey) {
-        alert('Notion API key not configured. Please add it to your settings.');
+      if (!user?.uid) {
+        alert('Please sign in to export to Notion.');
         return;
       }
 
-      // Create a new page in Notion
       const pageTitle = 'Mind Map Export';
       const pageContent = [];
 
@@ -4272,40 +4252,30 @@ Performance Metrics Analysis`
       });
 
       // Create the page
-      const response = await createNotionPage(
-        notionApiKey,
-        null, // No database ID for direct page creation
+      const pageId = await createNotionPage(
+        true,
+        null,
         pageTitle,
         {
-            title: {
-              title: [{ text: { content: pageTitle } }]
-            }
+          title: {
+            title: [{ text: { content: pageTitle } }]
           }
-        );
+        },
+        () => {}
+      );
 
-      if (response) {
-        // Add the blocks to the page
-        const blocksResponse = await fetch(`${getApiBaseUrl()}/blocks/${response.id}/children`, {
+      if (pageId) {
+        await callNotionApi(`blocks/${pageId}/children`, {
           method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${notionApiKey}`
-          },
-          body: JSON.stringify({
-            children: pageContent
-          })
+          body: { children: pageContent },
         });
 
-        if (blocksResponse.ok) {
-          alert('Successfully exported mind map to Notion!');
-        } else {
-          throw new Error('Failed to add blocks to Notion page');
-        }
+        alert('Successfully exported mind map to Notion!');
       }
     } catch (err) {
-      alert("Could not export to Notion.");
+      alert(err.message || 'Could not export to Notion. Add your Notion API key in Settings.');
     }
-  }, [items, connections, canExport, getApiBaseUrl]);
+  }, [items, connections, canExport, user?.uid]);
 
   const renderExportMenu = () => {
     const currentTier = getCurrentTier();
@@ -5291,10 +5261,6 @@ Performance Metrics Analysis`
     setIsGeneratingMindMap(true);
     isGeneratingMindMapRef.current = true;
     try {
-      // Get Groq API key from environment
-      const groqApiKey = getGroqApiKey();
-
-      // Create a central node at the user's current viewport center (user-friendly positioning)
       const canvasEl = document.querySelector('.whiteboard-canvas');
       if (!canvasEl) {
         throw new Error('Canvas element not found');
@@ -5327,22 +5293,14 @@ Performance Metrics Analysis`
       // Add the central node
       setItems(prevItems => [...prevItems, centralNode]);
       
-      // Model configuration
-      const MODEL_ID = 'llama-3.3-70b-versatile';
-      
-      // Call Groq API to generate branches
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${groqApiKey}`
-        },
-        body: JSON.stringify({
-          model: MODEL_ID,
-          messages: [
-            {
-              role: 'system',
-              content: `You are a mind map generator specializing in creating hierarchical knowledge structures. Follow these guidelines:
+      const MODEL_ID = DEFAULT_GROQ_MODEL;
+
+      const data = await callGroqChat({
+        model: MODEL_ID,
+        messages: [
+          {
+            role: 'system',
+            content: `You are a mind map generator specializing in creating hierarchical knowledge structures. Follow these guidelines:
 
 1. Central Node (Level 0):
    - This is the main topic provided by the user
@@ -5379,25 +5337,16 @@ SUB: [Sub Branch 4.1 - specific detail]
 SUB: [Sub Branch 4.2 - specific detail]
 
 You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each MAIN branch. Each line must start with either MAIN: or SUB: to indicate the branch type.`
-            },
-            {
-              role: 'user',
-              content: `Generate a hierarchical mind map about: ${mindMapPrompt}`
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 1000
-        })
+          },
+          {
+            role: 'user',
+            content: `Generate a hierarchical mind map about: ${mindMapPrompt}`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 1000,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || 'Failed to generate mind map branches');
-      }
-
-      const data = await response.json();
-      
-      // Improved parsing with better error handling
       const rawContent = data.choices[0].message.content;
       const branches = rawContent
         .split('\n')
@@ -5866,10 +5815,6 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
     setIsGeneratingMindMap(true);
     isGeneratingMindMapRef.current = true;
     try {
-      // Get Groq API key from environment
-      const groqApiKey = getGroqApiKey();
-
-      // Get viewport center for positioning
       const canvasEl = document.querySelector('.whiteboard-canvas');
       if (!canvasEl) {
         throw new Error('Canvas element not found');
@@ -6037,37 +5982,19 @@ Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
         userPrompt = `Generate a flowchart configuration for: ${mindMapPrompt}`;
       }
 
-      // Call Groq API
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${groqApiKey}`
-        },
-        body: JSON.stringify({
-          model: MODEL_ID,
-          messages: [
-            {
-              role: 'system',
-              content: systemPrompt
-            },
-            {
-              role: 'user',
-              content: userPrompt
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 2000,
-          response_format: { type: "json_object" }
-        })
+      const MODEL_ID = DEFAULT_GROQ_MODEL;
+
+      const data = await callGroqChat({
+        model: MODEL_ID,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
+        response_format: { type: 'json_object' },
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || 'Failed to generate chart configuration');
-      }
-
-      const data = await response.json();
       const rawContent = data.choices[0].message.content;
       
       // Parse JSON response

@@ -2,9 +2,55 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // Very permissive rules for testing - REMOVE IN PRODUCTION
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isImageUpload() {
+      return request.resource != null
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Profile pictures — users may only write their own files
+    match /profilePictures/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && fileName.matches('^' + request.auth.uid + '_.*')
+        && isImageUpload();
+      allow delete: if isSignedIn()
+        && fileName.matches('^' + request.auth.uid + '_.*');
+    }
+
+    // Board preview images for community posts
+    match /previews/{fileName} {
+      allow read: if true;
+      allow write: if isSignedIn() && isImageUpload();
+      allow delete: if isSignedIn();
+    }
+
+    // Board-attached images (path must include the uploader's uid)
+    match /boardImages/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.auth.uid == userId
+        && isImageUpload();
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Legacy image paths from older board saves
+    match /images/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.auth.uid == userId
+        && isImageUpload();
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Authenticated read-only fallback for legacy storage references embedded in boards
     match /{allPaths=**} {
-      allow read, write: if request.auth != null;
+      allow read: if isSignedIn();
+      allow write: if false;
     }
   }
 }

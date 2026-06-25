@@ -1,5 +1,12 @@
 const admin = require('firebase-admin');
 const { encrypt } = require('./utils/encryption');
+const {
+  getCorsHeaders,
+  handlePreflight,
+  requireAuth,
+  authErrorResponse,
+  safeErrorBody,
+} = require('./utils/auth');
 
 // Initialize Firebase Admin with explicit error handling
 const initializeFirebase = () => {
@@ -82,25 +89,11 @@ const initializeFirebase = () => {
 };
 
 exports.handler = async (event, context) => {
-  // Set CORS headers - must be set for all responses including errors
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Content-Type': 'application/json'
-  };
+  const origin = event.headers.origin || event.headers.Origin;
+  const headers = getCorsHeaders(origin);
 
-  // Handle preflight requests
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 204,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS'
-      }
-    };
-  }
+  const preflight = handlePreflight(event);
+  if (preflight) return preflight;
 
   try {
     console.log('Function started');
@@ -113,6 +106,11 @@ exports.handler = async (event, context) => {
     // Parse request
     const { userId, apiKey } = JSON.parse(event.body);
     console.log('Request parsed, userId exists:', !!userId);
+
+    const authResult = await requireAuth(event, userId);
+    if (authResult.error) {
+      return authErrorResponse(authResult, headers);
+    }
 
     if (!userId || !apiKey) {
       return {
@@ -147,11 +145,7 @@ exports.handler = async (event, context) => {
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({
-        error: 'Internal server error',
-        details: error.message,
-        type: error.constructor.name
-      })
+      body: safeErrorBody(error.message, 500)
     };
   }
 }; 

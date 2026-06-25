@@ -1,27 +1,76 @@
+import { auth } from '../firebase-config';
+
+export const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
+
 // Get the base API URL based on environment
 export const getApiBaseUrl = () => {
   if (process.env.NODE_ENV === 'development') {
-    // For local development
     return 'http://localhost:8888/api';
   }
-  // For production, use the Netlify Functions path
-  return 'https://aimindmap.netlify.app/.netlify/functions';
+  return '/api';
 };
 
-// Helper function for development mode
 export const isDevMode = () => process.env.NODE_ENV === 'development';
 
-// Get Groq API key from environment variable
-export const getGroqApiKey = () => {
-  const apiKey = process.env.REACT_APP_GROQ_API_KEY || window?.env?.REACT_APP_GROQ_API_KEY;
-  
-  if (!apiKey) {
-    throw new Error('Groq API key is not configured. Please contact support.');
+export const getAuthHeaders = async () => {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('User must be authenticated');
   }
-  
-  if (!apiKey.startsWith('gsk_')) {
-    throw new Error('Invalid Groq API key format');
+
+  const token = await user.getIdToken();
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
+};
+
+export const callGroqChat = async ({
+  messages,
+  model = DEFAULT_GROQ_MODEL,
+  temperature,
+  max_tokens,
+  top_p,
+  stream = false,
+  response_format,
+}) => {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${getApiBaseUrl()}/groq-chat`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      messages,
+      model,
+      temperature,
+      max_tokens,
+      top_p,
+      stream,
+      response_format,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.error?.message || data.error || `Groq API error (${response.status})`);
   }
-  
-  return apiKey;
-}; 
+
+  return data;
+};
+
+export const callNotionApi = async (endpoint, { method = 'GET', body } = {}) => {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${getApiBaseUrl()}/notion-api`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ endpoint, method, body }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.message || data.error || `Notion API error (${response.status})`);
+  }
+
+  return data;
+};

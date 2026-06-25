@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { USER_TIERS, TIER_FEATURES } from '../config/userTiers';
 import '../styles/Settings.css';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getAuthHeaders } from '../utils/api';
 import { getUserProfilePicture, handleImageError } from '../utils/profilePicture';
 import { getUserUsageData } from '../utils/tierUsageTracker';
 import { collection, query, where, getDocs } from 'firebase/firestore';
@@ -137,9 +137,10 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
             if (process.env.NODE_ENV === 'development') {
               setNotionApiKey(data.notionApiKey);
             } else {
+              const authHeaders = await getAuthHeaders();
               const response = await fetch(`${getApiBaseUrl()}/decryptApiKey`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: authHeaders,
                 body: JSON.stringify({
                   userId: currentUser.uid,
                   encryptedData: data.notionApiKey
@@ -332,9 +333,10 @@ export default function Settings({ isOpen, onClose, onUpgradeClick }) {
           settingsData.notionApiKey = btoa(trimmedNotionKey);
         } else {
           try {
+            const authHeaders = await getAuthHeaders();
             const response = await fetch(`${getApiBaseUrl()}/encryptApiKey`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: authHeaders,
               body: JSON.stringify({
                 userId: user.uid,
                 apiKey: trimmedNotionKey

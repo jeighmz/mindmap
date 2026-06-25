@@ -2,177 +2,319 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper functions
+    // -------------------------------------------------------------------------
+    // Shared helpers
+    // -------------------------------------------------------------------------
     function isSignedIn() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Users collection rules
-    match /users/{userId} {
-      allow create: if request.auth != null && request.auth.uid == userId;
-      allow read: if request.auth != null; // Allow reading other users for sharing (email lookup)
-      allow update: if request.auth != null && request.auth.uid == userId;
+    function isEmailLookupQuery() {
+      return request.query != null
+        && request.query.filters.size() == 1
+        && request.query.filters[0].field == 'email'
+        && request.query.filters[0].op == '=='
+        && request.query.filters[0].value is string;
     }
 
-    // Boards collection rules
+    function boardDoc(boardId) {
+      return get(/databases/$(database)/documents/boards/$(boardId));
+    }
+
+    function boardExists(boardId) {
+      return exists(/databases/$(database)/documents/boards/$(boardId));
+    }
+
+    function canAccessBoard(boardId) {
+      return boardExists(boardId) && (
+        boardDoc(boardId).data.userId == null ||
+        boardDoc(boardId).data.userId == request.auth.uid ||
+        (
+          boardDoc(boardId).data.sharedWith != null
+          && request.auth.uid in boardDoc(boardId).data.sharedWith
+        )
+      );
+    }
+
+    function ownsBoard(boardId) {
+      return boardExists(boardId)
+        && boardDoc(boardId).data.userId == request.auth.uid;
+    }
+
+    function isNotificationRecipient() {
+      return resource.data.userId == request.auth.uid
+        || (
+          resource.data.pending == true
+          && resource.data.userEmail is string
+          && request.auth.token.email is string
+          && resource.data.userEmail.lower() == request.auth.token.email.lower()
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Users
+    // -------------------------------------------------------------------------
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isSignedIn();
+
+      allow list: if isSignedIn() && isEmailLookupQuery();
+
+      allow create: if isOwner(userId)
+        && request.resource.data.email is string
+        && request.resource.data.email.size() <= 320
+        && request.resource.data.tier == 'FREE'
+        && !request.resource.data.keys().hasAny(['stripeCustomerId', 'stripeSubscriptionId', 'updatedAt']);
+
+      allow update: if isOwner(userId)
+        && request.resource.data.tier == resource.data.get('tier', 'FREE')
+        && request.resource.data.get('stripeCustomerId', null) == resource.data.get('stripeCustomerId', null)
+        && request.resource.data.get('stripeSubscriptionId', null) == resource.data.get('stripeSubscriptionId', null)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['stripeCustomerId', 'stripeSubscriptionId']);
+    }
+
+    // -------------------------------------------------------------------------
+    // Boards
+    // -------------------------------------------------------------------------
     match /boards/{boardId} {
       function isDemoBoard() {
         return resource != null && resource.data.userId == null;
       }
-      
+
       function isBoardOwner() {
-        return request.auth != null && 
-          resource != null &&
-          resource.data.userId != null &&
-          resource.data.userId == request.auth.uid;
+        return isSignedIn()
+          && resource != null
+          && resource.data.userId != null
+          && resource.data.userId == request.auth.uid;
       }
-      
+
       function isSharedWith() {
-        return request.auth != null && 
-          resource != null &&
-          resource.data.sharedWith != null &&
-          request.auth.uid in resource.data.sharedWith;
+        return isSignedIn()
+          && resource != null
+          && resource.data.sharedWith != null
+          && request.auth.uid in resource.data.sharedWith;
       }
-      
+
       function hasEditorPermission() {
-        // Check if user has editor permission via boardShares
-        // This is a simplified check - in production, you might want to verify via boardShares collection
-        return isSharedWith(); // For now, all shared users can edit. Can be refined later.
+        return isSharedWith();
       }
-      
-      // Read rules - allow if demo, owner, or shared
-      // For list queries, Firestore evaluates these rules for each document
-      allow read: if 
-        isDemoBoard() || // Allow reading demo/public boards
-        isBoardOwner() || // Allow reading own boards
-        isSharedWith(); // Allow reading shared boards
-      
-      // Write rules
-      allow create: if isSignedIn() 
+
+      allow read: if
+        isDemoBoard()
+        || isBoardOwner()
+        || isSharedWith();
+
+      allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 200
         && request.resource.data.keys().hasAll(['name', 'content', 'userId', 'savedAt']);
-      
-      allow update: if 
-        isBoardOwner() || // Owner can always update
-        (isSharedWith() && hasEditorPermission()); // Shared users with editor permission can update
-      
-      allow delete: if isBoardOwner(); // Only owner can delete
-    }
-    
-    // Board shares collection rules
-    match /boardShares/{shareId} {
-      // Allow reading if user is the recipient or board owner
-      // For queries, Firestore evaluates this rule for each document
-      allow read: if request.auth != null && 
-        (resource.data.sharedWithUserId == request.auth.uid || 
-         resource.data.boardOwnerId == request.auth.uid);
-      
-      allow create: if request.auth != null && 
-        request.resource.data.boardOwnerId == request.auth.uid;
-      
-      allow update, delete: if request.auth != null && 
-        (resource.data.boardOwnerId == request.auth.uid || 
-         resource.data.sharedWithUserId == request.auth.uid);
-    }
-    
-    // Notifications collection rules
-    match /notifications/{notificationId} {
-      // Allow reading if userId matches OR if userEmail matches (for pending notifications)
-      allow read: if request.auth != null && 
-        (resource.data.userId == request.auth.uid ||
-         (resource.data.userEmail != null && 
-          resource.data.userEmail == request.auth.token.email.toLowerCase()));
-      
-      allow update, delete: if request.auth != null && 
-        resource.data.userId == request.auth.uid;
-      
-      allow create: if request.auth != null;
-    }
-    
-    // Board presence collection rules
-    match /boardPresence/{presenceId} {
-      allow read: if request.auth != null;
-      
-      allow create, update: if request.auth != null && 
-        request.resource.data.userId == request.auth.uid;
-      
-      allow delete: if request.auth != null && 
-        resource.data.userId == request.auth.uid;
+
+      allow update: if request.resource.data.userId == resource.data.userId && (
+        isBoardOwner()
+        || (
+          isSharedWith()
+          && hasEditorPermission()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'content', 'folderId', 'savedAt', 'lastEditedAt', 'chatHistory'
+          ])
+        )
+      );
+
+      allow delete: if isBoardOwner();
     }
 
-    // Whiteboards collection rules
-    match /whiteboards/{whiteboardId} {
-      // Read rules
-      allow get, list: if isSignedIn();
-      
-      // Write rules
-      allow create: if isSignedIn() 
+    // -------------------------------------------------------------------------
+    // Board shares
+    // -------------------------------------------------------------------------
+    match /boardShares/{shareId} {
+      allow read: if isSignedIn() && (
+        resource.data.sharedWithUserId == request.auth.uid
+        || resource.data.boardOwnerId == request.auth.uid
+      );
+
+      allow create: if isSignedIn()
+        && request.resource.data.boardOwnerId == request.auth.uid
+        && request.resource.data.boardId is string
+        && request.resource.data.sharedWithEmail is string
+        && request.resource.data.sharedWithEmail.size() <= 320
+        && request.resource.data.permission in ['viewer', 'editor']
+        && request.resource.data.status in ['pending', 'accepted']
+        && ownsBoard(request.resource.data.boardId);
+
+      allow update, delete: if isSignedIn() && (
+        resource.data.boardOwnerId == request.auth.uid
+        || resource.data.sharedWithUserId == request.auth.uid
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Notifications
+    // -------------------------------------------------------------------------
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && isNotificationRecipient();
+
+      allow create: if isSignedIn()
+        && request.resource.data.fromUserId == request.auth.uid
+        && request.resource.data.type == 'board_shared'
+        && request.resource.data.boardId is string
+        && request.resource.data.read == false
+        && ownsBoard(request.resource.data.boardId)
+        && (
+          (
+            request.resource.data.userId is string
+            && request.resource.data.userId != request.auth.uid
+            && !request.resource.data.keys().hasAny(['userEmail', 'pending'])
+          )
+          || (
+            request.resource.data.userEmail is string
+            && request.resource.data.userEmail.size() <= 320
+            && request.resource.data.pending == true
+            && !request.resource.data.keys().hasAny(['userId'])
+          )
+        );
+
+      allow update: if isSignedIn() && isNotificationRecipient() && (
+        (
+          resource.data.userId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
+        )
+        || (
+          resource.data.pending == true
+          && resource.data.userEmail is string
+          && request.auth.token.email is string
+          && resource.data.userEmail.lower() == request.auth.token.email.lower()
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.pending == false
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userId', 'pending', 'userEmail'])
+        )
+      );
+
+      allow delete: if isSignedIn() && isNotificationRecipient();
+    }
+
+    // -------------------------------------------------------------------------
+    // Board presence
+    // -------------------------------------------------------------------------
+    match /boardPresence/{presenceId} {
+      allow read: if isSignedIn()
+        && resource.data.boardId is string
+        && canAccessBoard(resource.data.boardId);
+
+      allow create, update: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
-        && request.resource.data.keys().hasAll(['name', 'items', 'connections', 'userId', 'createdAt', 'updatedAt']);
-      
-      allow update, delete: if isSignedIn() 
+        && request.resource.data.boardId is string
+        && canAccessBoard(request.resource.data.boardId);
+
+      allow delete: if isSignedIn()
         && resource.data.userId == request.auth.uid;
     }
-    
-    // Community posts rules
+
+    // -------------------------------------------------------------------------
+    // Whiteboards (legacy collection — owner-only)
+    // -------------------------------------------------------------------------
+    match /whiteboards/{whiteboardId} {
+      allow read: if isSignedIn()
+        && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 200
+        && request.resource.data.keys().hasAll(['name', 'items', 'connections', 'userId', 'createdAt', 'updatedAt']);
+
+      allow update: if isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId;
+
+      allow delete: if isSignedIn()
+        && resource.data.userId == request.auth.uid;
+    }
+
+    // -------------------------------------------------------------------------
+    // Community posts
+    // -------------------------------------------------------------------------
     match /communityPosts/{postId} {
-      allow read: if true;  // Anyone can read public posts
-      allow create: if request.auth != null && 
-                      request.resource.data.userId == request.auth.uid &&
-                      request.resource.data.createdAt == request.time;
-      allow update, delete: if request.auth != null && 
-                             resource.data.userId == request.auth.uid;
+      allow read: if true;
+
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 200
+        && (
+          request.resource.data.createdAt == request.time
+          || (
+            request.resource.data.createdAt is string
+            && request.resource.data.createdAt.size() <= 40
+          )
+        );
+
+      allow update: if isSignedIn() && (
+        (
+          resource.data.userId == request.auth.uid
+          && request.resource.data.userId == resource.data.userId
+        )
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes'])
+      );
+
+      allow delete: if isSignedIn()
+        && resource.data.userId == request.auth.uid;
     }
-    
-    // User settings rules
+
+    // -------------------------------------------------------------------------
+    // User settings
+    // -------------------------------------------------------------------------
     match /userSettings/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isOwner(userId);
     }
 
-    // User usage tracking rules
+    // Encryption keys — server-only via Admin SDK
+    match /userKeys/{userId} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // User usage tracking
+    // -------------------------------------------------------------------------
     match /userUsage/{userId} {
-      // Allow read if user is authenticated and accessing their own data
-      allow read: if request.auth != null && request.auth.uid == userId;
-      
-      // Allow create if user is authenticated and creating their own document
-      allow create: if request.auth != null && request.auth.uid == userId;
-      
-      // Allow update if user is authenticated and updating their own document
-      allow update: if request.auth != null && request.auth.uid == userId;
+      allow read, create, update: if isOwner(userId);
     }
 
-    // Folders collection rules
+    // -------------------------------------------------------------------------
+    // Folders
+    // -------------------------------------------------------------------------
     match /folders/{folderId} {
       function isFolderOwner() {
-        return request.auth != null && 
-          resource != null &&
-          resource.data.userId == request.auth.uid;
+        return isSignedIn()
+          && resource != null
+          && resource.data.userId == request.auth.uid;
       }
-      
-      // Allow reading if user owns the folder
-      // For queries, Firestore evaluates this for each document
-      allow read: if request.auth != null && 
-        (resource == null || resource.data.userId == request.auth.uid);
-      
-      // Allow creating folders if user is authenticated and userId matches
-      allow create: if request.auth != null && 
-        request.resource.data.userId == request.auth.uid &&
-        request.resource.data.name != null;
-      
-      // Allow updating if user owns the folder
-      allow update: if request.auth != null && 
-        isFolderOwner() &&
-        request.resource.data.userId == request.auth.uid;
-      
-      // Allow deleting if user owns the folder
-      allow delete: if request.auth != null && isFolderOwner();
+
+      allow read: if isSignedIn()
+        && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 200;
+
+      allow update: if isSignedIn()
+        && isFolderOwner()
+        && request.resource.data.userId == request.auth.uid;
+
+      allow delete: if isSignedIn() && isFolderOwner();
     }
 
+    // -------------------------------------------------------------------------
     // Default deny
+    // -------------------------------------------------------------------------
     match /{document=**} {
       allow read, write: if false;
     }
