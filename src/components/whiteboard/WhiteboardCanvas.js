@@ -5830,7 +5830,7 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
       const baseOrder = items.length > 0 ? Math.max(...items.map((i, idx) => i.order !== undefined ? i.order : idx)) : -1;
       
       // Model configuration
-      const MODEL_ID = 'llama-3.3-70b-versatile';
+      const MODEL_ID = DEFAULT_GROQ_MODEL;
       
       // Create chart-specific prompts
       let systemPrompt = '';
@@ -5930,59 +5930,57 @@ Guidelines:
       } else if (chartGenerationType === 'flowchart') {
         systemPrompt = `You are an expert Flowchart Architect. Convert the user's request into a clear, actionable flowchart using ONLY circle and square nodes connected by arrows.
 Return ONLY valid JSON (no markdown, no code fences). Use this schema strictly:
-+{
-+  "title": string, // concise (<= 50 chars)
-+  "nodes": [
-+    {
-+      "id": string,            // unique, kebab-case [a-z0-9-], no spaces
-+      "type": "circle"|"square", // circle = start/end/decision; square = process/action
-+      "label": string,         // <= 24 chars, Title Case
-+      "description": string,   // <= 80 chars, succinct
-+      "phase": string|null,    // optional human label (e.g., Research, Strategy, Activation, Launch, Growth)
-+      "phaseIndex": number|null, // optional 1-based ordering for phases (1..N); contiguous if present
-+      "parentId": string|null, // optional; use for substeps of a step; max depth = 2
-+      "order": number|null     // optional global reading order within same phase/level
-+    }
-+  ],
-+  "connections": [
-+    { "from": string, "to": string, "label": string|null } // label <= 18 chars
-+  ]
-+}
-+
-+Hard Requirements:
-+- Use ONLY these shapes: circle (start/end/decision) and square (process/action).
-+- Exactly 1 Start (circle) and at least 1 End (circle). Prefer 1 End unless parallel endings are necessary.
-+- 6–15 total nodes. Up to 2 nested substep levels via parentId.
-+- All ids must be referenced by at least one connection, no orphans.
-+- Graph should be a DAG (no cycles). Ensure clear progression left-to-right by phaseIndex/order.
-+- If parentId is used for substeps, connect the parent to the first substep, and connect substeps sequentially if needed.
-+- If the request implies phases, set phase names and contiguous phaseIndex values (1..N). Within a phase, set increasing order.
-+- Keep labels and descriptions crisp and non-redundant. No commas in ids. No extra keys.
-+
-+Conventions:
-+- Start/End nodes must be type circle with labels "Start" and "End" (or variants like "Go Live" for end if appropriate).
-+- Decision points (if any) must be type circle with short question labels (e.g., "Product-Market Fit?").
-+- Process steps should be type square.
-+
-+Go-To-Market (GTM) Hint (if applicable to the request): use phases and indices like:
-+  1 Research, 2 Strategy, 3 Enablement, 4 Activation, 5 Launch, 6 Growth.
-+
-+Self-reflection before drafting (answer silently; do not output this reasoning):
-+- What are the major milestones of this process?
-+- For each decision or event, what are the possible outcomes and the subsequent paths?
-+- Is the flowchart as in-depth and tailored to the user's specific request and domain as it should be? If not, revise phases, nodes, and connections accordingly before producing the final output.
-+
-+Validation before returning:
-+- Ensure ids are unique and referenced by connections. Ensure every connection's from/to exists.
-+- Ensure exactly one Start and at least one End. Ensure phaseIndex values (if present) are contiguous starting at 1.
-+- Ensure node count between 6 and 15. Ensure connection labels (if present) are <= 18 chars.
-+
-+Output a single JSON object conforming to the schema above.`;
+{
+  "title": string, // concise (<= 50 chars)
+  "nodes": [
+    {
+      "id": string,            // unique, kebab-case [a-z0-9-], no spaces
+      "type": "circle"|"square", // circle = start/end/decision; square = process/action
+      "label": string,         // <= 24 chars, Title Case
+      "description": string,   // <= 80 chars, succinct
+      "phase": string|null,    // optional human label (e.g., Research, Strategy, Activation, Launch, Growth)
+      "phaseIndex": number|null, // optional 1-based ordering for phases (1..N); contiguous if present
+      "parentId": string|null, // optional; use for substeps of a step; max depth = 2
+      "order": number|null     // optional global reading order within same phase/level
+    }
+  ],
+  "connections": [
+    { "from": string, "to": string, "label": string|null } // label <= 18 chars
+  ]
+}
+
+Hard Requirements:
+- Use ONLY these shapes: circle (start/end/decision) and square (process/action).
+- Exactly 1 Start (circle) and at least 1 End (circle). Prefer 1 End unless parallel endings are necessary.
+- 6–15 total nodes. Up to 2 nested substep levels via parentId.
+- All ids must be referenced by at least one connection, no orphans.
+- Graph should be a DAG (no cycles). Ensure clear progression left-to-right by phaseIndex/order.
+- If parentId is used for substeps, connect the parent to the first substep, and connect substeps sequentially if needed.
+- If the request implies phases, set phase names and contiguous phaseIndex values (1..N). Within a phase, set increasing order.
+- Keep labels and descriptions crisp and non-redundant. No commas in ids. No extra keys.
+
+Conventions:
+- Start/End nodes must be type circle with labels "Start" and "End" (or variants like "Go Live" for end if appropriate).
+- Decision points (if any) must be type circle with short question labels (e.g., "Product-Market Fit?").
+- Process steps should be type square.
+
+Go-To-Market (GTM) Hint (if applicable to the request): use phases and indices like:
+  1 Research, 2 Strategy, 3 Enablement, 4 Activation, 5 Launch, 6 Growth.
+
+Self-reflection before drafting (answer silently; do not output this reasoning):
+- What are the major milestones of this process?
+- For each decision or event, what are the possible outcomes and the subsequent paths?
+- Is the flowchart as in-depth and tailored to the user's specific request and domain as it should be? If not, revise phases, nodes, and connections accordingly before producing the final output.
+
+Validation before returning:
+- Ensure ids are unique and referenced by connections. Ensure every connection's from/to exists.
+- Ensure exactly one Start and at least one End. Ensure phaseIndex values (if present) are contiguous starting at 1.
+- Ensure node count between 6 and 15. Ensure connection labels (if present) are <= 18 chars.
+
+Output a single JSON object conforming to the schema above.`;
 
         userPrompt = `Generate a flowchart configuration for: ${mindMapPrompt}`;
       }
-
-      const MODEL_ID = DEFAULT_GROQ_MODEL;
 
       const data = await callGroqChat({
         model: MODEL_ID,
