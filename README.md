@@ -59,6 +59,13 @@ This app requires Firebase for authentication and data storage. Make sure to:
 4. Add your web app to the Firebase project to get configuration values
 5. Update Firestore security rules to match the rules in `firestore.rules`
 
+## Documentation
+
+- [Deployment (Netlify)](docs/DEPLOYMENT.md) — build settings, functions, env vars
+- [Stripe Setup](docs/STRIPE.md) — keys, product IDs, webhooks (local & production)
+- [Troubleshooting](docs/TROUBLESHOOTING.md) — common build/deploy/checkout issues
+- [Sharing & Collaboration Plan](docs/SHARING_COLLABORATION_PLAN.md) — design doc (partially implemented)
+
 ## Security Notes
 
 - The `.env` file contains sensitive API keys and should not be committed to version control

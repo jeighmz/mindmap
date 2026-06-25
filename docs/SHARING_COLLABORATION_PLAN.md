@@ -1,5 +1,14 @@
 # Sharing & Collaboration Feature Plan
 
+> **Status / drift warning (2026-06):** This is a design doc, partially implemented. Sharing,
+> notifications, and the `ShareBoardModal`/`Notifications`/`CollaboratorsBar` components exist.
+> However, real-time presence/cursors are currently implemented via `src/services/websocketService.js`
+> (socket.io to the `backend/` Express + Socket.io server), **not** the Firestore-based presence
+> described below. That `backend/` server is not deployed (it points at `localhost:5000` in dev and a
+> placeholder `wss://your-backend-url.com` in prod), so live collaboration does not work in production.
+> Reconcile this plan with the implementation before relying on it: either deploy a WebSocket backend
+> or migrate presence to Firestore `onSnapshot` as originally specified.
+
 ## Overview
 This document outlines the plan for implementing board sharing and real-time collaboration features.
 
