@@ -2,9 +2,9 @@ const {
   getCorsHeaders,
   handlePreflight,
   requireAuth,
-  authErrorResponse,
   safeErrorBody,
 } = require('./utils/auth');
+const { initFirebase } = require('./utils/firebase');
 const { getUserGroqApiKey } = require('./utils/userSecrets');
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
@@ -15,8 +15,10 @@ const getGroqApiKey = async (userId) => {
   const envKey = process.env.GROQ_API_KEY;
   if (envKey) return envKey;
 
-  const userKey = await getUserGroqApiKey(userId).catch(() => null);
-  if (userKey) return userKey;
+  if (userId) {
+    const userKey = await getUserGroqApiKey(userId).catch(() => null);
+    if (userKey) return userKey;
+  }
 
   throw new Error(
     'Groq API key is not configured. Set GROQ_API_KEY in the Netlify environment variables.'
@@ -38,10 +40,22 @@ exports.handler = async (event) => {
     };
   }
 
-  const authResult = await requireAuth(event);
-  if (authResult.error) {
-    return authErrorResponse(authResult, headers);
+  // Initialise Firebase so requireAuth can verify tokens.
+  try {
+    initFirebase();
+  } catch (err) {
+    console.error('Firebase init failed:', err.message);
+    return {
+      statusCode: 503,
+      headers,
+      body: safeErrorBody('Service temporarily unavailable', 503),
+    };
   }
+
+  // Try to identify the caller. Guest requests (no token) are allowed —
+  // client-side usage limits enforce the 4-map cap for unauthenticated users.
+  const authResult = await requireAuth(event);
+  const userId = authResult.error ? null : authResult.uid;
 
   try {
     const payload = JSON.parse(event.body || '{}');
@@ -71,7 +85,7 @@ exports.handler = async (event) => {
       };
     }
 
-    const groqApiKey = await getGroqApiKey(authResult.uid);
+    const groqApiKey = await getGroqApiKey(userId);
 
     const groqResponse = await fetch(GROQ_API_URL, {
       method: 'POST',
