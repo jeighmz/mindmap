@@ -1,5 +1,5 @@
 [build]
-  command = "CI=false npm run build"
+  command = "cd netlify/functions && npm install --production && cd ../.. && CI=false npm run build"
   publish = "build"
   functions = "netlify/functions"
 
@@ -9,11 +9,6 @@
   BROWSER = ""
   PORT = ""
   NPM_FLAGS = "--legacy-peer-deps"
-
-# Install dependencies declared in netlify/functions/package.json
-# (Netlify does not auto-install function-level deps; firebase-admin/stripe need this)
-[[plugins]]
-  package = "@netlify/plugin-functions-install-core"
 
 # Proxy API routes to Netlify Functions (CORS handled in function code)
 [[redirects]]
