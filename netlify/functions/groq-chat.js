@@ -5,17 +5,22 @@ const {
   authErrorResponse,
   safeErrorBody,
 } = require('./utils/auth');
+const { getUserGroqApiKey } = require('./utils/userSecrets');
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const MODEL_PATTERN = /^[a-zA-Z0-9._/-]{1,100}$/;
 
-const getGroqApiKey = () => {
-  const apiKey = process.env.GROQ_API_KEY || process.env.REACT_APP_GROQ_API_KEY;
-  if (!apiKey) {
-    throw new Error('Groq API key is not configured on the server');
-  }
-  return apiKey;
+const getGroqApiKey = async (userId) => {
+  const envKey = process.env.GROQ_API_KEY;
+  if (envKey) return envKey;
+
+  const userKey = await getUserGroqApiKey(userId).catch(() => null);
+  if (userKey) return userKey;
+
+  throw new Error(
+    'Groq API key is not configured. Set GROQ_API_KEY in the Netlify environment variables.'
+  );
 };
 
 exports.handler = async (event) => {
@@ -66,11 +71,13 @@ exports.handler = async (event) => {
       };
     }
 
+    const groqApiKey = await getGroqApiKey(authResult.uid);
+
     const groqResponse = await fetch(GROQ_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${getGroqApiKey()}`,
+        Authorization: `Bearer ${groqApiKey}`,
       },
       body: JSON.stringify({
         model,
