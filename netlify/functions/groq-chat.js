@@ -12,7 +12,7 @@ const DEFAULT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const MODEL_PATTERN = /^[a-zA-Z0-9._/-]{1,100}$/;
 
 const getGroqApiKey = async (userId) => {
-  const envKey = process.env.GROQ_API_KEY || process.env.REACT_APP_GROQ_API_KEY;
+  const envKey = process.env.GROQ_API_KEY;
   if (envKey) return envKey;
 
   const userKey = await getUserGroqApiKey(userId).catch(() => null);
