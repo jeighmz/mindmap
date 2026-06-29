@@ -144,7 +144,7 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
     { id: 'meta-llama/llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout 17B (128K context)', provider: 'Meta', isVision: true },
     { id: 'mistral-saba-24b', name: 'Mistral Saba 24B (32K context)', provider: 'Mistral', disabled: true },
     { id: 'qwen-qwq-32b', name: 'Qwen QWQ 32B (128K context)', provider: 'Alibaba Cloud', disabled: true },
-    { id: 'groq/compound', name: 'Groq Compound (128K context)', provider: 'Groq' },
+    { id: 'compound-beta', name: 'Groq Compound Beta (128K context)', provider: 'Groq' },
     { id: 'qwen/qwen3-32b', name: 'Qwen 3 32B (128K context)', provider: 'Alibaba Cloud' },
     { id: 'openai/gpt-oss-20b', name: 'GPT OSS 20B (128K context)', provider: 'OpenAI', disabled: true },
     { id: 'whisper-large-v3-turbo', name: 'Whisper Large V3 Turbo (Speech-to-Text)', provider: 'OpenAI', disabled: true }
