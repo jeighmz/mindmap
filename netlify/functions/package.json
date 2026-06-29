@@ -1,8 +1,11 @@
 {
   "name": "netlify-functions",
   "version": "1.0.0",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "firebase-admin": "^12.0.0",
     "stripe": "^14.14.0"
   }
-} 
+}
