@@ -34,7 +34,13 @@ export const callGroqChat = async ({
   stream = false,
   response_format,
 }) => {
-  const headers = await getAuthHeaders();
+  // Authenticated users send a Firebase token so the server can identify them.
+  // Guest users (no Firebase session) send the request without a token — the
+  // server still processes it, and client-side usage limits enforce the 4-map cap.
+  const headers = auth.currentUser
+    ? await getAuthHeaders()
+    : { 'Content-Type': 'application/json' };
+
   const response = await fetch(`${getApiBaseUrl()}/groq-chat`, {
     method: 'POST',
     headers,
