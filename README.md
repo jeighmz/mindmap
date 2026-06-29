@@ -1,16 +1,34 @@
 # Mindmap Application
 
-[![Netlify Status](https://api.netlify.com/api/v1/badges/your-netlify-app-id/deploy-status)](https://app.netlify.com/sites/your-netlify-app-name/deploys)
+[![Netlify Status](https://api.netlify.com/api/v1/badges/1786ef42-14c3-4964-9306-b98d4714ad65/deploy-status)](https://app.netlify.com/projects/aimindmap/deploys)
 
-A collaborative mind mapping application built with React, Firebase, and more.
+An AI-powered mind mapping tool built with React and Firebase.
+
+**[Live Demo → aimindmap.netlify.app](https://aimindmap.netlify.app)**
 
 ## Features
 
-- Create and edit mind maps with a visual whiteboard
-- Save personal boards to your account
-- Demo boards available without login
-- Collaborate and share mind maps
-- Real-time updates
+- **Visual whiteboard canvas** — drag-and-drop nodes, connectors, images, and charts
+- **AI-generated mind maps** — describe a topic and generate a full mind map instantly (Groq / Llama 3.3 70B)
+- **AI Expand tool** — select any node and expand it into related sub-concepts with one click
+- **AI analysis chat panel** — chat with an AI about the content of your current board
+- **Board sharing & collaboration** — share boards with other users by email, with viewer or editor permissions
+- **Community boards** — browse and publish boards to a public community gallery
+- **Subscription tiers** — Free, Starter, Pro, and Creator AI plans managed via Stripe
+- **Firebase auth** — sign in with email/password or Google
+- **Encrypted chat history** — AI conversation history is encrypted at rest per-user
+- **Netlify Functions** — all third-party API calls (Groq, Stripe) are proxied server-side
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React, React Router |
+| Database & Auth | Firebase (Firestore, Authentication, Storage) |
+| Serverless Functions | Netlify Functions (Node 20) |
+| AI | Groq API — Llama 3.3 70B Versatile |
+| Payments | Stripe (Checkout, Customer Portal, Webhooks) |
+| Hosting | Netlify |
 
 ## Local Development
 
