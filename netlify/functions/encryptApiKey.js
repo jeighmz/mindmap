@@ -125,7 +125,7 @@ exports.handler = async (event, context) => {
     
     // Store in Firestore
     await db.collection('userSettings').doc(userId).set({
-      groqApiKey: encrypted,
+      notionApiKey: encrypted,
       updatedAt: new Date().toISOString()
     }, { merge: true });
 
