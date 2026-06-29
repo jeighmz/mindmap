@@ -16,7 +16,7 @@ export const TIER_FEATURES = {
     // Daily limits (-1 = unlimited, 0 = not available)
     dailyAIGeneratedMaps: 4,
     dailyAIAnalysisMessages: 0,
-    dailyExpandTool: 0,
+    dailyExpandTool: 4,
     // Multi-board AI chat memory (-1 = unlimited, 0 = not available)
     multiBoardAIChatMemory: 0,
     features: {
