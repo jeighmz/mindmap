@@ -13,12 +13,6 @@ const initializeFirebase = () => {
   if (admin.apps.length) return admin.firestore();
 
   try {
-    // Log environment variables (safely)
-    console.log('Checking environment variables...');
-    console.log('Project ID:', process.env.FIREBASE_PROJECT_ID);
-    console.log('Client Email exists:', !!process.env.FIREBASE_CLIENT_EMAIL);
-    console.log('Private Key exists:', !!process.env.FIREBASE_PRIVATE_KEY);
-
     if (!process.env.FIREBASE_PRIVATE_KEY || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PROJECT_ID) {
       throw new Error('Missing Firebase credentials');
     }
@@ -76,7 +70,6 @@ const initializeFirebase = () => {
       credential: admin.credential.cert(serviceAccount)
     });
 
-    console.log('Firebase initialized successfully');
     return admin.firestore();
   } catch (error) {
     console.error('Firebase initialization error:', {
@@ -96,16 +89,12 @@ exports.handler = async (event, context) => {
   if (preflight) return preflight;
 
   try {
-    console.log('Encrypt chat history function started');
-    
     // Initialize Firebase and get db instance
     initializeFirebase();
     const db = admin.firestore();
-    console.log('Firebase initialized');
 
     // Parse request
     const { userId, chatHistory } = JSON.parse(event.body);
-    console.log('Request parsed, userId exists:', !!userId, 'chatHistory exists:', !!chatHistory);
 
     const authResult = await requireAuth(event, userId);
     if (authResult.error) {
@@ -133,8 +122,6 @@ exports.handler = async (event, context) => {
     
     // Encrypt the chat history using the user-specific encryption
     const encrypted = await encrypt(chatHistoryString, userId);
-    
-    console.log('Chat history encrypted successfully');
 
     return {
       statusCode: 200,
