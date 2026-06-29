@@ -8,15 +8,13 @@ class WebSocketService {
     this.listeners = new Map();
   }
 
-  // Get WebSocket server URL
+  // Get WebSocket server URL.
+  // Set REACT_APP_WS_URL to enable real-time collaboration. If unset, collaboration features are disabled.
   getServerUrl() {
     if (process.env.NODE_ENV === 'development') {
-      // For local development, connect to backend server
       return 'http://localhost:5000';
     }
-    // For production, you'll need to set this to your deployed backend URL
-    // For now, we'll use an environment variable or default
-    return process.env.REACT_APP_WS_URL || 'wss://your-backend-url.com';
+    return process.env.REACT_APP_WS_URL || null;
   }
 
   // Connect to WebSocket server
@@ -26,7 +24,9 @@ class WebSocketService {
     }
 
     const serverUrl = this.getServerUrl();
-    console.log('Connecting to WebSocket server:', serverUrl);
+    if (!serverUrl) {
+      return;
+    }
 
     this.socket = io(serverUrl, {
       transports: ['websocket', 'polling'],
@@ -78,7 +78,7 @@ class WebSocketService {
   joinBoard(boardId, userId, userData) {
     if (!this.socket || !this.socket.connected) {
       this.connect();
-      // Wait for connection before joining
+      if (!this.socket) return;
       this.socket.once('connect', () => {
         this._joinBoard(boardId, userId, userData);
       });
