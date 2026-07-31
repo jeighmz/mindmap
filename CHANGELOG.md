@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/jeighmz/mindmap/compare/v1.0.0...v1.1.0) (2026-07-31)
+
+
+### Features
+
+* add Open Graph tags for LinkedIn link previews ([8976971](https://github.com/jeighmz/mindmap/commit/8976971c8de2a9dfb0aed43b59a3f96c7e0ec245))
+
 # 1.0.0 (2026-06-29)
 
 
