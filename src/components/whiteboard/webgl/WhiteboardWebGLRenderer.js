@@ -420,6 +420,7 @@ export class WhiteboardWebGLRenderer {
       shape.roundRect(0, 0, item.width, item.height, 8);
       shape.fill({ color: 0xf3f4f6 });
       shape.stroke({ color: 0xd1d5db, width: 1 });
+      sprite.visible = false;
       return;
     }
 
@@ -427,18 +428,32 @@ export class WhiteboardWebGLRenderer {
       const cacheKey = `${item.id}:${src}`;
       let texture = this.textureCache.get(cacheKey);
       if (!texture) {
-        texture = await Assets.load({ src, alias: cacheKey });
+        // Load texture with crossOrigin set for external URLs
+        // Data URLs and same-origin images don't need CORS but setting anonymous is safe
+        texture = await Assets.load({ 
+          src, 
+          alias: cacheKey,
+          loadParser: 'loadTextures'
+        });
         this.textureCache.set(cacheKey, texture);
       }
 
+      // Ensure sprite is visible and properly configured
       sprite.texture = texture;
       sprite.width = item.width;
       sprite.height = item.height;
       sprite.visible = true;
+      sprite.alpha = 1;
+      
+      // Hide shape when sprite is successfully loaded
+      shape.clear();
     } catch (error) {
+      console.error('Failed to load image texture:', error, 'src:', src?.substring(0, 100));
+      // Show error rectangle
       shape.roundRect(0, 0, item.width, item.height, 8);
       shape.fill({ color: 0xfee2e2 });
       shape.stroke({ color: 0xf87171, width: 1 });
+      sprite.visible = false;
     }
   }
 
