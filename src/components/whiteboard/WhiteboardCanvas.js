@@ -3479,7 +3479,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         const contextString = buildExpandContext(itemId, text);
 
         const data = await callGroqChat({
-          model: 'llama-3.3-70b-versatile',
+          model: DEFAULT_GROQ_MODEL,
           messages: [
             {
               role: 'system',

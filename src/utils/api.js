@@ -1,6 +1,8 @@
 import { auth } from '../firebase-config';
 
-export const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
+// Use production model - llama-3.3-70b-versatile was deprecated Aug 16, 2026
+// https://console.groq.com/docs/deprecations
+export const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-120b';
 
 // Get the base API URL based on environment
 export const getApiBaseUrl = () => {
@@ -62,6 +64,11 @@ export const callGroqChat = async ({
     
     if (response.status === 401) {
       throw new Error('AI service authentication failed. The API key may be invalid or expired. Please contact support.');
+    }
+    
+    if (response.status === 404) {
+      // Model not found error
+      throw new Error(errorMessage);
     }
     
     if (response.status === 429) {

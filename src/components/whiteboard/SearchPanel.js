@@ -112,9 +112,9 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
   const [editingName, setEditingName] = useState('');
   const [savingChatId, setSavingChatId] = useState(null);
   const [selectedModel, setSelectedModel] = useState({
-    id: 'llama-3.3-70b-versatile',
-    name: 'Llama 3.3 70B Versatile',
-    provider: 'Meta'
+    id: 'openai/gpt-oss-120b',
+    name: 'GPT-OSS 120B',
+    provider: 'OpenAI'
   });
   // Track which images have been sent
   const [sentImageIds, setSentImageIds] = useState(new Set());
@@ -131,33 +131,28 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
   const highlightedImages = allHighlightedImages.filter(item => !sentImageIds.has(item.id));
 
   const availableModels = [
-    // Production Models
-    { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile (128K context)', provider: 'Meta' },
-    { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant (128K context)', provider: 'Meta' },
-    { id: 'llama3-70b-8192', name: 'Llama 3 70B (8K context)', provider: 'Meta', disabled: true },
-    { id: 'llama3-8b-8192', name: 'Llama 3 8B (8K context)', provider: 'Meta', disabled: true },
-    { id: 'gemma2-9b-it', name: 'Gemma 2 9B (8K context)', provider: 'Google', disabled: true },
+    // Production Models (as of Oct 2026)
+    { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B (131K context)', provider: 'OpenAI' },
+    { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B (131K context)', provider: 'OpenAI' },
+    { id: 'whisper-large-v3', name: 'Whisper Large V3 (Speech-to-Text)', provider: 'OpenAI', disabled: true },
+    { id: 'whisper-large-v3-turbo', name: 'Whisper Large V3 Turbo (Speech-to-Text)', provider: 'OpenAI', disabled: true },
     
-    // Preview Models
-    { id: 'deepseek-r1-distill-llama-70b', name: 'DeepSeek R1 Distill 70B (128K context)', provider: 'DeepSeek', disabled: true },
-    { id: 'meta-llama/llama-4-maverick-17b-128e-instruct', name: 'Llama 4 Maverick 17B (128K context)', provider: 'Meta', isVision: true },
-    { id: 'meta-llama/llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout 17B (128K context)', provider: 'Meta', isVision: true },
-    { id: 'mistral-saba-24b', name: 'Mistral Saba 24B (32K context)', provider: 'Mistral', disabled: true },
-    { id: 'qwen-qwq-32b', name: 'Qwen QWQ 32B (128K context)', provider: 'Alibaba Cloud', disabled: true },
-    { id: 'compound-beta', name: 'Groq Compound Beta (128K context)', provider: 'Groq' },
-    { id: 'qwen/qwen3-32b', name: 'Qwen 3 32B (128K context)', provider: 'Alibaba Cloud' },
-    { id: 'openai/gpt-oss-20b', name: 'GPT OSS 20B (128K context)', provider: 'OpenAI', disabled: true },
-    { id: 'whisper-large-v3-turbo', name: 'Whisper Large V3 Turbo (Speech-to-Text)', provider: 'OpenAI', disabled: true }
+    // Preview Models (evaluation only)
+    { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B (131K context)', provider: 'Alibaba Cloud' },
+    { id: 'openai/gpt-oss-safeguard-20b', name: 'GPT-OSS Safeguard 20B (Safety)', provider: 'OpenAI', disabled: true },
+    
+    // Deprecated models (for reference only - will fail if used)
+    { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B [DEPRECATED Aug 2026]', provider: 'Meta', disabled: true },
+    { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B [DEPRECATED Aug 2026]', provider: 'Meta', disabled: true }
   ];
 
   // Check if vision model support is available for this tier
   const tierFeatures = TIER_FEATURES[userTier] || TIER_FEATURES[USER_TIERS.FREE];
   const canUseVisionModels = tierFeatures.features.visionModelSupport;
   
-  // Vision models that support image input
+  // Vision models that support image input (currently none in production)
   const visionModels = [
-    'meta-llama/llama-4-maverick-17b-128e-instruct',
-    'meta-llama/llama-4-scout-17b-16e-instruct'
+    // Vision models were deprecated - placeholder for future vision model support
   ];
 
   const isVisionModel = canUseVisionModels && visionModels.includes(selectedModel.id);

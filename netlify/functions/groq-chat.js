@@ -8,7 +8,9 @@ const { initFirebase } = require('./utils/firebase');
 const { getUserGroqApiKey } = require('./utils/userSecrets');
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const DEFAULT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+// Use production model - llama-3.3-70b-versatile was deprecated Aug 16, 2026
+// https://console.groq.com/docs/deprecations
+const DEFAULT_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 const MODEL_PATTERN = /^[a-zA-Z0-9._/-]{1,100}$/;
 
 const getGroqApiKey = async (userId) => {
@@ -130,6 +132,24 @@ exports.handler = async (event) => {
             message: 'API key authentication failed. Please check that your Groq API key is valid.',
             type: 'authentication_error',
             code: 'invalid_api_key',
+          },
+        }),
+      };
+    }
+
+    if (statusCode === 404) {
+      // Model not found - check if it's a deprecated model
+      const isDeprecatedModel = model === 'llama-3.3-70b-versatile' || model === 'llama-3.1-8b-instant';
+      console.error(`Groq API model not found: ${model}${isDeprecatedModel ? ' (deprecated)' : ''}`);
+      return {
+        statusCode: 404,
+        headers,
+        body: JSON.stringify({
+          error: {
+            message: `The model '${model}' does not exist or you do not have access to it. ${isDeprecatedModel ? 'This model was deprecated in August 2026.' : 'Please check https://console.groq.com/docs/models for available models.'}`,
+            type: 'model_not_found_error',
+            code: 'model_not_found',
+            model,
           },
         }),
       };
