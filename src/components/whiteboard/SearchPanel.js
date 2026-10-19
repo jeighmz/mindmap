@@ -917,6 +917,10 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
         stream: false,
       });
 
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error('Invalid response from AI service');
+      }
+
       const aiResponse = data.choices[0].message.content;
 
       updateTabMessages(activeTabId, [...newMessages, { role: 'assistant', content: aiResponse }]);
