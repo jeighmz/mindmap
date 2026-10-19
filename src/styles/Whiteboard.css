@@ -3220,6 +3220,8 @@ body:has(.modal-container) .whiteboard-header > * {
 
 .whiteboard-header .spinner {
   animation: auto-save-spin 1s linear infinite;
+  transform-origin: center;
+  transform-box: fill-box;
 }
 
 /* Dark Mode Styles */
