@@ -59,7 +59,7 @@ const WhiteboardWebGLView = forwardRef(function WhiteboardWebGLView(
     const renderer = new WhiteboardWebGLRenderer();
     rendererRef.current = renderer;
 
-    renderer.init(mount).then(() => {
+    renderer.init(mount).then(async () => {
       if (disposed) {
         renderer.destroy();
         return;
@@ -67,7 +67,7 @@ const WhiteboardWebGLView = forwardRef(function WhiteboardWebGLView(
 
       const { panOffset: pan, scale: currentScale } = latestViewportRef.current;
       renderer.setViewport(pan, currentScale);
-      renderer.syncScene(latestSceneRef.current);
+      await renderer.syncScene(latestSceneRef.current);
       const scene = latestSceneRef.current;
       renderer.syncConnectingPreview(
         scene.items || [],
@@ -104,7 +104,11 @@ const WhiteboardWebGLView = forwardRef(function WhiteboardWebGLView(
       skipTypes: ['chart'],
     };
     latestSceneRef.current = scene;
-    rendererRef.current?.syncScene(scene);
+    
+    const updateScene = async () => {
+      await rendererRef.current?.syncScene(scene);
+    };
+    updateScene();
   }, [
     items,
     connections,

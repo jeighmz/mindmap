@@ -104,13 +104,50 @@ exports.handler = async (event) => {
       }),
     });
 
-    const responseBody = await groqResponse.text();
+  const responseBody = await groqResponse.text();
 
+  if (!groqResponse.ok) {
+    let errorData;
+    try {
+      errorData = JSON.parse(responseBody);
+    } catch {
+      errorData = {};
+    }
+
+    const errorMessage =
+      errorData.error?.message ||
+      errorData.message ||
+      'Groq API request failed';
+    const statusCode = groqResponse.status;
+
+    if (statusCode === 401) {
+      console.error('Groq API authentication failed - key may be invalid or expired');
+      return {
+        statusCode: 401,
+        headers,
+        body: JSON.stringify({
+          error: {
+            message: 'API key authentication failed. Please check that your Groq API key is valid.',
+            type: 'authentication_error',
+            code: 'invalid_api_key',
+          },
+        }),
+      };
+    }
+
+    console.error(`Groq API error (${statusCode}):`, errorMessage);
     return {
-      statusCode: groqResponse.status,
+      statusCode,
       headers,
       body: responseBody,
     };
+  }
+
+  return {
+    statusCode: groqResponse.status,
+    headers,
+    body: responseBody,
+  };
   } catch (error) {
     console.error('Groq proxy error:', error.message);
     return {
