@@ -359,34 +359,28 @@ export class WhiteboardWebGLRenderer {
         shape.stroke({ width: 2, color: 0x2196f3, alpha: 0.35 });
       }
     } else if (item.type === 'circle') {
-      if (isSelected) {
-        shape.setStrokeStyle({ width: 3, color: 0x2196f3, alpha: 1 });
-      } else if (border !== null) {
-        shape.setStrokeStyle({ width: 2, color: border, alpha: 1 });
-      }
-
       shape.circle(item.width / 2, item.height / 2, Math.min(item.width, item.height) / 2);
 
       if (fill !== null) {
         shape.fill({ color: fill, alpha: 0.98 });
       }
-      if (border !== null || isSelected) {
-        shape.stroke();
+      
+      if (isSelected) {
+        shape.stroke({ width: 3, color: 0x2196f3, alpha: 1 });
+      } else if (border !== null) {
+        shape.stroke({ width: 2, color: border, alpha: 1 });
       }
     } else {
-      if (isSelected) {
-        shape.setStrokeStyle({ width: 3, color: 0x2196f3, alpha: 1 });
-      } else if (border !== null) {
-        shape.setStrokeStyle({ width: 2, color: border, alpha: 1 });
-      }
-
       shape.roundRect(0, 0, item.width, item.height, Math.min(radius, 50));
 
       if (fill !== null) {
         shape.fill({ color: fill, alpha: item.type === 'sticky' ? 1 : 0.98 });
       }
-      if (border !== null || isSelected) {
-        shape.stroke();
+      
+      if (isSelected) {
+        shape.stroke({ width: 3, color: 0x2196f3, alpha: 1 });
+      } else if (border !== null) {
+        shape.stroke({ width: 2, color: border, alpha: 1 });
       }
     }
 
