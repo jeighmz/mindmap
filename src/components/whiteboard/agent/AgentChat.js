@@ -293,6 +293,11 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
         temperature: 0.7,
         max_tokens: 2000,
       });
+      
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error('Invalid response from AI service');
+      }
+      
       const actionPlan = data.choices[0].message.content;
       
       addMessage('assistant', actionPlan);
@@ -750,6 +755,11 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
             temperature: 0.7,
             max_tokens: 2000,
           });
+          
+          if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+            throw new Error('Invalid response from AI service');
+          }
+          
           const actionPlan = data.choices[0].message.content;
           
           addMessage('assistant', actionPlan);
@@ -1334,6 +1344,11 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
             temperature: 0.7,
             max_tokens: 1000,
           });
+          
+          if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+            throw new Error('Invalid response from AI service');
+          }
+          
           const aiResponse = data.choices[0].message.content;
 
           // Add AI response to chat

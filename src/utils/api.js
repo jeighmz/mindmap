@@ -58,7 +58,21 @@ export const callGroqChat = async ({
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(data.error?.message || data.error || `Groq API error (${response.status})`);
+    const errorMessage = data.error?.message || data.error || data.message || 'Groq API request failed';
+    
+    if (response.status === 401) {
+      throw new Error('AI service authentication failed. The API key may be invalid or expired. Please contact support.');
+    }
+    
+    if (response.status === 429) {
+      throw new Error('AI service rate limit exceeded. Please try again in a moment.');
+    }
+    
+    if (response.status >= 500) {
+      throw new Error('AI service is temporarily unavailable. Please try again later.');
+    }
+    
+    throw new Error(errorMessage);
   }
 
   return data;

@@ -3525,6 +3525,10 @@ Performance Metrics Analysis`
           max_tokens: 500
         });
 
+        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+          throw new Error('Invalid response from AI service');
+        }
+
         const concepts = data.choices[0].message.content
           .split('\n')
           .filter(line => line.trim())
@@ -5347,6 +5351,10 @@ You must generate exactly 4 MAIN branches, and exactly 2 SUB branches for each M
         max_tokens: 1000,
       });
 
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error('Invalid response from AI service');
+      }
+
       const rawContent = data.choices[0].message.content;
       const branches = rawContent
         .split('\n')
@@ -5992,6 +6000,10 @@ Output a single JSON object conforming to the schema above.`;
         max_tokens: 2000,
         response_format: { type: 'json_object' },
       });
+
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error('Invalid response from AI service');
+      }
 
       const rawContent = data.choices[0].message.content;
       
