@@ -3237,7 +3237,7 @@ const WhiteboardItem = ({
     >
       {renderContent()}
       {renderResizeHandles()}
-      {localStorage.getItem('showCoordinates') !== 'false' && (
+      {(item.type !== 'image' || isSelected) && localStorage.getItem('showCoordinates') !== 'false' && (
         <div
           style={{
             position: 'absolute',

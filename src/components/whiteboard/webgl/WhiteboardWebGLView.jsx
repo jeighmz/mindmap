@@ -101,7 +101,9 @@ const WhiteboardWebGLView = forwardRef(function WhiteboardWebGLView(
       selectedConnectionId,
       connectingFromId,
       connectingMousePosition,
-      skipTypes: ['chart'],
+      // Images stay on the DOM overlay. Firebase download URLs display in <img>
+      // but fail WebGL texture upload (no bucket CORS), which drew a pink error box.
+      skipTypes: ['chart', 'image'],
     };
     latestSceneRef.current = scene;
     
