@@ -2296,7 +2296,8 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
                 reject(new Error('Failed to load image'));
               };
 
-              img.crossOrigin = 'anonymous';
+              // Do not set crossOrigin. Storage download URLs render in an <img>
+              // but fail when CORS is requested, which was marking good images broken.
               img.src = imageUrl;
             });
 
@@ -8147,21 +8148,31 @@ Output a single JSON object conforming to the schema above.`;
                 </div>
               ))}
           {items
-            .filter((item) => item?.position && item.width > 0 && item.height > 0 && item.type !== 'chart' && isItemInSelection(selectedItems, item.id))
-            .map((item) => (
+            .filter((item) =>
+              item?.position &&
+              item.width > 0 &&
+              item.height > 0 &&
+              item.type !== 'chart' &&
+              (item.type === 'image' || isItemInSelection(selectedItems, item.id))
+            )
+            .map((item) => {
+                const selected = isItemInSelection(selectedItems, item.id);
+                return (
                 <div
-                  key={`selected-${item.id}`}
+                  key={`overlay-${item.id}`}
                   data-overlay-id={item.id}
-                  className="whiteboard-dom-overlay-item whiteboard-dom-overlay-item--selected"
+                  className={`whiteboard-dom-overlay-item${
+                    selected ? ' whiteboard-dom-overlay-item--selected' : ''
+                  }`}
                   style={{
                     position: 'absolute',
                     left: item.position.x,
                     top: item.position.y,
-                    width: item.width + OVERLAY_CONTROL_GUTTER,
+                    width: selected ? item.width + OVERLAY_CONTROL_GUTTER : item.width,
                     height: item.height,
                     transformOrigin: `${item.width / 2}px ${item.height / 2}px`,
                     transform: item.rotation ? `rotate(${item.rotation}deg)` : undefined,
-                    pointerEvents: 'none',
+                    pointerEvents: selected ? 'none' : 'auto',
                   }}
                 >
                   <div
@@ -8178,7 +8189,7 @@ Output a single JSON object conforming to the schema above.`;
                     updateSize={updateItemSize}
                     updateRotation={updateItemRotation}
                     updateText={updateItemText}
-                    isSelected
+                    isSelected={selected}
                     isConnecting={connectingFrom === item.id}
                     isValidTarget={connectingFrom && connectingFrom !== item.id}
                     isGroupSelectMode={selectedItems.size > 1}
@@ -8196,7 +8207,8 @@ Output a single JSON object conforming to the schema above.`;
                   />
                   </div>
                 </div>
-              ))}
+                );
+              })}
         </div>
 
         {selectionBox && (

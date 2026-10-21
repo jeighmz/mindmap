@@ -196,7 +196,7 @@ export class WhiteboardWebGLRenderer {
     selectedConnectionId = null,
     connectingFromId = null,
     connectingMousePosition = null,
-    skipTypes = ['chart'],
+    skipTypes = ['chart', 'image'],
   }) {
     if (!this.initialized) return;
 
