@@ -361,26 +361,36 @@ export class WhiteboardWebGLRenderer {
     } else if (item.type === 'circle') {
       shape.circle(item.width / 2, item.height / 2, Math.min(item.width, item.height) / 2);
 
-      if (fill !== null) {
-        shape.fill({ color: fill, alpha: 0.98 });
+      // Always render something - use defaults if both fill and border are transparent
+      const shouldUseFallback = fill === null && border === null && !isSelected;
+      const effectiveFill = shouldUseFallback ? defaults.fill : fill;
+      const effectiveBorder = shouldUseFallback ? defaults.border : border;
+
+      if (effectiveFill !== null) {
+        shape.fill({ color: effectiveFill, alpha: 0.98 });
       }
       
       if (isSelected) {
         shape.stroke({ width: 3, color: 0x2196f3, alpha: 1 });
-      } else if (border !== null) {
-        shape.stroke({ width: 2, color: border, alpha: 1 });
+      } else if (effectiveBorder !== null) {
+        shape.stroke({ width: 2, color: effectiveBorder, alpha: 1 });
       }
     } else {
       shape.roundRect(0, 0, item.width, item.height, Math.min(radius, 50));
 
-      if (fill !== null) {
-        shape.fill({ color: fill, alpha: item.type === 'sticky' ? 1 : 0.98 });
+      // Always render something - use defaults if both fill and border are transparent
+      const shouldUseFallback = fill === null && border === null && !isSelected;
+      const effectiveFill = shouldUseFallback ? defaults.fill : fill;
+      const effectiveBorder = shouldUseFallback ? defaults.border : border;
+
+      if (effectiveFill !== null) {
+        shape.fill({ color: effectiveFill, alpha: item.type === 'sticky' ? 1 : 0.98 });
       }
       
       if (isSelected) {
         shape.stroke({ width: 3, color: 0x2196f3, alpha: 1 });
-      } else if (border !== null) {
-        shape.stroke({ width: 2, color: border, alpha: 1 });
+      } else if (effectiveBorder !== null) {
+        shape.stroke({ width: 2, color: effectiveBorder, alpha: 1 });
       }
     }
 
