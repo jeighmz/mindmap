@@ -1,5 +1,11 @@
 import React, { useState } from 'react';
 import { useDrag } from 'react-dnd';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  uploadBoardImage,
+  getImageNaturalSize,
+  fitImageDimensions,
+} from '../../services/imageUploadService';
 
 import AgentChat from './agent/AgentChat';
 
@@ -32,6 +38,8 @@ const ChartMenuItem = ({ chartType, icon, title, onChartMenuToggle }) => {
 };
 
 const ToolbarItem = ({ type, icon, chartType, isChartMenuOpen, onChartMenuToggle }) => {
+  const { user } = useAuth();
+  const [isUploading, setIsUploading] = useState(false);
 
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'WHITEBOARD_ITEM',
@@ -42,11 +50,16 @@ const ToolbarItem = ({ type, icon, chartType, isChartMenuOpen, onChartMenuToggle
   }), [type, chartType]);
 
   const handleImageClick = async () => {
+    if (!user?.uid) {
+      alert('Please sign in to upload images');
+      return;
+    }
+
     try {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
-      input.multiple = true; // Support multiple file selection
+      input.multiple = true;
       
       input.onchange = async (e) => {
         const files = Array.from(e.target.files).filter(file => file.type.startsWith('image/'));
@@ -55,7 +68,6 @@ const ToolbarItem = ({ type, icon, chartType, isChartMenuOpen, onChartMenuToggle
           return;
         }
 
-        // Get viewport center position
         const canvasEl = document.querySelector('.whiteboard-canvas');
         if (!canvasEl) {
           alert('Canvas not found');
@@ -66,81 +78,53 @@ const ToolbarItem = ({ type, icon, chartType, isChartMenuOpen, onChartMenuToggle
         const viewportCenterX = canvasRect.left + canvasRect.width / 2;
         const viewportCenterY = canvasRect.top + canvasRect.height / 2;
 
-        // Get current pan and scale from the canvas (we'll need to pass this or get it from event)
-        // For now, we'll calculate a reasonable center position
-        // The canvas will handle positioning based on its current pan/scale state
-        
-        files.forEach(async (file, index) => {
-          // Convert file to data URL immediately for production compatibility
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const dataUrl = e.target.result;
-            const img = new Image();
-            
-            img.onload = () => {
-              // Calculate dimensions while maintaining aspect ratio
-              const maxWidth = 400;
-              const maxHeight = 300;
-              let width = img.width;
-              let height = img.height;
-              
-              if (width > maxWidth) {
-                height = (maxWidth / width) * height;
-                width = maxWidth;
-              }
-              if (height > maxHeight) {
-                width = (maxHeight / height) * width;
-                height = maxHeight;
-              }
+        setIsUploading(true);
+        try {
+          for (let index = 0; index < files.length; index++) {
+            const file = files[index];
+            try {
+              const natural = await getImageNaturalSize(file);
+              const { width, height } = fitImageDimensions(natural.width, natural.height);
+              const uploaded = await uploadBoardImage({
+                file,
+                userId: user.uid,
+                originalName: file.name,
+              });
 
-              // Calculate center position - offset multiple images in a grid pattern
               const cols = Math.ceil(Math.sqrt(files.length));
               const row = Math.floor(index / cols);
               const col = index % cols;
               const offsetX = (col - (cols - 1) / 2) * (width + 20);
               const offsetY = (row - (Math.ceil(files.length / cols) - 1) / 2) * (height + 20);
-              
-              // Dispatch event with viewport center coordinates
-              // The canvas will convert these to canvas coordinates
+
               const newItem = {
                 type: 'image',
-                imageUrl: dataUrl, // Use data URL instead of blob URL
+                imageUrl: uploaded.imageUrl,
+                storageRef: uploaded.storageRef,
                 width,
                 height,
-                position: { 
-                  viewportX: viewportCenterX + offsetX, 
-                  viewportY: viewportCenterY + offsetY 
-                }
+                position: {
+                  viewportX: viewportCenterX + offsetX,
+                  viewportY: viewportCenterY + offsetY,
+                },
               };
 
-              // Use setTimeout to ensure each image gets processed with unique timing
-              setTimeout(() => {
-                const event = new CustomEvent('addImageItem', { detail: newItem });
-                window.dispatchEvent(event);
-              }, index * 10);
-            };
-            
-            img.onerror = () => {
-              alert(`Failed to load image "${file.name}"`);
-            };
-            
-            img.src = dataUrl;
-          };
-          
-          reader.onerror = () => {
-            alert(`Failed to read image "${file.name}"`);
-          };
-          
-          reader.readAsDataURL(file);
-        });
+              window.dispatchEvent(new CustomEvent('addImageItem', { detail: newItem }));
+            } catch (error) {
+              console.error('Failed to upload image:', error);
+              alert(`Failed to upload image "${file.name}": ${error.message}`);
+            }
+          }
+        } finally {
+          setIsUploading(false);
+        }
       };
     
-    // Add error handler for file input
-    input.onerror = (e) => {
-      alert('Error opening file picker. Please try again.');
-    };
+      input.onerror = () => {
+        alert('Error opening file picker. Please try again.');
+      };
     
-    input.click();
+      input.click();
     } catch (error) {
       alert('Failed to open file picker: ' + error.message);
     }
@@ -212,9 +196,14 @@ const ToolbarItem = ({ type, icon, chartType, isChartMenuOpen, onChartMenuToggle
   return (
     <div
       ref={type === 'image' || type === 'chart-menu' ? null : drag}
-      className="toolbar-item"
-      style={{ opacity: isDragging ? 0.5 : 1, cursor: type === 'image' ? 'pointer' : (type === 'chart-menu' ? 'pointer' : 'grab') }}
+      className={`toolbar-item${isUploading ? ' uploading' : ''}`}
+      style={{
+        opacity: isDragging || isUploading ? 0.5 : 1,
+        cursor: type === 'image' ? (isUploading ? 'wait' : 'pointer') : (type === 'chart-menu' ? 'pointer' : 'grab'),
+        pointerEvents: isUploading ? 'none' : undefined,
+      }}
       onClick={type === 'image' ? handleImageClick : undefined}
+      title={type === 'image' && isUploading ? 'Uploading image…' : undefined}
     >
       {icon}
     </div>

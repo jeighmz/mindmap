@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserBoards, saveBoard, deleteBoard } from '../../services/boardService';
+import { prepareImageItemForSave } from '../../services/imageUploadService';
 import { getSharedBoards } from '../../services/sharingService';
 import { createFolder, getUserFolders, updateFolder, deleteFolder, moveBoardToFolder, getFolderStructure } from '../../services/folderService';
 import { serverTimestamp, doc, getDoc, updateDoc, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
@@ -338,6 +339,8 @@ const SavedWhiteboardsMenu = ({
     }
 
     if (item.type === 'image') {
+      // Never embed multi-MB data URLs in Firestore — they trigger
+      // "invalid nested entity" / document-size save failures.
       const cleanedImage = {
         id: String(item.id || Date.now()),
         type: 'image',
@@ -349,16 +352,19 @@ const SavedWhiteboardsMenu = ({
         height: Number(item.height || 300)
       };
 
-      // Preserve storageRef for Firebase Storage images
       if (item.storageRef) {
         cleanedImage.storageRef = String(item.storageRef);
       }
 
-      // Preserve imageUrl for data URLs (local images)
-      if (item.imageUrl && item.imageUrl.startsWith('data:')) {
+      if (
+        item.imageUrl &&
+        !String(item.imageUrl).startsWith('data:')
+      ) {
         cleanedImage.imageUrl = String(item.imageUrl);
-      } else if (item.imageUrl) {
-        cleanedImage.imageUrl = String(item.imageUrl);
+      }
+
+      if (item.order !== undefined) {
+        cleanedImage.order = Number(item.order);
       }
 
       return cleanItemForFirestore(cleanedImage);
@@ -399,10 +405,23 @@ const SavedWhiteboardsMenu = ({
     setIsLoading(true);
     setError(null);
     try {
-      // Clean and validate all items
-      const processedItems = (currentWhiteboard?.items || [])
-        .map(cleanItem)
-        .filter(Boolean); // Remove any null/undefined items
+      // Clean and validate all items (upload any leftover data-URL images first)
+      const processedItems = (
+        await Promise.all(
+          (currentWhiteboard?.items || []).map(async (item) => {
+            if (item?.type === 'image') {
+              try {
+                const prepared = await prepareImageItemForSave(item, user.uid);
+                return cleanItem(prepared);
+              } catch (err) {
+                console.error('Failed to prepare image for save:', err);
+                throw new Error(`Image could not be saved: ${err.message}`);
+              }
+            }
+            return cleanItem(item);
+          })
+        )
+      ).filter(Boolean);
 
       // Clean and validate all connections
       const processedConnections = (currentWhiteboard?.connections || [])
