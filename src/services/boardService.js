@@ -290,16 +290,42 @@ export const saveBoard = async (boardData, userId) => {
       throw new Error('Board name is required');
     }
 
-    // Clean and validate items, ensuring chart configurations are properly saved
+    // Clean and validate items, ensuring chart configurations are properly saved.
+    // Image items must not carry data URLs / runtime error objects into Firestore
+    // (causes "invalid nested entity" and document-size failures).
     const cleanedItems = (boardData.content?.items || []).map(item => {
       let cleaned = item;
       
       if (item.type === 'chart') {
         cleaned = cleanChartConfig(item);
       }
+
+      if (item.type === 'image') {
+        cleaned = {
+          id: item.id,
+          type: 'image',
+          position: {
+            x: Number(item.position?.x || 0),
+            y: Number(item.position?.y || 0),
+          },
+          width: Number(item.width || 400),
+          height: Number(item.height || 300),
+        };
+        if (item.storageRef) {
+          cleaned.storageRef = String(item.storageRef);
+        }
+        if (item.imageUrl && !String(item.imageUrl).startsWith('data:')) {
+          cleaned.imageUrl = String(item.imageUrl);
+        }
+        if (item.order !== undefined) {
+          cleaned.order = Number(item.order);
+        }
+        if (item.rotation !== undefined) {
+          cleaned.rotation = Number(item.rotation) || 0;
+        }
+      }
       
       // Clean item to ensure all values are Firestore-compatible
-      // This prevents "invalid nested entity" errors
       cleaned = cleanItemForFirestore(cleaned);
       
       return cleaned;

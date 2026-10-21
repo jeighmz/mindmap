@@ -1,10 +1,10 @@
 import {
   Application,
-  Assets,
   Container,
   Graphics,
   Sprite,
   Text,
+  Texture,
 } from 'pixi.js';
 import { CANVAS_SIZE, DEFAULT_ITEM_COLORS, GRID_SIZE } from './constants';
 import {
@@ -417,10 +417,10 @@ export class WhiteboardWebGLRenderer {
   async updateImageNode(node, item) {
     const { shape, label, sprite } = node;
     label.visible = false;
-    shape.clear();
 
     const src = item.src || item.imageUrl || item.url;
     if (!src) {
+      shape.clear();
       shape.roundRect(0, 0, item.width, item.height, 8);
       shape.fill({ color: 0xf3f4f6 });
       shape.stroke({ color: 0xd1d5db, width: 1 });
@@ -431,29 +431,47 @@ export class WhiteboardWebGLRenderer {
     try {
       const cacheKey = `${item.id}:${src}`;
       let texture = this.textureCache.get(cacheKey);
+
       if (!texture) {
-        // Load texture with crossOrigin set for external URLs
-        // Data URLs and same-origin images don't need CORS but setting anonymous is safe
-        texture = await Assets.load({ 
-          src, 
-          alias: cacheKey,
-          loadParser: 'loadTextures'
+        // PixiJS v8 Assets.load() often returns null/invalid for data URLs and
+        // Firebase Storage URLs. Native Image + Texture.from is reliable for all sources.
+        texture = await new Promise((resolve, reject) => {
+          const img = new Image();
+          // Required for Firebase Storage / cross-origin URLs drawn to WebGL
+          if (!String(src).startsWith('data:')) {
+            img.crossOrigin = 'anonymous';
+          }
+
+          img.onload = () => {
+            const tex = Texture.from(img);
+            if (!tex) {
+              reject(new Error('Texture.from returned empty texture'));
+              return;
+            }
+            resolve(tex);
+          };
+
+          img.onerror = () => {
+            reject(new Error(`Failed to load image: ${String(src).substring(0, 80)}`));
+          };
+
+          img.src = src;
         });
+
         this.textureCache.set(cacheKey, texture);
       }
 
-      // Ensure sprite is visible and properly configured
       sprite.texture = texture;
       sprite.width = item.width;
       sprite.height = item.height;
       sprite.visible = true;
       sprite.alpha = 1;
-      
-      // Hide shape when sprite is successfully loaded
+
+      // Only clear the placeholder after a valid texture is bound
       shape.clear();
     } catch (error) {
-      console.error('Failed to load image texture:', error, 'src:', src?.substring(0, 100));
-      // Show error rectangle
+      console.error('Failed to load image texture:', error?.message || error, 'item:', item.id);
+      shape.clear();
       shape.roundRect(0, 0, item.width, item.height, 8);
       shape.fill({ color: 0xfee2e2 });
       shape.stroke({ color: 0xf87171, width: 1 });

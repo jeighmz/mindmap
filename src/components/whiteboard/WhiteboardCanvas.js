@@ -9,7 +9,7 @@ import ChartConfigPanel from './ChartConfigPanel';
 import CollaboratorsBar from './CollaboratorsBar';
 // import PublishModal from './PublishModal';  // Temporarily removed
 import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { ref as storageRef, uploadString, getDownloadURL, getStorage, uploadBytes, getMetadata } from 'firebase/storage';
+import { ref as storageRef, getDownloadURL, getStorage } from 'firebase/storage';
 import { getAuth } from 'firebase/auth';
 import { db, storage } from '../../firebase-config';
 /* eslint-disable-next-line no-unused-vars */
@@ -35,6 +35,12 @@ import { hitTestItem } from './webgl/hitTest';
 import { useCanvasDrag } from './drag/useCanvasDrag';
 import { isItemInSelection } from './selectionUtils';
 import { generateBoardThumbnail } from '../../utils/boardThumbnail';
+import {
+  uploadBoardImage,
+  prepareImageItemForSave,
+  getImageNaturalSize,
+  fitImageDimensions,
+} from '../../services/imageUploadService';
 
 const WhiteboardCanvas = forwardRef((props, ref) => {
   const { isDarkMode } = useApp();
@@ -1879,46 +1885,16 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
         }
 
         processedItems = await Promise.all(items.map(async (item) => {
-          let cleanedItem = { ...item };
-          
           if (item.type === 'image') {
-            // For data URLs, we don't need storageRef - just preserve the imageUrl
-            if (item.imageUrl && item.imageUrl.startsWith('data:')) {
-              // Data URL images don't need storageRef, just keep the imageUrl
-              cleanedItem = { ...item };
-            } else if (!item.storageRef) {
-              // If image URL exists but no storageRef, keep the imageUrl
-              if (!item.imageUrl) {
-                throw new Error('Invalid image item: missing both storage reference and image URL');
-              }
-              // Continue with just the imageUrl if available
-            } else {
-              // Verify the existing image is still accessible
-              try {
-                const storage = getStorage();
-                const imageRef = storageRef(storage, item.storageRef);
-                const downloadUrl = await getDownloadURL(imageRef);
-                
-                // Update the URL in case it has changed
-                cleanedItem.imageUrl = downloadUrl;
-              } catch (error) {
-                // If imageUrl exists, use it as fallback
-                if (item.imageUrl) {
-                  cleanedItem.imageUrl = item.imageUrl;
-                } else {
-                  throw new Error(`Failed to verify existing image: ${error.message}`);
-                }
-              }
-            }
+            // Upload any leftover data URLs, then persist only storageRef + short URL.
+            // Embedding multi-MB data URLs causes Firestore "invalid nested entity" /
+            // document-size failures.
+            const prepared = await prepareImageItemForSave(item, user?.uid);
+            return cleanItemForFirestore(removeUndefinedFromObject(prepared));
           }
-          
-          // Remove undefined values from the item
-          cleanedItem = removeUndefinedFromObject(cleanedItem);
-          
-          // Clean item to ensure all values are Firestore-compatible
-          // This prevents "invalid nested entity" errors
+
+          let cleanedItem = removeUndefinedFromObject({ ...item });
           cleanedItem = cleanItemForFirestore(cleanedItem);
-          
           return cleanedItem;
         }));
       }
@@ -2260,88 +2236,95 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
 
       // Process items to restore image URLs
       const processedItems = await Promise.all(boardData.content.items.map(async (item) => {
-        if (item.type === 'image') {
-          // If imageUrl is a data URL, use it directly (no storageRef needed)
-          if (item.imageUrl && item.imageUrl.startsWith('data:')) {
+        if (item.type !== 'image') {
+          return item;
+        }
+
+        // Data URLs (legacy boards) — use as-is
+        if (item.imageUrl && item.imageUrl.startsWith('data:')) {
+          return {
+            ...item,
+            imageUrl: item.imageUrl,
+            loadError: null,
+            errorOverlay: false
+          };
+        }
+
+        // Remote https URL without storageRef (legacy / already-resolved) — use directly
+        if (
+          !item.storageRef &&
+          item.imageUrl &&
+          (item.imageUrl.startsWith('http://') || item.imageUrl.startsWith('https://'))
+        ) {
+          return {
+            ...item,
+            imageUrl: item.imageUrl,
+            loadError: null,
+            errorOverlay: false
+          };
+        }
+
+        if (!item.storageRef) {
+          return {
+            ...item,
+            loadError: 'Missing storage reference',
+            imageUrl: '/placeholder-image-error.png',
+            errorOverlay: true
+          };
+        }
+
+        const maxRetries = 3;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            const imageRef = storageRef(getStorage(), item.storageRef);
+            const imageUrl = await getDownloadURL(imageRef);
+
+            await new Promise((resolve, reject) => {
+              const img = new Image();
+              const timeoutId = setTimeout(() => {
+                reject(new Error('Image load timed out'));
+              }, 30000);
+
+              img.onload = () => {
+                clearTimeout(timeoutId);
+                resolve();
+              };
+
+              img.onerror = () => {
+                clearTimeout(timeoutId);
+                reject(new Error('Failed to load image'));
+              };
+
+              img.crossOrigin = 'anonymous';
+              img.src = imageUrl;
+            });
+
             return {
               ...item,
-              imageUrl: item.imageUrl,
+              imageUrl,
               loadError: null,
               errorOverlay: false
             };
-          }
-
-          // If no storageRef and no data URL, show error
-          if (!item.storageRef) {
-            return {
-              ...item,
-              loadError: 'Missing storage reference',
-              imageUrl: '/placeholder-image-error.png', // Add a placeholder image
-              errorOverlay: true
-            };
-          }
-
-          const maxRetries = 3;
-          let lastError = null;
-
-          for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            try {
-              const storage = getStorage();
-              const imageRef = storageRef(storage, item.storageRef);
-              
-              // Get the download URL
-              const imageUrl = await getDownloadURL(imageRef);
-              
-              // Verify the image can be loaded
-              await new Promise((resolve, reject) => {
-                const img = new Image();
-                const timeoutId = setTimeout(() => {
-                  reject(new Error('Image load timed out'));
-                }, 30000); // 30 second timeout
-
-                img.onload = () => {
-                  clearTimeout(timeoutId);
-                  resolve();
-                };
-
-                img.onerror = () => {
-                  clearTimeout(timeoutId);
-                  reject(new Error('Failed to load image'));
-                };
-
-                img.src = imageUrl;
-              });
-
+          } catch (error) {
+            if (attempt === maxRetries) {
               return {
                 ...item,
-                imageUrl,
-                loadError: null,
-                errorOverlay: false
+                loadError: `Failed to load after ${maxRetries} attempts: ${error.message}`,
+                imageUrl: '/placeholder-image-error.png',
+                errorOverlay: true,
+                errorDetails: {
+                  message: error.message,
+                  storageRef: item.storageRef,
+                  timestamp: new Date().toISOString()
+                }
               };
-
-            } catch (error) {
-              lastError = error;
-
-              // If this was the last attempt, mark the item as failed
-              if (attempt === maxRetries) {
-                return {
-                  ...item,
-                  loadError: `Failed to load after ${maxRetries} attempts: ${error.message}`,
-                  imageUrl: '/placeholder-image-error.png', // Add a placeholder image
-                  errorOverlay: true,
-                  errorDetails: {
-                    message: error.message,
-                    storageRef: item.storageRef,
-                    timestamp: new Date().toISOString()
-                  }
-                };
-              }
-
-              // Wait before retrying (exponential backoff)
-              await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt - 1) * 1000));
             }
+
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt - 1) * 1000));
           }
         }
+
         return item;
       }));
 
@@ -2569,41 +2552,25 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       // Process all items, with special handling for images
       let processedItems = [];
       if (items.length > 0) {
-        const storage = getStorage();
-        if (!storage) {
+        if (!getStorage()) {
           return;
         }
 
         processedItems = await Promise.all(items.map(async (item) => {
-          let cleanedItem = { ...item };
-          
           if (item.type === 'image') {
-            if (!item.storageRef) {
-              if (!item.imageUrl) {
-                return cleanedItem; // Skip invalid images during auto-save
-              }
-            } else {
-              try {
-                const storage = getStorage();
-                const imageRef = storageRef(storage, item.storageRef);
-                const downloadUrl = await getDownloadURL(imageRef);
-                cleanedItem.imageUrl = downloadUrl;
-              } catch (error) {
-                if (item.imageUrl) {
-                  cleanedItem.imageUrl = item.imageUrl;
-                }
-              }
+            try {
+              const prepared = await prepareImageItemForSave(item, user?.uid);
+              return cleanItemForFirestore(removeUndefinedFromObject(prepared));
+            } catch (error) {
+              // Skip broken images during auto-save rather than aborting the whole save
+              console.warn('Auto-save skipped image item:', item.id, error.message);
+              return null;
             }
           }
-          
-          cleanedItem = removeUndefinedFromObject(cleanedItem);
-          
-          // Clean item to ensure all values are Firestore-compatible
-          // This prevents "invalid nested entity" errors
-          cleanedItem = cleanItemForFirestore(cleanedItem);
-          
-          return cleanedItem;
+
+          return cleanItemForFirestore(removeUndefinedFromObject({ ...item }));
         }));
+        processedItems = processedItems.filter(Boolean);
       }
 
       // Clean connections
@@ -2853,7 +2820,7 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
     return () => window.removeEventListener('addImageItem', handleAddImageItem);
   }, [scale, panOffset, constrainPositionToCanvas]);
 
-  // Handle image file drops
+  // Handle image file drops — upload to Firebase Storage before adding to the board
   const handleImageDrop = useCallback((e, dropPosition) => {
     e.preventDefault();
     e.stopPropagation();
@@ -2865,52 +2832,46 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
       return;
     }
 
+    if (!user?.uid) {
+      alert('Please sign in to upload images');
+      return;
+    }
+
     const canvasRect = canvasRef.current?.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
 
-    files.forEach((file) => {
-      // Convert file to data URL immediately for production compatibility
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target.result;
-        const img = new Image();
-        
-        img.onload = () => {
-        // Calculate dimensions while maintaining aspect ratio
-        const maxWidth = 400;
-        const maxHeight = 300;
-        let width = img.width;
-        let height = img.height;
-        
-        if (width > maxWidth) {
-          height = (maxWidth / width) * height;
-          width = maxWidth;
-        }
-        if (height > maxHeight) {
-          width = (maxHeight / height) * width;
-          height = maxHeight;
-        }
+    (async () => {
+      for (const file of files) {
+        try {
+          const natural = await getImageNaturalSize(file);
+          const { width, height } = fitImageDimensions(natural.width, natural.height);
 
-        // Calculate position based on drop location
-        let position;
-        if (dropPosition && canvasRect) {
-          position = {
-            x: Math.round(((dropPosition.x - canvasRect.left - panOffset.x) / (scale) - width/2) / 10) * 10,
-            y: Math.round(((dropPosition.y - canvasRect.top - panOffset.y) / (scale) - height/2) / 10) * 10
-          };
-        } else {
-          position = { x: 100, y: 100 };
-        }
+          let position;
+          if (dropPosition && canvasRect) {
+            position = {
+              x: Math.round(((dropPosition.x - canvasRect.left - panOffset.x) / scale - width / 2) / 10) * 10,
+              y: Math.round(((dropPosition.y - canvasRect.top - panOffset.y) / scale - height / 2) / 10) * 10
+            };
+          } else {
+            position = { x: 100, y: 100 };
+          }
 
-        // Constrain position to canvas bounds
-        position = constrainPositionToCanvas(position, width, height);
+          position = constrainPositionToCanvas(position, width, height);
 
-        const newItemId = Date.now() + Math.random();
-        setItems(prevItems => {
-          const maxOrder = prevItems.length > 0 ? Math.max(...prevItems.map((i, idx) => i.order !== undefined ? i.order : idx)) : -1;
+          const uploaded = await uploadBoardImage({
+            file,
+            userId: user.uid,
+            originalName: file.name,
+          });
+
+          const newItemId = Date.now() + Math.random();
+          setItems(prevItems => {
+            const maxOrder = prevItems.length > 0
+              ? Math.max(...prevItems.map((i, idx) => (i.order !== undefined ? i.order : idx)))
+              : -1;
             return [...prevItems, {
               type: 'image',
-              imageUrl: dataUrl, // Use data URL instead of blob URL
+              imageUrl: uploaded.imageUrl,
+              storageRef: uploaded.storageRef,
               width,
               height,
               position,
@@ -2919,22 +2880,13 @@ const WhiteboardCanvas = forwardRef((props, ref) => {
             }];
           });
           setSelectedItems(new Set([newItemId]));
-        };
-        
-        img.onerror = () => {
-          alert(`Failed to load image "${file.name}"`);
-        };
-        
-        img.src = dataUrl;
-      };
-      
-      reader.onerror = () => {
-        alert(`Failed to read image "${file.name}"`);
-      };
-      
-      reader.readAsDataURL(file);
-    });
-  }, [scale, panOffset, constrainPositionToCanvas]);
+        } catch (error) {
+          console.error('Failed to upload dropped image:', error);
+          alert(`Failed to upload image "${file.name}": ${error.message}`);
+        }
+      }
+    })();
+  }, [scale, panOffset, constrainPositionToCanvas, user]);
 
   const handleCanvasClick = (e) => {
     if (suppressSelectionClickRef.current) {
