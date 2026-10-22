@@ -37,12 +37,11 @@ export const callGroqChat = async ({
   response_format,
   featureType = 'aiGeneratedMaps', // For server-side tier enforcement
 }) => {
-  // Require authentication - server now enforces tier limits
-  if (!auth.currentUser) {
-    throw new Error('Please sign in to use AI features');
-  }
-
-  const headers = await getAuthHeaders();
+  // Allow both authenticated and guest users
+  // Server enforces tier limits: guests get 4 AI maps/day, others based on subscription
+  const headers = auth.currentUser
+    ? await getAuthHeaders()
+    : { 'Content-Type': 'application/json' };
 
   const response = await fetch(`${getApiBaseUrl()}/groq-chat`, {
     method: 'POST',

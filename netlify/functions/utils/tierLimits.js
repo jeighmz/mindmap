@@ -308,7 +308,8 @@ const canUseFeature = async (userId, featureType) => {
 };
 
 /**
- * Increment usage count for a feature
+ * Atomically increment usage count for a feature using a transaction
+ * This prevents race conditions where concurrent requests could exceed limits
  * @param {string} userId - Firebase user ID
  * @param {string} featureType - 'aiGeneratedMaps', 'aiAnalysis', or 'expandTool'
  * @returns {Promise<number>} - New usage count
@@ -334,22 +335,44 @@ const incrementUsage = async (userId, featureType) => {
     const db = initFirebase();
     const usageRef = db.collection('userUsage').doc(userId);
     
-    // Get current data to ensure we're not resetting on a new day
-    const currentData = await getUserUsageData(userId);
+    // Use a transaction to atomically check and increment
+    const newCount = await db.runTransaction(async (transaction) => {
+      const usageDoc = await transaction.get(usageRef);
+      
+      let currentData;
+      if (!usageDoc.exists) {
+        // Initialize new document
+        currentData = {
+          aiGeneratedMaps: 0,
+          aiAnalysisMessages: 0,
+          expandToolUses: 0,
+          lastReset: new Date()
+        };
+      } else {
+        currentData = usageDoc.data();
+        
+        // Check if we need to reset (new day)
+        if (isNewDay(currentData.lastReset)) {
+          currentData = {
+            aiGeneratedMaps: 0,
+            aiAnalysisMessages: 0,
+            expandToolUses: 0,
+            lastReset: new Date()
+          };
+        }
+      }
+      
+      // Increment the counter
+      const newValue = (currentData[usageKey] || 0) + 1;
+      currentData[usageKey] = newValue;
+      
+      // Write back
+      transaction.set(usageRef, currentData);
+      
+      return newValue;
+    });
     
-    // Increment the specific usage counter
-    const updates = {
-      [usageKey]: (currentData[usageKey] || 0) + 1
-    };
-    
-    // Only set lastReset if it doesn't exist (for new documents)
-    if (!currentData.lastReset) {
-      updates.lastReset = new Date();
-    }
-    
-    await usageRef.set(updates, { merge: true });
-    
-    return updates[usageKey];
+    return newCount;
   } catch (error) {
     console.error('Error incrementing usage:', error);
     throw error;
@@ -369,6 +392,151 @@ const getTierDisplayName = (tier) => {
   return displayNames[tier] || tier;
 };
 
+/**
+ * Check if a guest (unauthenticated) user can use a feature based on IP
+ * Guests get 4 AI-generated maps per day, no other AI features
+ * @param {string} clientIp - Client IP address from request headers
+ * @param {string} featureType - Feature type being requested
+ * @returns {Promise<Object>} - { allowed: boolean, reason?: string, ... }
+ */
+const canUseFeatureAsGuest = async (clientIp, featureType) => {
+  // Guests can only use AI map generation (4/day limit)
+  if (featureType !== 'aiGeneratedMaps') {
+    return {
+      allowed: false,
+      reason: 'authentication_required',
+      message: 'Please sign in to use this feature. Create a free account to get started.',
+      guestMode: true
+    };
+  }
+
+  if (!clientIp) {
+    // If we can't determine IP, allow but log warning
+    console.warn('Guest request without IP address - allowing but cannot enforce server-side limit');
+    return {
+      allowed: true,
+      guestMode: true,
+      clientSideOnly: true
+    };
+  }
+
+  try {
+    const db = initFirebase();
+    // Use a safe IP key (replace dots and colons)
+    const ipKey = clientIp.replace(/[.:]/g, '_');
+    const guestRef = db.collection('guestUsage').doc(ipKey);
+    
+    const guestDoc = await guestRef.get();
+    
+    let guestData;
+    if (!guestDoc.exists) {
+      guestData = {
+        aiGeneratedMaps: 0,
+        lastReset: new Date(),
+        lastIp: clientIp
+      };
+    } else {
+      guestData = guestDoc.data();
+      
+      // Reset if new day
+      if (isNewDay(guestData.lastReset)) {
+        guestData = {
+          aiGeneratedMaps: 0,
+          lastReset: new Date(),
+          lastIp: clientIp
+        };
+      }
+    }
+    
+    const used = guestData.aiGeneratedMaps || 0;
+    const limit = 4; // Guest limit is always 4 maps/day
+    
+    if (used >= limit) {
+      return {
+        allowed: false,
+        reason: 'limit_reached',
+        message: `You've reached the guest limit of ${limit} AI-generated maps per day. Sign in for more features, or try again tomorrow.`,
+        guestMode: true,
+        limit,
+        used,
+        remaining: 0
+      };
+    }
+    
+    return {
+      allowed: true,
+      guestMode: true,
+      limit,
+      used,
+      remaining: limit - used
+    };
+  } catch (error) {
+    console.error('Error checking guest usage:', error);
+    // Fail open for guests - let client-side handle it
+    return {
+      allowed: true,
+      guestMode: true,
+      clientSideOnly: true,
+      fallbackReason: 'server_error'
+    };
+  }
+};
+
+/**
+ * Atomically increment guest usage
+ * @param {string} clientIp - Client IP address
+ * @returns {Promise<number>} - New usage count
+ */
+const incrementGuestUsage = async (clientIp) => {
+  if (!clientIp) {
+    console.warn('Cannot increment guest usage without IP');
+    return 0;
+  }
+
+  try {
+    const db = initFirebase();
+    const ipKey = clientIp.replace(/[.:]/g, '_');
+    const guestRef = db.collection('guestUsage').doc(ipKey);
+    
+    const newCount = await db.runTransaction(async (transaction) => {
+      const guestDoc = await transaction.get(guestRef);
+      
+      let guestData;
+      if (!guestDoc.exists) {
+        guestData = {
+          aiGeneratedMaps: 0,
+          lastReset: new Date(),
+          lastIp: clientIp
+        };
+      } else {
+        guestData = guestDoc.data();
+        
+        // Reset if new day
+        if (isNewDay(guestData.lastReset)) {
+          guestData = {
+            aiGeneratedMaps: 0,
+            lastReset: new Date(),
+            lastIp: clientIp
+          };
+        }
+      }
+      
+      guestData.aiGeneratedMaps = (guestData.aiGeneratedMaps || 0) + 1;
+      guestData.lastIp = clientIp; // Update IP on each use
+      
+      transaction.set(guestRef, guestData);
+      
+      return guestData.aiGeneratedMaps;
+    });
+    
+    return newCount;
+  } catch (error) {
+    console.error('Error incrementing guest usage:', error);
+    // Don't throw - guest tracking is best-effort
+    return 0;
+  }
+};
+
 module.exports = {
   USER_TIERS,
   TIER_FEATURES,
@@ -376,5 +544,7 @@ module.exports = {
   getUserUsageData,
   canUseFeature,
   incrementUsage,
-  getTierDisplayName
+  getTierDisplayName,
+  canUseFeatureAsGuest,
+  incrementGuestUsage
 };
