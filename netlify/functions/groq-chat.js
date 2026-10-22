@@ -6,6 +6,7 @@ const {
 } = require('./utils/auth');
 const { initFirebase } = require('./utils/firebase');
 const { getUserGroqApiKey } = require('./utils/userSecrets');
+const { canUseFeature, incrementUsage, canUseFeatureAsGuest, incrementGuestUsage } = require('./utils/tierLimits');
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 // Use production model - llama-3.3-70b-versatile was deprecated Aug 16, 2026
@@ -54,10 +55,16 @@ exports.handler = async (event) => {
     };
   }
 
-  // Try to identify the caller. Guest requests (no token) are allowed —
-  // client-side usage limits enforce the 4-map cap for unauthenticated users.
+  // Try to authenticate, but allow guest access for AI map generation
   const authResult = await requireAuth(event);
   const userId = authResult.error ? null : authResult.uid;
+  const isGuest = !userId;
+  
+  // Get client IP for guest rate limiting (best-effort server-side cap)
+  const clientIp = event.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+                   event.headers['x-nf-client-connection-ip'] ||
+                   event.headers['client-ip'] ||
+                   null;
 
   try {
     const payload = JSON.parse(event.body || '{}');
@@ -69,6 +76,7 @@ exports.handler = async (event) => {
       top_p,
       stream = false,
       response_format,
+      featureType = 'aiGeneratedMaps', // Default to map generation
     } = payload;
 
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -84,6 +92,48 @@ exports.handler = async (event) => {
         statusCode: 400,
         headers,
         body: JSON.stringify({ error: 'Invalid model' }),
+      };
+    }
+
+    // SERVER-SIDE TIER ENFORCEMENT
+    // For authenticated users: check tier limits
+    // For guests: allow only AI map generation (4/day, tracked by IP if available)
+    let usageCheck;
+    
+    if (isGuest) {
+      usageCheck = await canUseFeatureAsGuest(clientIp, featureType);
+    } else {
+      // Check if user has their own Groq API key (bypasses tier limits)
+      const hasPersonalKey = await getUserGroqApiKey(userId).catch(() => null);
+      
+      if (hasPersonalKey) {
+        // Users with personal API keys bypass tier limits entirely
+        usageCheck = { allowed: true, personalKey: true };
+      } else {
+        usageCheck = await canUseFeature(userId, featureType);
+      }
+    }
+    
+    if (!usageCheck.allowed) {
+      const statusCode = usageCheck.reason === 'authentication_required' ? 401 :
+                         usageCheck.reason === 'limit_reached' ? 429 :
+                         usageCheck.reason === 'feature_not_available' ? 403 : 403;
+      
+      return {
+        statusCode,
+        headers,
+        body: JSON.stringify({
+          error: {
+            message: usageCheck.message || 'Feature not available',
+            type: usageCheck.reason === 'limit_reached' ? 'rate_limit_error' : 'tier_limit_error',
+            code: usageCheck.reason,
+            tier: usageCheck.tier,
+            limit: usageCheck.limit,
+            used: usageCheck.used,
+            remaining: usageCheck.remaining,
+            guestMode: usageCheck.guestMode || false
+          }
+        }),
       };
     }
 
@@ -161,6 +211,23 @@ exports.handler = async (event) => {
       headers,
       body: responseBody,
     };
+  }
+
+  // Only increment usage on successful (2xx) responses
+  if (groqResponse.ok && groqResponse.status >= 200 && groqResponse.status < 300) {
+    try {
+      // Don't increment usage for users with personal API keys
+      if (!usageCheck.personalKey) {
+        if (isGuest) {
+          await incrementGuestUsage(clientIp);
+        } else {
+          await incrementUsage(userId, featureType);
+        }
+      }
+    } catch (usageError) {
+      // Log but don't fail the request if usage tracking fails
+      console.error('Failed to increment usage:', usageError);
+    }
   }
 
   return {

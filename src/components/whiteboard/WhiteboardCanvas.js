@@ -5254,6 +5254,7 @@ Performance Metrics Analysis`
 
       const data = await callGroqChat({
         model: MODEL_ID,
+        featureType: 'aiGeneratedMaps',
         messages: [
           {
             role: 'system',
@@ -5945,6 +5946,7 @@ Output a single JSON object conforming to the schema above.`;
 
       const data = await callGroqChat({
         model: MODEL_ID,
+        featureType: 'aiGeneratedMaps',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
