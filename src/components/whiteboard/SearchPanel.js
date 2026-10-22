@@ -905,6 +905,7 @@ const SearchPanel = ({ highlightedItems, onClose, onFullscreenChange, currentBoa
 
       const data = await callGroqChat({
         model: selectedModel.id,
+        featureType: 'aiAnalysis',
         messages,
         temperature: 0.7,
         max_tokens: 1024,

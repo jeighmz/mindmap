@@ -35,13 +35,14 @@ export const callGroqChat = async ({
   top_p,
   stream = false,
   response_format,
+  featureType = 'aiGeneratedMaps', // For server-side tier enforcement
 }) => {
-  // Authenticated users send a Firebase token so the server can identify them.
-  // Guest users (no Firebase session) send the request without a token — the
-  // server still processes it, and client-side usage limits enforce the 4-map cap.
-  const headers = auth.currentUser
-    ? await getAuthHeaders()
-    : { 'Content-Type': 'application/json' };
+  // Require authentication - server now enforces tier limits
+  if (!auth.currentUser) {
+    throw new Error('Please sign in to use AI features');
+  }
+
+  const headers = await getAuthHeaders();
 
   const response = await fetch(`${getApiBaseUrl()}/groq-chat`, {
     method: 'POST',
@@ -54,6 +55,7 @@ export const callGroqChat = async ({
       top_p,
       stream,
       response_format,
+      featureType, // Pass feature type for tier enforcement
     }),
   });
 
@@ -63,7 +65,12 @@ export const callGroqChat = async ({
     const errorMessage = data.error?.message || data.error || data.message || 'Groq API request failed';
     
     if (response.status === 401) {
-      throw new Error('AI service authentication failed. The API key may be invalid or expired. Please contact support.');
+      throw new Error('Please sign in to use AI features.');
+    }
+    
+    if (response.status === 403) {
+      // Tier limit error
+      throw new Error(errorMessage);
     }
     
     if (response.status === 404) {
@@ -72,7 +79,8 @@ export const callGroqChat = async ({
     }
     
     if (response.status === 429) {
-      throw new Error('AI service rate limit exceeded. Please try again in a moment.');
+      // Rate limit exceeded (tier daily limit)
+      throw new Error(errorMessage);
     }
     
     if (response.status >= 500) {

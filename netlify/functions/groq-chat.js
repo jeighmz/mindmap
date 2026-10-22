@@ -6,6 +6,7 @@ const {
 } = require('./utils/auth');
 const { initFirebase } = require('./utils/firebase');
 const { getUserGroqApiKey } = require('./utils/userSecrets');
+const { canUseFeature, incrementUsage } = require('./utils/tierLimits');
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 // Use production model - llama-3.3-70b-versatile was deprecated Aug 16, 2026
@@ -54,10 +55,23 @@ exports.handler = async (event) => {
     };
   }
 
-  // Try to identify the caller. Guest requests (no token) are allowed —
-  // client-side usage limits enforce the 4-map cap for unauthenticated users.
+  // Require authentication for all AI features (tier enforcement)
   const authResult = await requireAuth(event);
-  const userId = authResult.error ? null : authResult.uid;
+  if (authResult.error) {
+    return {
+      statusCode: authResult.error.statusCode,
+      headers,
+      body: JSON.stringify({ 
+        error: {
+          message: authResult.error.message,
+          type: 'authentication_error',
+          code: 'authentication_required'
+        }
+      }),
+    };
+  }
+  
+  const userId = authResult.uid;
 
   try {
     const payload = JSON.parse(event.body || '{}');
@@ -69,6 +83,7 @@ exports.handler = async (event) => {
       top_p,
       stream = false,
       response_format,
+      featureType = 'aiGeneratedMaps', // Default to map generation
     } = payload;
 
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -84,6 +99,32 @@ exports.handler = async (event) => {
         statusCode: 400,
         headers,
         body: JSON.stringify({ error: 'Invalid model' }),
+      };
+    }
+
+    // SERVER-SIDE TIER ENFORCEMENT
+    // Check if user has permission to use this feature based on their tier
+    const usageCheck = await canUseFeature(userId, featureType);
+    
+    if (!usageCheck.allowed) {
+      const statusCode = usageCheck.reason === 'authentication_required' ? 401 :
+                         usageCheck.reason === 'limit_reached' ? 429 :
+                         usageCheck.reason === 'feature_not_available' ? 403 : 403;
+      
+      return {
+        statusCode,
+        headers,
+        body: JSON.stringify({
+          error: {
+            message: usageCheck.message || 'Feature not available on your current plan',
+            type: usageCheck.reason === 'limit_reached' ? 'rate_limit_error' : 'tier_limit_error',
+            code: usageCheck.reason,
+            tier: usageCheck.tier,
+            limit: usageCheck.limit,
+            used: usageCheck.used,
+            remaining: usageCheck.remaining
+          }
+        }),
       };
     }
 
@@ -161,6 +202,14 @@ exports.handler = async (event) => {
       headers,
       body: responseBody,
     };
+  }
+
+  // SUCCESS - Increment usage after successful AI call
+  try {
+    await incrementUsage(userId, featureType);
+  } catch (usageError) {
+    // Log but don't fail the request if usage tracking fails
+    console.error('Failed to increment usage:', usageError);
   }
 
   return {

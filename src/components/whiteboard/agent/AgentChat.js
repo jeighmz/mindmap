@@ -289,6 +289,7 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
 
       const data = await callGroqChat({
         model: DEFAULT_GROQ_MODEL,
+        featureType: 'aiAnalysis',
         messages: [{ role: 'system', content: systemPrompt }],
         temperature: 0.7,
         max_tokens: 2000,
@@ -751,6 +752,7 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
 
           const data = await callGroqChat({
             model: DEFAULT_GROQ_MODEL,
+            featureType: 'aiAnalysis',
             messages: [{ role: 'system', content: systemPrompt }],
             temperature: 0.7,
             max_tokens: 2000,
@@ -1336,6 +1338,7 @@ const AgentChat = ({ isOpen, onClose, mindMapItems, connections, highlightedItem
 
           const data = await callGroqChat({
             model,
+            featureType: 'aiAnalysis',
             messages: [
               { role: 'system', content: systemPrompt },
               ...messages.slice(-5),
